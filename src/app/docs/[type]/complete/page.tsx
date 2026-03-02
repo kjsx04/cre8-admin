@@ -1200,6 +1200,7 @@ export default function CompletePage() {
 
     const res = await fetch("/api/docs/generate", {
       method: "POST",
+      cache: "no-store",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         docType: docType.id,
@@ -1220,7 +1221,13 @@ export default function CompletePage() {
       throw new Error(msg);
     }
 
-    return res.blob();
+    // Read as ArrayBuffer first, then create Blob with explicit type
+    // (res.blob() can inherit incorrect types from Vercel edge caching)
+    const arrayBuffer = await res.arrayBuffer();
+    console.log("[Export] Response size:", arrayBuffer.byteLength, "bytes, first 4:", new Uint8Array(arrayBuffer.slice(0, 4)));
+    return new Blob([arrayBuffer], {
+      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
   }, [docType, clausePayload, varDefs]);
 
   // ── Helper to trigger a debounced regen ──
@@ -1716,12 +1723,19 @@ export default function CompletePage() {
     try {
       setIsExporting(true);
       const blob = await generateExportBlob();
+      console.log("[Download] Blob size:", blob.size, "type:", blob.type);
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
+      link.style.display = "none";
       link.href = url;
       link.download = fileName;
+      document.body.appendChild(link);
       link.click();
-      URL.revokeObjectURL(url);
+      // Delay cleanup to ensure browser has initiated the download
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        document.body.removeChild(link);
+      }, 1000);
     } catch (err) {
       console.error("Export download error:", err);
     } finally {
