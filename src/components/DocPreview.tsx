@@ -42,14 +42,14 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
         }
 
         // Render the document
-        // Pass document.head as styleContainer — undefined causes docx-preview
-        // to construct URLs from "undefined", triggering null:1 404 errors in console
-        await docxPreview.renderAsync(bytes.buffer, containerRef.current!, document.head, {
+        // ignoreFonts: true prevents null:1 404 errors from docx-preview trying
+        // to load font URLs that resolve to null — browser native fonts are fine
+        await docxPreview.renderAsync(bytes.buffer, containerRef.current!, undefined, {
           className: "docx",
           inWrapper: true,
           ignoreWidth: false,
           ignoreHeight: true,
-          ignoreFonts: false,
+          ignoreFonts: true,
           breakPages: true,
           ignoreLastRenderedPageBreak: true,
           experimental: false,
