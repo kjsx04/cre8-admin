@@ -55,7 +55,11 @@ export default function EmailCalendar({
           onDateClick(info.dateStr);
         }}
         // Styling overrides applied via globals.css
-        eventClassNames="cursor-pointer"
+        // Merge per-event classNames (e.g., recurring-event) with base cursor class
+        eventClassNames={(arg) => {
+          const extra = arg.event.classNames || [];
+          return ["cursor-pointer", ...extra];
+        }}
         dayHeaderClassNames="text-xs font-medium text-muted-gray uppercase"
       />
     </div>

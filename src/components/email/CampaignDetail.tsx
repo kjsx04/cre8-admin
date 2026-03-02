@@ -4,8 +4,10 @@ import { useState } from "react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
+import { ListingItem } from "@/lib/admin-constants";
 import PriorityBadge from "./PriorityBadge";
 import EmailPreview from "./EmailPreview";
+import CampaignForm from "./CampaignForm";
 
 interface CampaignDetailProps {
   campaign: Campaign;
@@ -14,20 +16,25 @@ interface CampaignDetailProps {
   onPause: (id: string) => Promise<void>;
   onResume: (id: string) => Promise<void>;
   onClose: () => void;
+  /** Called when user edits via the form — triggers full re-schedule */
+  onEdit?: (data: CampaignFormData, autoSchedule: boolean) => Promise<void>;
+  listings?: ListingItem[];
 }
 
 /** Slide-over detail panel — same pattern as DealDetail */
 export default function CampaignDetail({
   campaign,
-  onUpdate: _onUpdate,
+  onUpdate,
   onDelete,
   onPause,
   onResume,
   onClose,
+  onEdit,
+  listings,
 }: CampaignDetailProps) {
-  // onUpdate reserved for future inline edit functionality
-  void _onUpdate;
+  void onUpdate; // reserved for inline edit
   const [showPreview, setShowPreview] = useState(false);
+  const [showEditForm, setShowEditForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -55,6 +62,14 @@ export default function CampaignDetail({
     await onDelete(campaign.id);
     setActionLoading(false);
     setShowDeleteConfirm(false);
+  };
+
+  // Handle edit form submission — wraps the onEdit callback
+  const handleEditSubmit = async (data: CampaignFormData, autoSchedule: boolean) => {
+    if (onEdit) {
+      await onEdit(data, autoSchedule);
+      setShowEditForm(false);
+    }
   };
 
   return (
@@ -170,6 +185,16 @@ export default function CampaignDetail({
                 Preview Email
               </button>
 
+              {/* Edit button — only for draft/scheduled campaigns */}
+              {canEdit(campaign.status) && onEdit && (
+                <button
+                  onClick={() => setShowEditForm(true)}
+                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors"
+                >
+                  Edit Campaign
+                </button>
+              )}
+
               {/* Pause / Resume */}
               {canPause(campaign) && (
                 <button
@@ -229,6 +254,16 @@ export default function CampaignDetail({
       {/* Email preview modal */}
       {showPreview && (
         <EmailPreview campaign={campaign} onClose={() => setShowPreview(false)} />
+      )}
+
+      {/* Edit campaign form modal */}
+      {showEditForm && (
+        <CampaignForm
+          existingCampaign={campaign}
+          onSubmit={handleEditSubmit}
+          onClose={() => setShowEditForm(false)}
+          listings={listings}
+        />
       )}
     </>
   );

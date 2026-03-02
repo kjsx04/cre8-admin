@@ -117,6 +117,7 @@ export interface CalendarEvent {
   start: string;       // ISO date string
   backgroundColor: string;
   borderColor: string;
+  classNames?: string[];  // Extra CSS classes (e.g., 'recurring-event')
   extendedProps: {
     campaign: Campaign;
     priority: PriorityLevel;

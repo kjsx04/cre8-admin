@@ -79,14 +79,15 @@ export default function EmailPage() {
         body: JSON.stringify({ ...data, auto_schedule: autoSchedule }),
       });
       if (!res.ok) throw new Error("Failed to create campaign");
-      setShowForm(false);
+      // Form closes itself after animation completes
       await fetchCampaigns();
     } catch (err) {
       console.error("Create failed:", err);
+      throw err; // Re-throw so CampaignForm can show error in animation
     }
   };
 
-  // Update campaign
+  // Update campaign (partial PATCH)
   const handleUpdate = async (id: string, data: Partial<CampaignFormData>) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}`, {
@@ -104,6 +105,33 @@ export default function EmailPage() {
       }
     } catch (err) {
       console.error("Update failed:", err);
+    }
+  };
+
+  // Edit campaign via the full form (re-submits + re-schedules)
+  const handleEdit = async (data: CampaignFormData, autoSchedule: boolean) => {
+    if (!selectedCampaign) return;
+    try {
+      const res = await fetch(`/api/email/campaigns/${selectedCampaign.id}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail,
+        },
+        body: JSON.stringify({ ...data, auto_schedule: autoSchedule }),
+      });
+      if (!res.ok) throw new Error("Failed to update campaign");
+      await fetchCampaigns();
+
+      // Refresh the selected campaign with latest data
+      const refreshRes = await fetch(`/api/email/campaigns/${selectedCampaign.id}`);
+      if (refreshRes.ok) {
+        const refreshed = await refreshRes.json();
+        setSelectedCampaign(refreshed);
+      }
+    } catch (err) {
+      console.error("Edit failed:", err);
+      throw err; // Re-throw so CampaignForm can show error in animation
     }
   };
 
@@ -288,6 +316,8 @@ export default function EmailPage() {
           onPause={handlePause}
           onResume={handleResume}
           onClose={() => setSelectedCampaign(null)}
+          onEdit={handleEdit}
+          listings={listings}
         />
       )}
     </div>

@@ -64,6 +64,8 @@ export function campaignToEvent(campaign: Campaign): CalendarEvent | null {
     start: dateStr,
     backgroundColor: color,
     borderColor: color,
+    // Recurring campaigns get a distinct CSS class for striped pattern
+    classNames: campaign.campaign_type === "recurring" ? ["recurring-event"] : [],
     extendedProps: {
       campaign,
       priority,

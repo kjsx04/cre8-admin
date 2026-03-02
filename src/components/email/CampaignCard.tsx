@@ -26,10 +26,14 @@ export default function CampaignCard({ campaign, onClick }: CampaignCardProps) {
       <div className="flex items-start justify-between gap-3">
         {/* Left: type indicator + content */}
         <div className="flex items-start gap-3 min-w-0">
-          {/* Color bar */}
+          {/* Color bar — dashed for recurring, solid for one-time */}
           <div
             className="w-1 h-12 rounded-full shrink-0 mt-0.5"
-            style={{ backgroundColor: color }}
+            style={
+              campaign.campaign_type === "recurring"
+                ? { backgroundImage: `repeating-linear-gradient(to bottom, ${color} 0px, ${color} 4px, transparent 4px, transparent 8px)` }
+                : { backgroundColor: color }
+            }
           />
           <div className="min-w-0">
             {/* Label + priority */}

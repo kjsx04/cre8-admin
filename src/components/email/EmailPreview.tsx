@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 
 interface EmailPreviewProps {
@@ -15,7 +15,7 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
   const [error, setError] = useState<string | null>(null);
 
   // Fetch preview HTML on mount
-  useState(() => {
+  useEffect(() => {
     (async () => {
       try {
         const res = await fetch("/api/email/preview", {
@@ -44,7 +44,8 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
         setLoading(false);
       }
     })();
-  });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
