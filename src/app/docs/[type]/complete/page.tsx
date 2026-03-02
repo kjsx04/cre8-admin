@@ -923,7 +923,7 @@ export default function CompletePage() {
         );
         sessionStorage.setItem(
           `generate_payload_${docType.id}`,
-          JSON.stringify({ variables: defaults, clauses: [] })
+          JSON.stringify({ variables: defaults, clauses })
         );
       };
       reader.readAsDataURL(blob);

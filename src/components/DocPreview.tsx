@@ -42,7 +42,9 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
         }
 
         // Render the document
-        await docxPreview.renderAsync(bytes.buffer, containerRef.current!, undefined, {
+        // Pass document.head as styleContainer — undefined causes docx-preview
+        // to construct URLs from "undefined", triggering null:1 404 errors in console
+        await docxPreview.renderAsync(bytes.buffer, containerRef.current!, document.head, {
           className: "docx",
           inWrapper: true,
           ignoreWidth: false,
