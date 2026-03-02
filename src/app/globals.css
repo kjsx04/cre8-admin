@@ -75,3 +75,54 @@ select:focus {
   box-shadow: none !important;
   margin-bottom: 0 !important;
 }
+
+/* ── FullCalendar theme overrides ── */
+.email-calendar {
+  --fc-border-color: #E5E5E5;
+  --fc-today-bg-color: #f0fce8;
+  --fc-neutral-bg-color: #fafafa;
+  --fc-page-bg-color: #ffffff;
+}
+.email-calendar .fc .fc-toolbar-title {
+  font-family: "Bebas Neue", sans-serif;
+  font-size: 1.5rem;
+  letter-spacing: 0.04em;
+  color: #1A1A1A;
+}
+.email-calendar .fc .fc-button {
+  background: #2A2A2A;
+  border: none;
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+}
+.email-calendar .fc .fc-button:hover {
+  background: #1A1A1A;
+}
+.email-calendar .fc .fc-button-active {
+  background: #1A1A1A !important;
+}
+.email-calendar .fc .fc-daygrid-day-number {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.8rem;
+  color: #666666;
+  padding: 4px 8px;
+}
+.email-calendar .fc .fc-event {
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.72rem;
+  font-family: "DM Sans", sans-serif;
+  font-weight: 600;
+  border: none;
+}
+.email-calendar .fc .fc-col-header-cell-cushion {
+  font-family: "DM Sans", sans-serif;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #999999;
+  padding: 8px 0;
+}
