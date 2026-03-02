@@ -589,26 +589,31 @@ function FieldSidebar({
               </button>
               {/* Toggle: include parcel map image in document — only visible when an image exists */}
               {hasParcelMapImage && onToggleParcelMap && (
-                <label className="flex items-center gap-2 cursor-pointer group">
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={includeParcelMap}
-                    onClick={onToggleParcelMap}
-                    className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${
-                      includeParcelMap ? "bg-green" : "bg-dark-gray border border-border-gray"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${
-                        includeParcelMap ? "translate-x-[14px]" : ""
+                <div className="space-y-1">
+                  <label className="flex items-center gap-2 cursor-pointer group">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={includeParcelMap}
+                      onClick={onToggleParcelMap}
+                      className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${
+                        includeParcelMap ? "bg-green" : "bg-dark-gray border border-border-gray"
                       }`}
-                    />
-                  </button>
-                  <span className="text-xs text-medium-gray group-hover:text-white transition-colors">
-                    Include parcel map in document
-                  </span>
-                </label>
+                    >
+                      <span
+                        className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${
+                          includeParcelMap ? "translate-x-[14px]" : ""
+                        }`}
+                      />
+                    </button>
+                    <span className="text-xs text-medium-gray group-hover:text-white transition-colors">
+                      Attach parcel map to document
+                    </span>
+                  </label>
+                  <p className="text-[10px] text-border-gray leading-tight pl-10">
+                    Satellite image of the selected parcel(s) will appear at the end of the downloaded document.
+                  </p>
+                </div>
               )}
             </div>
           )}
