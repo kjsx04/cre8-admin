@@ -860,15 +860,20 @@ export default function CompletePage() {
     const storedPayload = sessionStorage.getItem(`generate_payload_${docType.id}`);
 
     if (storedDoc && storedPayload) {
-      // Restore from sessionStorage
+      // Restore field values from sessionStorage, but DON'T use the cached fileBase64 —
+      // it may contain a parcel map image that crashes the preview renderer (DrawingML OOXML).
+      // Instead, restore fields/clauses and trigger a fresh preview generation (without image).
       const parsedDoc = JSON.parse(storedDoc);
       const parsedPayload = JSON.parse(storedPayload);
       setFileName(parsedDoc.fileName);
-      setFileBase64(parsedDoc.fileBase64);
       setFieldValues(parsedPayload.variables || {});
       fieldValuesRef.current = parsedPayload.variables || {};
       setClausePayload(parsedPayload.clauses || []);
-      setInitialLoading(false);
+      // Generate a clean preview (no parcel map image) from the restored values
+      if (!initialGenTriggered.current) {
+        initialGenTriggered.current = true;
+        generateInitialPreview(parsedPayload.variables || {}, parsedPayload.clauses || []);
+      }
     } else {
       // Fresh visit — build defaults and generate initial preview
       const defaults = buildDefaultValues();
@@ -886,7 +891,7 @@ export default function CompletePage() {
   }, [docType]);
 
   // ── Generate the first preview on mount ──
-  async function generateInitialPreview(defaults: Record<string, string>) {
+  async function generateInitialPreview(defaults: Record<string, string>, clauses: { id: string; title: string; text: string }[] = []) {
     if (!docType) return;
 
     try {
@@ -896,7 +901,7 @@ export default function CompletePage() {
         body: JSON.stringify({
           docType: docType.id,
           variables: defaults,
-          clauses: [],
+          clauses,
         }),
       });
 
