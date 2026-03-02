@@ -1692,12 +1692,20 @@ export default function CompletePage() {
   const downloadFile = useCallback(async () => {
     if (!fileBase64 || !fileName) return;
 
-    // Fast path: no parcel map → use the existing preview base64
+    // Fast path: no parcel map → convert base64 to Blob for clean download
+    // (Using base64 data URL directly as link.href corrupts the .docx ZIP structure)
     if (!includeParcelMapRef.current || !parcelMapImageRef.current) {
+      const base64Data = fileBase64.split(",")[1];
+      const byteChars = atob(base64Data);
+      const byteArray = new Uint8Array(byteChars.length);
+      for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+      const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
-      link.href = fileBase64;
+      link.href = url;
       link.download = fileName;
       link.click();
+      URL.revokeObjectURL(url);
       return;
     }
 
