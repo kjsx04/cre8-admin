@@ -5,6 +5,7 @@ import fs from "fs";
 import path from "path";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
 
+
 /**
  * Clean split XML tokens in .docx
  * Word splits {{token_name}} across multiple XML runs due to spell-check,
@@ -52,25 +53,27 @@ function cleanSplitTokens(xml: string): string {
  */
 function injectParcelMapImage(zip: PizZip, dataUrl: string): void {
   try {
-    // ── 1. Decode base64 data URL → binary buffer ──
-    const base64Match = dataUrl.match(/^data:image\/png;base64,(.+)$/);
+    // ── 1. Decode base64 data URL → binary buffer (supports PNG and JPEG) ──
+    const base64Match = dataUrl.match(/^data:image\/(png|jpeg);base64,(.+)$/);
     if (!base64Match) {
       console.warn("[injectParcelMapImage] Invalid data URL format");
       return;
     }
-    const imgBuffer = Buffer.from(base64Match[1], "base64");
+    const imgFormat = base64Match[1]; // "png" or "jpeg"
+    const imgExt = imgFormat === "jpeg" ? "jpg" : "png";
+    const imgBuffer = Buffer.from(base64Match[2], "base64");
 
-    // ── 2. Add PNG file into the zip ──
-    zip.file("word/media/parcel_map.png", imgBuffer);
+    // ── 2. Add image file into the zip ──
+    zip.file(`word/media/parcel_map.${imgExt}`, imgBuffer);
 
-    // ── 3. Update [Content_Types].xml — add PNG content type if missing ──
+    // ── 3. Update [Content_Types].xml — add image content type if missing ──
     const contentTypesFile = zip.file("[Content_Types].xml");
     if (!contentTypesFile) return;
     let contentTypesXml = contentTypesFile.asText();
-    if (!contentTypesXml.includes('Extension="png"')) {
+    if (!contentTypesXml.includes(`Extension="${imgExt}"`)) {
       contentTypesXml = contentTypesXml.replace(
         "</Types>",
-        '<Default Extension="png" ContentType="image/png"/></Types>'
+        `<Default Extension="${imgExt}" ContentType="image/${imgFormat}"/></Types>`
       );
     }
     zip.file("[Content_Types].xml", contentTypesXml);
@@ -83,7 +86,7 @@ function injectParcelMapImage(zip: PizZip, dataUrl: string): void {
     if (!relsXml.includes("rIdParcelMap")) {
       relsXml = relsXml.replace(
         "</Relationships>",
-        '<Relationship Id="rIdParcelMap" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/parcel_map.png"/></Relationships>'
+        `<Relationship Id="rIdParcelMap" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/parcel_map.${imgExt}"/></Relationships>`
       );
     }
     zip.file("word/_rels/document.xml.rels", relsXml);

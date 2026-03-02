@@ -1213,8 +1213,11 @@ export default function CompletePage() {
     });
 
     if (!res.ok) {
-      const errorData = await res.json();
-      throw new Error(errorData.error || "Export generation failed");
+      // Handle non-JSON error responses (e.g. Vercel 413 body too large)
+      const text = await res.text();
+      let msg = "Export generation failed";
+      try { msg = JSON.parse(text).error || msg; } catch { /* not JSON */ }
+      throw new Error(msg);
     }
 
     return res.blob();

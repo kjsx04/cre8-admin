@@ -595,8 +595,21 @@ export default function ParcelPickerModal({
           });
         }
 
-        // Capture the canvas
-        mapImage = map.getCanvas().toDataURL("image/png");
+        // Capture the canvas — compress to JPEG to stay under Vercel's 4.5MB body limit
+        const srcCanvas = map.getCanvas();
+        const compressCanvas = document.createElement("canvas");
+        // Downsample to max 1200px wide for .docx embedding (keeps file small)
+        const scale = Math.min(1, 1200 / srcCanvas.width);
+        compressCanvas.width = Math.round(srcCanvas.width * scale);
+        compressCanvas.height = Math.round(srcCanvas.height * scale);
+        const ctx = compressCanvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(srcCanvas, 0, 0, compressCanvas.width, compressCanvas.height);
+          mapImage = compressCanvas.toDataURL("image/jpeg", 0.75);
+        } else {
+          // Fallback — uncompressed PNG
+          mapImage = srcCanvas.toDataURL("image/png");
+        }
       } catch (err) {
         console.warn("[ParcelPicker] Canvas capture failed:", err);
         // Non-fatal — proceed without image
