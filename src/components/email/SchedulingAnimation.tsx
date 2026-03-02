@@ -11,11 +11,12 @@ interface SchedulingAnimationProps {
   onComplete: () => void;
   /** Called when user clicks retry after an error */
   onRetry: () => void;
+  /** "create" = full 5-step 20s build-up, "edit" = quick 2-step confirmation */
+  mode?: "create" | "edit";
 }
 
-// Steps 0-2 build up over ~20s, step 3 holds until API resolves,
-// step 4 wraps up fast, then "Scheduled!" flashes green and slides out
-const STEPS = [
+// Create mode: steps 0-2 build up over ~20s, step 3 holds until API, step 4 wraps up
+const CREATE_STEPS = [
   { label: "Creating email template...", duration: 6000 },
   { label: "Analyzing your campaign...", duration: 7000 },
   { label: "Reviewing current schedule...", duration: 7000 },
@@ -23,14 +24,23 @@ const STEPS = [
   { label: "Finalizing campaign...", duration: 400 },
 ];
 
-const AI_STEP_INDEX = 3;
+// Edit mode: step 0 holds until API, step 1 wraps up fast
+const EDIT_STEPS = [
+  { label: "Confirming changes...", duration: 0 }, // holds until apiDone
+  { label: "Finalizing...", duration: 400 },
+];
 
 export default function SchedulingAnimation({
   apiDone,
   apiError,
   onComplete,
   onRetry,
+  mode = "create",
 }: SchedulingAnimationProps) {
+  // Pick step config based on mode
+  const STEPS = mode === "edit" ? EDIT_STEPS : CREATE_STEPS;
+  const AI_HOLD_INDEX = mode === "edit" ? 0 : 3;
+  const SUCCESS_LABEL = mode === "edit" ? "Updated!" : "Scheduled!";
   // Current step index — STEPS.length means we're on the final "Scheduled!" state
   const [currentStep, setCurrentStep] = useState(0);
   const [done, setDone] = useState(false);
@@ -66,7 +76,7 @@ export default function SchedulingAnimation({
     }
 
     // AI hold step — wait for apiDone
-    if (currentStep === AI_STEP_INDEX) {
+    if (currentStep === AI_HOLD_INDEX) {
       if (apiDoneRef.current) {
         setCurrentStep((s) => s + 1);
       }
@@ -85,14 +95,14 @@ export default function SchedulingAnimation({
 
   // When API finishes while holding on the AI step, advance
   useEffect(() => {
-    if (apiDone && currentStep === AI_STEP_INDEX && !done && !apiError) {
+    if (apiDone && currentStep === AI_HOLD_INDEX && !done && !apiError) {
       setCurrentStep((s) => s + 1);
     }
   }, [apiDone, currentStep, done, apiError]);
 
-  // Current step label (or "Scheduled!" when done)
+  // Current step label (or success label when done)
   const activeLabel = done
-    ? "Scheduled!"
+    ? SUCCESS_LABEL
     : STEPS[currentStep]?.label || "Scheduling...";
 
   return (

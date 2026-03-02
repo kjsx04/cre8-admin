@@ -10,14 +10,12 @@ import { campaignToEvent } from "@/lib/email/utils";
 interface EmailCalendarProps {
   campaigns: Campaign[];
   onEventClick: (campaign: Campaign) => void;
-  onDateClick: (dateStr: string) => void;
 }
 
 /** FullCalendar monthly view showing campaigns as color-coded events */
 export default function EmailCalendar({
   campaigns,
   onEventClick,
-  onDateClick,
 }: EmailCalendarProps) {
   const calendarRef = useRef<FullCalendar>(null);
 
@@ -50,9 +48,6 @@ export default function EmailCalendar({
           // Find the campaign from extendedProps
           const campaign = info.event.extendedProps.campaign as Campaign;
           if (campaign) onEventClick(campaign);
-        }}
-        dateClick={(info) => {
-          onDateClick(info.dateStr);
         }}
         // Styling overrides applied via globals.css
         // Merge per-event classNames (e.g., recurring-event) with base cursor class

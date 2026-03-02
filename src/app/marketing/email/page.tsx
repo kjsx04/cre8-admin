@@ -39,6 +39,8 @@ export default function EmailPage() {
   const [toastVisible, setToastVisible] = useState(false);
   const [toastApiDone, setToastApiDone] = useState(false);
   const [toastApiError, setToastApiError] = useState<string | null>(null);
+  // Track whether the toast should use create (5-step) or edit (2-step) animation
+  const [toastMode, setToastMode] = useState<"create" | "edit">("create");
   // Store last form data + context for retry
   const lastFormRef = useRef<{ data: CampaignFormData; editId?: string } | null>(null);
 
@@ -127,6 +129,7 @@ export default function EmailPage() {
   // Create new campaign — form calls this, then closes immediately
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleCreate = async (data: CampaignFormData, _autoSchedule: boolean) => {
+    setToastMode("create");
     fireSchedulingApi(data);
   };
 
@@ -134,6 +137,7 @@ export default function EmailPage() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const handleEdit = async (data: CampaignFormData, _autoSchedule: boolean) => {
     if (!selectedCampaign) return;
+    setToastMode("edit");
     fireSchedulingApi(data, selectedCampaign.id);
   };
 
@@ -216,12 +220,6 @@ export default function EmailPage() {
     setSelectedCampaign(campaign);
   };
 
-  // Calendar date click → open form
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleDateClick = (_dateStr: string) => {
-    setShowForm(true);
-  };
-
   // Filter campaigns by active tab
   const filteredCampaigns = STATUS_TABS[activeTab].statuses.length === 0
     ? campaigns
@@ -289,7 +287,6 @@ export default function EmailPage() {
             <EmailCalendar
               campaigns={filteredCampaigns}
               onEventClick={handleEventClick}
-              onDateClick={handleDateClick}
             />
           ) : (
             /* List view */
@@ -362,6 +359,7 @@ export default function EmailPage() {
           apiError={toastApiError}
           onComplete={handleToastComplete}
           onRetry={handleToastRetry}
+          mode={toastMode}
         />
       )}
     </div>
