@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { CampaignFormData, CampaignType, CampaignFrequency, EmailSender, EmailSegment, Campaign } from "@/lib/email/types";
 import { EMAIL_LABELS } from "@/lib/email/constants";
 import { ListingItem, ListingFieldData, BROKERS, BROKER_CONTACTS } from "@/lib/admin-constants";
-import SchedulingAnimation from "./SchedulingAnimation";
 
 interface CampaignFormProps {
   onSubmit: (data: CampaignFormData, autoSchedule: boolean) => Promise<void>;
@@ -64,11 +63,6 @@ export default function CampaignForm({
     (existingCampaign?.frequency as CampaignFrequency) || "one-time"
   );
   const [endDate, setEndDate] = useState(existingCampaign?.end_date?.substring(0, 10) || "");
-
-  // Scheduling animation state
-  const [saving, setSaving] = useState(false);
-  const [apiDone, setApiDone] = useState(false);
-  const [apiError, setApiError] = useState<string | null>(null);
 
   // Validation state
   const [showErrors, setShowErrors] = useState(false);
@@ -164,17 +158,12 @@ export default function CampaignForm({
   const missingBroker = !brokerId;
   const missingLabel = !resolvedLabel.trim();
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
     // Check required fields — show errors if missing
     if (missingListing || missingBroker || missingLabel) {
       setShowErrors(true);
       return;
     }
-
-    // Start the scheduling animation
-    setSaving(true);
-    setApiDone(false);
-    setApiError(null);
 
     const data: CampaignFormData = {
       listing_id: listingId,
@@ -196,25 +185,9 @@ export default function CampaignForm({
       end_date: endDate || undefined,
     };
 
-    try {
-      await onSubmit(data, true); // always auto-schedule
-      setApiDone(true);
-    } catch (err) {
-      setApiError(err instanceof Error ? err.message : "Failed to schedule campaign");
-    }
-  };
-
-  // After animation completes, close modal
-  const handleAnimationComplete = useCallback(() => {
-    setSaving(false);
+    // Fire the callback and close immediately — parent manages the toast animation
+    onSubmit(data, true);
     onClose();
-  }, [onClose]);
-
-  // Retry after error — reset animation state
-  const handleRetry = () => {
-    setSaving(false);
-    setApiDone(false);
-    setApiError(null);
   };
 
   // Helper: border class for a field with validation
@@ -240,18 +213,8 @@ export default function CampaignForm({
           </button>
         </div>
 
-        {/* Scheduling animation overlay — replaces form body when saving */}
-        {saving ? (
-          <SchedulingAnimation
-            apiDone={apiDone}
-            apiError={apiError}
-            onComplete={handleAnimationComplete}
-            onRetry={handleRetry}
-          />
-        ) : (
-          <>
-            {/* Form body */}
-            <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+        {/* Form body */}
+        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
               {/* Listing selector */}
               <div>
                 <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
@@ -593,8 +556,6 @@ export default function CampaignForm({
                 {isEdit ? "Update & Reschedule" : "Create & Schedule"}
               </button>
             </div>
-          </>
-        )}
       </div>
     </div>
   );

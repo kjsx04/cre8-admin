@@ -64,10 +64,11 @@ export default function CampaignDetail({
     setShowDeleteConfirm(false);
   };
 
-  // Handle edit form submission — wraps the onEdit callback
+  // Handle edit form submission — fire callback and close form immediately.
+  // Parent page manages the toast animation lifecycle.
   const handleEditSubmit = async (data: CampaignFormData, autoSchedule: boolean) => {
     if (onEdit) {
-      await onEdit(data, autoSchedule);
+      onEdit(data, autoSchedule); // don't await — parent shows toast
       setShowEditForm(false);
     }
   };
