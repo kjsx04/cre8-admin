@@ -664,6 +664,7 @@ export default function CompletePage() {
     { id: string; included: boolean; variables: Record<string, string>; customText?: string }[]
   >([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isExporting, setIsExporting] = useState(false); // Brief loading state for download/save with parcel map
   const [isAiExtracting, setIsAiExtracting] = useState(false);
 
   // AI animation state — tracks which tokens are currently being animated
@@ -1093,9 +1094,9 @@ export default function CompletePage() {
           docType: docType.id,
           variables: currentValues,
           clauses: clausePayload,
-          // Include parcel map image if toggle is on and we have a capture
-          // Read from refs to avoid stale closure (state may not be updated yet)
-          ...(includeParcelMapRef.current && parcelMapImageRef.current ? { parcelMapImage: parcelMapImageRef.current } : {}),
+          // NOTE: parcelMapImage is intentionally excluded from preview generation.
+          // The DrawingML OOXML namespaces crash the client-side preview renderer (mammoth.js).
+          // The image is injected only at download/save time via generateExportBlob().
         }),
       });
 
@@ -1136,6 +1137,83 @@ export default function CompletePage() {
       setIsRegenerating(false);
     }
   }, [docType, clausePayload, buildFileName, varDefs]);
+
+  // ── Generate a fresh .docx blob for export (download/save) WITH the parcel map image ──
+  // This is separate from regenerateDocument because the preview can't render DrawingML OOXML.
+  // Only called when includeParcelMap is on and we have a captured image.
+  const generateExportBlob = useCallback(async (): Promise<Blob> => {
+    if (!docType) throw new Error("No doc type");
+
+    // Read latest field values from ref (same approach as regenerateDocument)
+    const currentValues = { ...fieldValuesRef.current };
+
+    // Auto-format dollar fields before sending
+    for (const varDef of varDefs) {
+      if (varDef.numberField && isDollarToken(varDef.token) && currentValues[varDef.token]) {
+        const raw = currentValues[varDef.token];
+        const isPsf = varDef.token === "base_rent_psf" || varDef.token === "ti_allowance_psf";
+        if (isPsf) {
+          const cleaned = raw.replace(/[$,]/g, "").trim();
+          const n = parseFloat(cleaned);
+          currentValues[varDef.token] = isNaN(n) ? raw : "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+        } else {
+          currentValues[varDef.token] = formatCurrency(raw);
+        }
+        if (varDef.writtenVariant) {
+          currentValues[varDef.writtenVariant] = dollarToWritten(raw);
+        }
+      }
+    }
+
+    // listing_price_display auto-compute (same logic as regenerateDocument)
+    const isListingDoc = docType.id === "listing_sale" || docType.id === "listing_sale_lease";
+    if (isListingDoc) {
+      const finalPrice = parseFloat((currentValues.listing_price || "").replace(/[$,]/g, "")) || 0;
+      const finalPerAcre = parseFloat((currentValues.price_per_acre || "").replace(/[$,]/g, "")) || 0;
+      if (finalPrice > 0 && finalPerAcre > 0) {
+        currentValues.listing_price_display = `${formatCurrency(String(finalPrice))} (${formatCurrency(String(finalPerAcre))} per acre)`;
+      } else if (finalPrice > 0) {
+        currentValues.listing_price_display = formatCurrency(String(finalPrice));
+      } else {
+        currentValues.listing_price_display = "The proposed sale price to be determined.";
+      }
+    }
+
+    // Commission display auto-compute for lease listing agreement
+    if (docType.id === "listing_lease") {
+      const pctVal = parseInt((currentValues.commission_pct || "").replace(/[^0-9]/g, "")) || 0;
+      const reducedVal = parseInt((currentValues.commission_reduced_pct || "").replace(/[^0-9]/g, "")) || 0;
+      if (pctVal > 0) {
+        const pctDisplay = `${numberToWritten(String(pctVal))} percent (${pctVal}%)`;
+        currentValues.commission_pct_display = pctDisplay.charAt(0).toUpperCase() + pctDisplay.slice(1);
+      }
+      if (reducedVal > 0) {
+        const reducedDisplay = `${numberToWritten(String(reducedVal))} percent (${reducedVal}%)`;
+        currentValues.commission_reduced_pct_display = reducedDisplay.charAt(0).toUpperCase() + reducedDisplay.slice(1);
+      }
+    }
+
+    const res = await fetch("/api/docs/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        docType: docType.id,
+        variables: currentValues,
+        clauses: clausePayload,
+        // Include the parcel map image for export
+        ...(includeParcelMapRef.current && parcelMapImageRef.current
+          ? { parcelMapImage: parcelMapImageRef.current }
+          : {}),
+      }),
+    });
+
+    if (!res.ok) {
+      const errorData = await res.json();
+      throw new Error(errorData.error || "Export generation failed");
+    }
+
+    return res.blob();
+  }, [docType, clausePayload, varDefs]);
 
   // ── Helper to trigger a debounced regen ──
   const triggerDebouncedRegen = useCallback(() => {
@@ -1605,14 +1683,35 @@ export default function CompletePage() {
     };
   }, []);
 
-  // Download file locally
-  const downloadFile = useCallback(() => {
+  // Download file locally — if parcel map is on, generate a fresh .docx with the image first
+  const downloadFile = useCallback(async () => {
     if (!fileBase64 || !fileName) return;
-    const link = document.createElement("a");
-    link.href = fileBase64;
-    link.download = fileName;
-    link.click();
-  }, [fileBase64, fileName]);
+
+    // Fast path: no parcel map → use the existing preview base64
+    if (!includeParcelMapRef.current || !parcelMapImageRef.current) {
+      const link = document.createElement("a");
+      link.href = fileBase64;
+      link.download = fileName;
+      link.click();
+      return;
+    }
+
+    // Slow path: generate a fresh .docx with the parcel map image injected
+    try {
+      setIsExporting(true);
+      const blob = await generateExportBlob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Export download error:", err);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [fileBase64, fileName, generateExportBlob]);
 
   // Upload to SharePoint
   async function handleSave() {
@@ -1638,7 +1737,14 @@ export default function CompletePage() {
         setDriveId(drive);
       }
 
-      const arrayBuffer = base64ToArrayBuffer(fileBase64);
+      // If parcel map is on, generate a fresh .docx with the image; otherwise use preview base64
+      let arrayBuffer: ArrayBuffer;
+      if (includeParcelMapRef.current && parcelMapImageRef.current) {
+        const blob = await generateExportBlob();
+        arrayBuffer = await blob.arrayBuffer();
+      } else {
+        arrayBuffer = base64ToArrayBuffer(fileBase64);
+      }
       const siteId = await getSiteId(token);
 
       const webUrl = await uploadToSharePoint(
@@ -1700,22 +1806,31 @@ export default function CompletePage() {
           <div className="flex items-center gap-3 flex-shrink-0">
             <button
               onClick={downloadFile}
-              disabled={!fileBase64}
+              disabled={!fileBase64 || isExporting}
               className="bg-dark-gray border border-border-gray text-white font-semibold text-sm px-5 py-2.5 rounded-btn
                          hover:border-green transition-colors duration-200
                          disabled:opacity-50 disabled:cursor-not-allowed
                          flex items-center gap-2"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7 10 12 15 17 10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
-              </svg>
-              Download
+              {isExporting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  Exporting...
+                </>
+              ) : (
+                <>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download
+                </>
+              )}
             </button>
             <button
               onClick={handleSave}
-              disabled={isRegenerating || !fileBase64 || !allFieldsVerified}
+              disabled={isRegenerating || isExporting || !fileBase64 || !allFieldsVerified}
               title={!allFieldsVerified ? "Verify all filled fields before saving" : ""}
               className="bg-green text-black font-semibold text-sm px-5 py-2.5 rounded-btn
                          hover:brightness-110 transition-all duration-200
@@ -1924,6 +2039,23 @@ export default function CompletePage() {
             </div>
           )}
 
+          {/* Parcel map placeholder — shown when a map image is captured and toggle is on */}
+          {fileBase64 && parcelMapImage && includeParcelMap && (
+            <div className="mt-3 border border-dashed border-border-gray rounded-card px-4 py-3 flex items-center gap-3 bg-charcoal/50">
+              {/* Map pin icon */}
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              <div>
+                <p className="text-white text-xs font-medium">Parcel map image will be included at the end of the document</p>
+                <p className="text-medium-gray text-[10px] leading-tight mt-0.5">
+                  Not shown in preview — appears in downloaded and saved files only.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Helper note for mobile users */}
           {fileBase64 && (
             <p className="text-medium-gray text-xs mt-2 lg:hidden">
@@ -1981,8 +2113,8 @@ export default function CompletePage() {
               const newVal = !includeParcelMapRef.current;
               includeParcelMapRef.current = newVal;
               setIncludeParcelMap(newVal);
-              // Trigger regeneration so the document updates with/without the map image
-              triggerDebouncedRegen();
+              // No regen needed — preview never includes the image.
+              // Toggle only affects download/save via generateExportBlob().
             }}
           />
         </div>
