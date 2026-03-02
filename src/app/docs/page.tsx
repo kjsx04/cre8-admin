@@ -17,6 +17,7 @@ const CATEGORIES = [
     label: "Listing Agreement",
     items: [
       { slug: "listing-sale", name: "Sale" },
+      { slug: "listing-sale-lease", name: "Sale/Lease" },
       { slug: "listing-lease", name: "Lease" },
     ],
   },

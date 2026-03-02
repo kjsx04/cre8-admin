@@ -5,6 +5,7 @@ export type DocTypeId =
   | "loi_land"
   | "loi_lease"
   | "listing_sale"
+  | "listing_sale_lease"
   | "listing_lease";
 
 export type DocMode = "flexible" | "strict";

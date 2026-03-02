@@ -44,11 +44,21 @@ export const DOC_TYPES: DocType[] = [
     enabled: true,
   },
   {
-    id: "listing_lease",
+    id: "listing_sale_lease",
     name: "Listing Agreement — Sale/Lease",
-    slug: "listing-lease",
+    slug: "listing-sale-lease",
     mode: "strict",
     description: "Exclusive listing agreement for property sale, exchange, or lease",
+    templateFile: "sale-lease-listing-agreement-tokenized.docx",
+    sharePointFolder: "/CRE8 Advisors/Documents/ListingAgreements/Lease/",
+    enabled: true,
+  },
+  {
+    id: "listing_lease",
+    name: "Listing Agreement — Lease",
+    slug: "listing-lease",
+    mode: "strict",
+    description: "Exclusive representation agreement to lease property",
     templateFile: "lease-listing-agreement-tokenized.docx",
     sharePointFolder: "/CRE8 Advisors/Documents/ListingAgreements/Lease/",
     enabled: true,
@@ -193,9 +203,9 @@ export const LISTING_SALE_VARIABLES: VariableDef[] = [
   { token: "listing_price_display", label: "Listing Price Display", source: "auto", flag: false },
 ];
 
-// ── Listing Agreement — Lease Variable Map (16 tokens: same 14 as Sale + rent + lease_term) ──
+// ── Listing Agreement — Sale/Lease Variable Map (16 tokens: same 14 as Sale + rent + lease_term) ──
 
-export const LISTING_LEASE_VARIABLES: VariableDef[] = [
+export const LISTING_SALE_LEASE_VARIABLES: VariableDef[] = [
   // Property
   { token: "property_address", label: "Property Address", source: "user_input", flag: false },
   { token: "county", label: "County", source: "user_input", flag: false, defaultValue: "Maricopa" },
@@ -479,7 +489,7 @@ export const LISTING_SALE_SECTIONS: FieldSection[] = [
   },
 ];
 
-export const LISTING_LEASE_SECTIONS: FieldSection[] = [
+export const LISTING_SALE_LEASE_SECTIONS: FieldSection[] = [
   {
     title: "Property",
     tokens: [
@@ -522,6 +532,72 @@ export const LISTING_LEASE_SECTIONS: FieldSection[] = [
   },
 ];
 
+// ── Listing Agreement — Lease Variable Map (15 tokens: 13 user-input + 2 auto-computed) ──
+
+export const LISTING_LEASE_VARIABLES: VariableDef[] = [
+  // Property
+  { token: "property_address", label: "Property Address", source: "user_input", flag: false },
+  { token: "city", label: "City", source: "user_input", flag: false, defaultValue: "Phoenix" },
+  { token: "county", label: "County", source: "user_input", flag: false, defaultValue: "Maricopa" },
+  { token: "zip", label: "ZIP Code", source: "user_input", flag: false },
+  { token: "parcel_number", label: "Parcel Number (APN)", source: "user_input", flag: true },
+  // Owner
+  { token: "owner_entity", label: "Owner Entity", source: "user_input", flag: true },
+  { token: "owner_signer_name", label: "Owner Signer Name", source: "user_input", flag: true },
+  { token: "owner_address", label: "Owner Mailing Address", source: "user_input", flag: false },
+  // Agreement Terms
+  { token: "term_start", label: "Agreement Start Date", source: "user_input", flag: false },
+  { token: "term_end", label: "Agreement End Date", source: "user_input", flag: false },
+  // Lease Terms
+  { token: "rent", label: "Asking Rent", source: "user_input", flag: true },
+  // Commission (user-editable percentages + auto-computed display strings)
+  { token: "commission_pct", label: "Commission Rate (%)", source: "user_input", flag: false, defaultValue: "5", numberField: true },
+  { token: "commission_reduced_pct", label: "Reduced Rate (%)", source: "user_input", flag: false, defaultValue: "3", numberField: true },
+  { token: "commission_pct_display", label: "Commission Display", source: "auto", flag: false },
+  { token: "commission_reduced_pct_display", label: "Reduced Display", source: "auto", flag: false },
+];
+
+export const LISTING_LEASE_SECTIONS: FieldSection[] = [
+  {
+    title: "Property",
+    tokens: [
+      "property_address",
+      "city",
+      "county",
+      "zip",
+      "parcel_number",
+    ],
+  },
+  {
+    title: "Owner",
+    tokens: [
+      "owner_entity",
+      "owner_signer_name",
+      "owner_address",
+    ],
+  },
+  {
+    title: "Agreement Terms",
+    tokens: [
+      "term_start",
+      "term_end",
+    ],
+  },
+  {
+    title: "Lease Terms",
+    tokens: [
+      "rent",
+    ],
+  },
+  {
+    title: "Commission",
+    tokens: [
+      "commission_pct",
+      "commission_reduced_pct",
+    ],
+  },
+];
+
 export function getFieldSections(docType: string): FieldSection[] {
   switch (docType) {
     case "loi_building":
@@ -532,6 +608,8 @@ export function getFieldSections(docType: string): FieldSection[] {
       return LOI_LEASE_SECTIONS;
     case "listing_sale":
       return LISTING_SALE_SECTIONS;
+    case "listing_sale_lease":
+      return LISTING_SALE_LEASE_SECTIONS;
     case "listing_lease":
       return LISTING_LEASE_SECTIONS;
     default:
@@ -551,6 +629,8 @@ export function getVariableMap(docType: string): VariableDef[] {
       return LOI_LEASE_VARIABLES;
     case "listing_sale":
       return LISTING_SALE_VARIABLES;
+    case "listing_sale_lease":
+      return LISTING_SALE_LEASE_VARIABLES;
     case "listing_lease":
       return LISTING_LEASE_VARIABLES;
     default:
