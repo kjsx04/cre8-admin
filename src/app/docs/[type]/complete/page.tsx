@@ -725,6 +725,9 @@ export default function CompletePage() {
   const [parcelMapImage, setParcelMapImage] = useState<string>("");
   // Toggle — whether to include the parcel map image in the generated document
   const [includeParcelMap, setIncludeParcelMap] = useState(true);
+  // Refs that mirror parcel map state — avoids stale closures in debounced regen
+  const parcelMapImageRef = useRef<string>("");
+  const includeParcelMapRef = useRef<boolean>(true);
 
   // Graph API IDs (fetched once when needed)
   const [driveId, setDriveId] = useState("");
@@ -1091,7 +1094,8 @@ export default function CompletePage() {
           variables: currentValues,
           clauses: clausePayload,
           // Include parcel map image if toggle is on and we have a capture
-          ...(includeParcelMap && parcelMapImage ? { parcelMapImage } : {}),
+          // Read from refs to avoid stale closure (state may not be updated yet)
+          ...(includeParcelMapRef.current && parcelMapImageRef.current ? { parcelMapImage: parcelMapImageRef.current } : {}),
         }),
       });
 
@@ -1131,7 +1135,7 @@ export default function CompletePage() {
       console.error("Regeneration error:", err);
       setIsRegenerating(false);
     }
-  }, [docType, clausePayload, buildFileName, varDefs, includeParcelMap, parcelMapImage]);
+  }, [docType, clausePayload, buildFileName, varDefs]);
 
   // ── Helper to trigger a debounced regen ──
   const triggerDebouncedRegen = useCallback(() => {
@@ -1456,8 +1460,10 @@ export default function CompletePage() {
       if (selection.selectedParcels) {
         setStoredParcels(selection.selectedParcels);
       }
-      // Store the captured map image (if any)
+      // Store the captured map image — sync ref immediately so debounced regen picks it up
       if (selection.mapImage) {
+        parcelMapImageRef.current = selection.mapImage;
+        includeParcelMapRef.current = true;
         setParcelMapImage(selection.mapImage);
         setIncludeParcelMap(true);
       }
@@ -1972,7 +1978,9 @@ export default function CompletePage() {
             hasParcelMapImage={!!parcelMapImage}
             includeParcelMap={includeParcelMap}
             onToggleParcelMap={() => {
-              setIncludeParcelMap((prev) => !prev);
+              const newVal = !includeParcelMapRef.current;
+              includeParcelMapRef.current = newVal;
+              setIncludeParcelMap(newVal);
               // Trigger regeneration so the document updates with/without the map image
               triggerDebouncedRegen();
             }}
