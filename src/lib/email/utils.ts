@@ -99,9 +99,9 @@ export function formatDateShort(isoStr: string | null): string {
   });
 }
 
-/** Check if a campaign can be edited (only draft/scheduled) */
+/** Check if a campaign can be edited (draft, scheduled, or active) */
 export function canEdit(status: string): boolean {
-  return status === "draft" || status === "scheduled";
+  return status === "draft" || status === "scheduled" || status === "active";
 }
 
 /** Check if a campaign can be paused (only active recurring) */

@@ -30,8 +30,7 @@ function buildCmsChips(fd: ListingFieldData): CmsChip[] {
   if (fd["city-county"]) chips.push({ key: "city-county", label: "Location", value: fd["city-county"] });
   if (fd["cross-streets"]) chips.push({ key: "cross-streets", label: "Cross Streets", value: `Cross Streets: ${fd["cross-streets"]}` });
   if (fd["traffic-count"]) chips.push({ key: "traffic-count", label: "Traffic", value: `Traffic Count: ${fd["traffic-count"]}` });
-  if (fd["property-type"]) chips.push({ key: "property-type", label: "Property Type", value: fd["property-type"] });
-  if (fd["listing-type-2"]) chips.push({ key: "listing-type-2", label: "Listing Type", value: fd["listing-type-2"] });
+  // Intentionally excluded: property-type and listing-type-2 store Webflow reference IDs (hex), not display text
   return chips;
 }
 
@@ -110,13 +109,13 @@ export default function CampaignForm({
       setPhotoUrl(fd.gallery?.[0]?.url || "");
       setListingPageUrl(fd.slug ? `https://cre8advisors.com/listings/${fd.slug}` : "");
 
-      // Auto-build highlights from listing fields
+      // Auto-build highlights from listing fields (no trailing empty row)
       const autoHighlights: string[] = [];
       if (fd["list-price"]) autoHighlights.push(`Price: ${fd["list-price"]}`);
       if (fd["square-feet"]) autoHighlights.push(`${fd["square-feet"]} Acres`);
       if (fd.zoning) autoHighlights.push(`Zoning: ${fd.zoning}`);
       if (fd["city-county"]) autoHighlights.push(fd["city-county"]);
-      if (autoHighlights.length > 0) setHighlights([...autoHighlights, ""]);
+      if (autoHighlights.length > 0) setHighlights(autoHighlights);
     }
   };
 
@@ -124,17 +123,27 @@ export default function CampaignForm({
   const selectedSender = senders.find((s) => s.id === brokerId);
   const selectedSegment = segments.find((s) => s.id === segmentId);
 
+  // Show More Fields toggle for CMS chip expander
+  const [showMoreFields, setShowMoreFields] = useState(false);
+
   // Highlight row management
   const updateHighlight = (idx: number, val: string) => {
     const next = [...highlights];
     next[idx] = val;
     setHighlights(next);
   };
-  const addHighlight = () => setHighlights([...highlights, ""]);
   const removeHighlight = (idx: number) => {
     const next = highlights.filter((_, i) => i !== idx);
-    setHighlights(next.length > 0 ? next : [""]);
+    setHighlights(next.length > 0 ? next : []);
   };
+  const moveHighlight = (idx: number, direction: "up" | "down") => {
+    const target = direction === "up" ? idx - 1 : idx + 1;
+    if (target < 0 || target >= highlights.length) return;
+    const next = [...highlights];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setHighlights(next);
+  };
+  const addCustomHighlight = () => setHighlights([...highlights, ""]);
 
   // Check if a CMS chip value is already in highlights
   const isChipAdded = (chipValue: string) =>
@@ -143,16 +152,11 @@ export default function CampaignForm({
   // Add a CMS chip value as a new highlight row
   const addChipAsHighlight = (chipValue: string) => {
     if (isChipAdded(chipValue)) return;
-    // Replace the trailing empty row or append
-    const lastEmpty = highlights.length > 0 && highlights[highlights.length - 1].trim() === "";
-    if (lastEmpty) {
-      const next = [...highlights];
-      next[next.length - 1] = chipValue;
-      setHighlights([...next, ""]);
-    } else {
-      setHighlights([...highlights, chipValue, ""]);
-    }
+    setHighlights([...highlights, chipValue]);
   };
+
+  // CMS chips not already in highlights (for "Show More Fields" panel)
+  const availableChips = cmsChips.filter((chip) => !isChipAdded(chip.value));
 
   // Validation: required fields
   const resolvedLabel = emailLabel === "custom" ? customLabel : emailLabel;
@@ -390,61 +394,103 @@ export default function CampaignForm({
                   Highlights
                 </label>
 
-                {/* CMS field chips — shown when a listing is selected */}
-                {cmsChips.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {cmsChips.map((chip) => {
-                      const added = isChipAdded(chip.value);
-                      return (
-                        <button
-                          key={chip.key}
-                          onClick={() => addChipAsHighlight(chip.value)}
-                          disabled={added}
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium transition-colors duration-150 ${
-                            added
-                              ? "bg-green/10 text-green/60 cursor-default"
-                              : "bg-light-gray text-medium-gray hover:bg-charcoal hover:text-white"
-                          }`}
-                        >
-                          {added && (
-                            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                            </svg>
-                          )}
-                          {chip.label}: {chip.value.replace(`${chip.label}: `, "").substring(0, 30)}
-                          {chip.value.replace(`${chip.label}: `, "").length > 30 ? "..." : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Selected/added highlights as styled rows */}
+                {highlights.length > 0 && (
+                  <div className="space-y-1.5 mb-3">
+                    {highlights.map((h, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center gap-1.5 bg-light-gray rounded-btn px-2.5 py-1.5 group"
+                      >
+                        {/* Inline-editable text */}
+                        <input
+                          value={h}
+                          onChange={(e) => updateHighlight(i, e.target.value)}
+                          placeholder={`Highlight ${i + 1}...`}
+                          className="flex-1 bg-transparent text-sm text-charcoal focus:outline-none placeholder:text-border-medium"
+                        />
 
-                <div className="space-y-2">
-                  {highlights.map((h, i) => (
-                    <div key={i} className="flex gap-2">
-                      <input
-                        value={h}
-                        onChange={(e) => updateHighlight(i, e.target.value)}
-                        placeholder={`Highlight ${i + 1} (e.g., "5.2 Acres")`}
-                        className="flex-1 border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal focus:outline-none focus:ring-1 focus:ring-green"
-                      />
-                      {highlights.length > 1 && (
+                        {/* Reorder arrows */}
+                        <button
+                          onClick={() => moveHighlight(i, "up")}
+                          disabled={i === 0}
+                          className={`p-0.5 rounded text-xs leading-none ${
+                            i === 0 ? "text-border-medium cursor-default" : "text-muted-gray hover:text-charcoal"
+                          }`}
+                          title="Move up"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 15l7-7 7 7" />
+                          </svg>
+                        </button>
+                        <button
+                          onClick={() => moveHighlight(i, "down")}
+                          disabled={i === highlights.length - 1}
+                          className={`p-0.5 rounded text-xs leading-none ${
+                            i === highlights.length - 1 ? "text-border-medium cursor-default" : "text-muted-gray hover:text-charcoal"
+                          }`}
+                          title="Move down"
+                        >
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+
+                        {/* Remove */}
                         <button
                           onClick={() => removeHighlight(i)}
-                          className="text-muted-gray hover:text-red-500 text-sm px-1"
+                          className="p-0.5 text-muted-gray hover:text-red-500 text-sm leading-none"
+                          title="Remove"
                         >
                           &times;
                         </button>
-                      )}
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Action buttons */}
+                <div className="flex items-center gap-3">
+                  {/* Show More Fields toggle — only when listing has available chips */}
+                  {cmsChips.length > 0 && (
+                    <button
+                      onClick={() => setShowMoreFields(!showMoreFields)}
+                      className="text-xs text-muted-gray hover:text-charcoal font-medium flex items-center gap-1"
+                    >
+                      <svg
+                        className={`w-3 h-3 transition-transform duration-150 ${showMoreFields ? "rotate-90" : ""}`}
+                        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                      </svg>
+                      {showMoreFields ? "Hide Fields" : "Show More Fields"}
+                    </button>
+                  )}
                   <button
-                    onClick={addHighlight}
+                    onClick={addCustomHighlight}
                     className="text-xs text-green hover:text-charcoal font-medium"
                   >
-                    + Add highlight
+                    + Add Custom
                   </button>
                 </div>
+
+                {/* Expandable CMS chip panel */}
+                {showMoreFields && availableChips.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2 p-2.5 bg-white border border-border-light rounded-btn">
+                    {availableChips.map((chip) => (
+                      <button
+                        key={chip.key}
+                        onClick={() => addChipAsHighlight(chip.value)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-light-gray text-medium-gray hover:bg-charcoal hover:text-white transition-colors duration-150"
+                      >
+                        + {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {showMoreFields && availableChips.length === 0 && cmsChips.length > 0 && (
+                  <p className="text-xs text-border-medium mt-2">All fields added</p>
+                )}
               </div>
 
               {/* Listing page URL */}

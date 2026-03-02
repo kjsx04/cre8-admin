@@ -14,13 +14,18 @@ interface SchedulingAnimationProps {
 }
 
 // Steps shown during the scheduling process
+// Steps 0-2 build up at normal pace, step 3 (AI) holds until API is done,
+// step 4 wraps up fast after the API returns
 const STEPS = [
-  { label: "Creating email template...", duration: 1000 },
-  { label: "Analyzing your campaign...", duration: 1000 },
-  { label: "Reviewing current schedule...", duration: 1500 },
-  { label: "AI optimizing send time...", duration: 2000 },
-  { label: "Finalizing campaign...", duration: 1000 },
+  { label: "Creating email template...", duration: 2000 },
+  { label: "Analyzing your campaign...", duration: 2000 },
+  { label: "Reviewing current schedule...", duration: 3000 },
+  { label: "AI optimizing send time...", duration: 0 },  // holds until apiDone
+  { label: "Finalizing campaign...", duration: 400 },
 ];
+
+// The step index that waits for the API to finish before advancing
+const AI_STEP_INDEX = 3;
 
 const FINAL_STEP = "Scheduled!";
 
@@ -42,17 +47,24 @@ export default function SchedulingAnimation({
   useEffect(() => {
     if (done || apiError) return;
 
-    // If we've reached the last simulated step, wait for the API to finish
+    // Past all steps — show "Scheduled!" then complete
     if (currentStep >= STEPS.length) {
-      // API already done — show final step
-      if (apiDoneRef.current) {
-        setDone(true);
-        timerRef.current = setTimeout(onComplete, 1200);
-      }
+      setDone(true);
+      timerRef.current = setTimeout(onComplete, 1200);
       return;
     }
 
-    // Advance to next step after current step's duration
+    // AI hold step — don't use a timer, wait for apiDone to advance
+    if (currentStep === AI_STEP_INDEX) {
+      if (apiDoneRef.current) {
+        // API already finished — advance immediately
+        setCurrentStep((s) => s + 1);
+      }
+      // Otherwise just wait — the apiDone effect below will trigger advance
+      return;
+    }
+
+    // Normal timed step — advance after its duration
     timerRef.current = setTimeout(() => {
       setCurrentStep((s) => s + 1);
     }, STEPS[currentStep].duration);
@@ -62,13 +74,12 @@ export default function SchedulingAnimation({
     };
   }, [currentStep, done, apiError, onComplete]);
 
-  // When API finishes and we're already past the last step, jump to done
+  // When API finishes while we're holding on the AI step, advance
   useEffect(() => {
-    if (apiDone && currentStep >= STEPS.length && !done && !apiError) {
-      setDone(true);
-      timerRef.current = setTimeout(onComplete, 1200);
+    if (apiDone && currentStep === AI_STEP_INDEX && !done && !apiError) {
+      setCurrentStep((s) => s + 1);
     }
-  }, [apiDone, currentStep, done, apiError, onComplete]);
+  }, [apiDone, currentStep, done, apiError]);
 
   // Error state
   if (apiError) {
