@@ -10,10 +10,12 @@ export interface ParcelSelection {
   parcel_number: string;
   seller_entity: string;
   acreage: string;
+  /** The raw parcel objects so the parent can store them for re-opening */
+  selectedParcels: SelectedParcel[];
 }
 
-/** A single selected parcel with raw properties */
-interface SelectedParcel {
+/** A single selected parcel with raw properties — exported so parents can store them */
+export interface SelectedParcel {
   /** Unique key: `${source}:${id}` */
   key: string;
   /** County source: maricopa | pinal | gila */
@@ -115,10 +117,42 @@ function extractId(props: Record<string, unknown>, source: string): string {
 
 // ── Component ──
 
+/** Compute a LngLatBounds from an array of selected parcels */
+function computeBounds(parcels: SelectedParcel[]): [[number, number], [number, number]] | null {
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  let hasCoords = false;
+
+  for (const p of parcels) {
+    const geom = p.feature.geometry;
+    if (!geom) continue;
+
+    const coords: number[][][] =
+      geom.type === "MultiPolygon"
+        ? (geom as GeoJSON.MultiPolygon).coordinates.flat()
+        : geom.type === "Polygon"
+        ? (geom as GeoJSON.Polygon).coordinates
+        : [];
+
+    for (const ring of coords) {
+      for (const [lng, lat] of ring) {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        hasCoords = true;
+      }
+    }
+  }
+
+  if (!hasCoords) return null;
+  return [[minLng, minLat], [maxLng, maxLat]];
+}
+
 export default function ParcelPickerModal({
   onConfirm,
   onClose,
   mapboxToken,
+  initialParcels,
 }: {
   /** Called when user clicks Done — returns selected parcel data */
   onConfirm: (selection: ParcelSelection) => void;
@@ -126,6 +160,8 @@ export default function ParcelPickerModal({
   onClose: () => void;
   /** Mapbox public access token */
   mapboxToken: string;
+  /** Previously selected parcels — restores selection and zooms to them on open */
+  initialParcels?: SelectedParcel[];
 }) {
   // Map container ref
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -135,8 +171,8 @@ export default function ParcelPickerModal({
   const [currentZoom, setCurrentZoom] = useState(10);
   // Loading state for parcel fetch
   const [loadingParcels, setLoadingParcels] = useState(false);
-  // Selected parcels (accumulator)
-  const [selectedParcels, setSelectedParcels] = useState<SelectedParcel[]>([]);
+  // Selected parcels (accumulator) — initialized from prop if provided
+  const [selectedParcels, setSelectedParcels] = useState<SelectedParcel[]>(initialParcels ?? []);
 
   // AbortControllers for in-flight ArcGIS requests (one per source)
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -317,6 +353,26 @@ export default function ParcelPickerModal({
 
         // Force Mapbox to recalculate container dimensions
         setTimeout(() => map?.resize(), 0);
+
+        // ── Restore initial parcels if provided ──
+        if (initialParcels && initialParcels.length > 0) {
+          for (const p of initialParcels) {
+            selectedKeysRef.current.add(p.key);
+            featuresRef.current.set(p.key, p.feature);
+          }
+          const parcelsSrc = map.getSource("parcels") as mapboxgl.GeoJSONSource | undefined;
+          if (parcelsSrc) {
+            parcelsSrc.setData({
+              type: "FeatureCollection",
+              features: Array.from(featuresRef.current.values()),
+            });
+          }
+          updateSelectedSource(map, initialParcels);
+          const bounds = computeBounds(initialParcels);
+          if (bounds) {
+            map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+          }
+        }
 
         // ── Load parcels for current viewport ──
         loadParcels(map);
@@ -502,6 +558,7 @@ export default function ParcelPickerModal({
       parcel_number: selectedParcels.map((p) => p.id).join(", "),
       seller_entity: first.owner,
       acreage: first.acreage,
+      selectedParcels,
     };
 
     onConfirm(selection);

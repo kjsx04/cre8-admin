@@ -10,10 +10,14 @@ export interface ParcelSelection {
   parcel_number: string;
   seller_entity: string;
   acreage: string;
+  /** The raw parcel objects so the parent can store them for re-opening */
+  selectedParcels: SelectedParcel[];
+  /** Base64 PNG of the map canvas (docs version only) */
+  mapImage?: string;
 }
 
-/** A single selected parcel with raw properties */
-interface SelectedParcel {
+/** A single selected parcel with raw properties — exported so parents can store them */
+export interface SelectedParcel {
   /** Unique key: `${source}:${id}` */
   key: string;
   /** County source: maricopa | pinal | gila */
@@ -117,11 +121,44 @@ function extractId(props: Record<string, unknown>, source: string): string {
 
 // ── Component ──
 
+/** Compute a LngLatBounds from an array of selected parcels */
+function computeBounds(parcels: SelectedParcel[]): [[number, number], [number, number]] | null {
+  let minLng = Infinity, minLat = Infinity, maxLng = -Infinity, maxLat = -Infinity;
+  let hasCoords = false;
+
+  for (const p of parcels) {
+    const geom = p.feature.geometry;
+    if (!geom) continue;
+
+    // Walk all coordinate rings (Polygon or MultiPolygon)
+    const coords: number[][][] =
+      geom.type === "MultiPolygon"
+        ? (geom as GeoJSON.MultiPolygon).coordinates.flat()
+        : geom.type === "Polygon"
+        ? (geom as GeoJSON.Polygon).coordinates
+        : [];
+
+    for (const ring of coords) {
+      for (const [lng, lat] of ring) {
+        if (lng < minLng) minLng = lng;
+        if (lng > maxLng) maxLng = lng;
+        if (lat < minLat) minLat = lat;
+        if (lat > maxLat) maxLat = lat;
+        hasCoords = true;
+      }
+    }
+  }
+
+  if (!hasCoords) return null;
+  return [[minLng, minLat], [maxLng, maxLat]];
+}
+
 export default function ParcelPickerModal({
   onConfirm,
   onClose,
   includeAcreage = false,
   mapboxToken,
+  initialParcels,
 }: {
   /** Called when user clicks Done — returns selected parcel data */
   onConfirm: (selection: ParcelSelection) => void;
@@ -131,6 +168,8 @@ export default function ParcelPickerModal({
   includeAcreage?: boolean;
   /** Mapbox public access token */
   mapboxToken: string;
+  /** Previously selected parcels — restores selection and zooms to them on open */
+  initialParcels?: SelectedParcel[];
 }) {
   // Map container ref
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -140,8 +179,10 @@ export default function ParcelPickerModal({
   const [currentZoom, setCurrentZoom] = useState(10);
   // Loading state for parcel fetch
   const [loadingParcels, setLoadingParcels] = useState(false);
-  // Selected parcels (accumulator)
-  const [selectedParcels, setSelectedParcels] = useState<SelectedParcel[]>([]);
+  // Selected parcels (accumulator) — initialized from prop if provided
+  const [selectedParcels, setSelectedParcels] = useState<SelectedParcel[]>(initialParcels ?? []);
+  // Capturing state — shown on Done button while taking canvas snapshot
+  const [capturing, setCapturing] = useState(false);
 
   // AbortControllers for in-flight ArcGIS requests (one per source)
   const controllersRef = useRef<Map<string, AbortController>>(new Map());
@@ -217,6 +258,7 @@ export default function ParcelPickerModal({
         style,
         center: [-111.789, 33.306], // SE Valley AZ
         zoom: 10,
+        preserveDrawingBuffer: true, // Required for canvas.toDataURL() capture
       });
 
       // Add nav controls (zoom buttons)
@@ -324,6 +366,30 @@ export default function ParcelPickerModal({
         // Force Mapbox to recalculate container dimensions
         // (flex layout may not be fully resolved when map initializes)
         setTimeout(() => map?.resize(), 0);
+
+        // ── Restore initial parcels if provided ──
+        if (initialParcels && initialParcels.length > 0) {
+          // Populate selectedKeysRef so clicks can deselect them
+          for (const p of initialParcels) {
+            selectedKeysRef.current.add(p.key);
+            // Add their features to the base parcel layer so outlines show
+            featuresRef.current.set(p.key, p.feature);
+          }
+          // Update both the base parcel source and the green highlight source
+          const parcelsSrc = map.getSource("parcels") as mapboxgl.GeoJSONSource | undefined;
+          if (parcelsSrc) {
+            parcelsSrc.setData({
+              type: "FeatureCollection",
+              features: Array.from(featuresRef.current.values()),
+            });
+          }
+          updateSelectedSource(map, initialParcels);
+          // Zoom to the selected parcels
+          const bounds = computeBounds(initialParcels);
+          if (bounds) {
+            map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+          }
+        }
 
         // ── Load parcels for current viewport ──
         loadParcels(map);
@@ -499,11 +565,44 @@ export default function ParcelPickerModal({
     });
   }
 
-  // ── Confirm selection — build ParcelSelection from accumulated parcels ──
-  function handleDone() {
+  // ── Confirm selection — capture map image, then build ParcelSelection ──
+  async function handleDone() {
     if (selectedParcels.length === 0) {
       onClose();
       return;
+    }
+
+    let mapImage: string | undefined;
+
+    // Capture map canvas as PNG — fit to parcels first, wait for tiles to load
+    if (mapRef.current && selectedParcels.length > 0) {
+      try {
+        setCapturing(true);
+        const map = mapRef.current;
+        const bounds = computeBounds(selectedParcels);
+
+        if (bounds) {
+          // Zoom to parcels with padding so the capture looks good
+          map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+
+          // Wait for tiles to finish loading (idle event) with 5s safety timeout
+          await new Promise<void>((resolve) => {
+            const timeout = setTimeout(() => resolve(), 5000);
+            map.once("idle", () => {
+              clearTimeout(timeout);
+              resolve();
+            });
+          });
+        }
+
+        // Capture the canvas
+        mapImage = map.getCanvas().toDataURL("image/png");
+      } catch (err) {
+        console.warn("[ParcelPicker] Canvas capture failed:", err);
+        // Non-fatal — proceed without image
+      } finally {
+        setCapturing(false);
+      }
     }
 
     // First parcel provides address, owner, acreage
@@ -513,6 +612,8 @@ export default function ParcelPickerModal({
       parcel_number: selectedParcels.map((p) => p.id).join(", "),
       seller_entity: first.owner,
       acreage: includeAcreage ? first.acreage : "",
+      selectedParcels,
+      mapImage,
     };
 
     onConfirm(selection);
@@ -636,12 +737,19 @@ export default function ParcelPickerModal({
           </button>
           <button
             onClick={handleDone}
-            disabled={selectedParcels.length === 0}
+            disabled={selectedParcels.length === 0 || capturing}
             className="bg-green text-black font-semibold text-sm px-5 py-2 rounded-btn
                        hover:brightness-110 transition-all duration-200
                        disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Done{selectedParcels.length > 0 ? ` (${selectedParcels.length})` : ""}
+            {capturing ? (
+              <span className="flex items-center gap-2">
+                <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
+                Capturing...
+              </span>
+            ) : (
+              <>Done{selectedParcels.length > 0 ? ` (${selectedParcels.length})` : ""}</>
+            )}
           </button>
         </div>
       </div>

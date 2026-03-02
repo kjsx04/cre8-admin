@@ -32,7 +32,7 @@ import FolderPicker from "@/components/FolderPicker";
 import SharePointBreadcrumb from "@/components/SharePointBreadcrumb";
 import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
-import type { ParcelSelection } from "@/components/ParcelPickerModal";
+import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
 const ParcelPickerModal = dynamic(() => import("@/components/ParcelPickerModal"), {
@@ -51,6 +51,8 @@ const LS_FOLDER_KEY = "cre8_docs_save_folder";
 function isDollarToken(token: string): boolean {
   if (token === "price_per_unit") return false; // Display-only token, not a dollar input
   if (token === "listing_price_display") return false; // Auto-computed display token
+  if (token === "commission_pct_display") return false; // Auto-computed commission display
+  if (token === "commission_reduced_pct_display") return false; // Auto-computed commission display
   return (
     token.includes("money") ||
     token.includes("deposit") ||
@@ -483,6 +485,9 @@ function FieldSidebar({
   strictMode,
   verifiedFields,
   onToggleVerify,
+  hasParcelMapImage,
+  includeParcelMap,
+  onToggleParcelMap,
 }: {
   docTypeId: string;
   sections: FieldSection[];
@@ -513,6 +518,12 @@ function FieldSidebar({
   strictMode?: boolean;
   verifiedFields?: Set<string>;
   onToggleVerify?: (token: string) => void;
+  /** Whether a parcel map image is available */
+  hasParcelMapImage?: boolean;
+  /** Whether the "include parcel map" toggle is on */
+  includeParcelMap?: boolean;
+  /** Toggle handler for including the parcel map in the document */
+  onToggleParcelMap?: () => void;
 }) {
   return (
     <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
@@ -562,19 +573,44 @@ function FieldSidebar({
               onListingChange={onListingChange}
             />
           )}
-          {/* "Select from Map" button at the top of the Property section */}
+          {/* "Select from Map" button + parcel map toggle at the top of the Property section */}
           {section.title === "Property" && (
-            <button
-              onClick={onOpenParcelPicker}
-              className="flex items-center gap-1.5 text-green text-xs font-medium mb-2 hover:brightness-125 transition-all"
-            >
-              {/* Map pin icon */}
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-              Select from Map
-            </button>
+            <div className="mb-2 space-y-2">
+              <button
+                onClick={onOpenParcelPicker}
+                className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
+              >
+                {/* Map pin icon */}
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                Select from Map
+              </button>
+              {/* Toggle: include parcel map image in document — only visible when an image exists */}
+              {hasParcelMapImage && onToggleParcelMap && (
+                <label className="flex items-center gap-2 cursor-pointer group">
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={includeParcelMap}
+                    onClick={onToggleParcelMap}
+                    className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${
+                      includeParcelMap ? "bg-green" : "bg-dark-gray border border-border-gray"
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${
+                        includeParcelMap ? "translate-x-[14px]" : ""
+                      }`}
+                    />
+                  </button>
+                  <span className="text-xs text-medium-gray group-hover:text-white transition-colors">
+                    Include parcel map in document
+                  </span>
+                </label>
+              )}
+            </div>
           )}
           <CollapsibleSection
             section={section}
@@ -678,6 +714,12 @@ export default function CompletePage() {
 
   // Parcel picker modal state
   const [showParcelPicker, setShowParcelPicker] = useState(false);
+  // Store selected parcels so re-opening the picker zooms back to them
+  const [storedParcels, setStoredParcels] = useState<SelectedParcel[]>([]);
+  // Base64 PNG of the map canvas captured when parcels are confirmed
+  const [parcelMapImage, setParcelMapImage] = useState<string>("");
+  // Toggle — whether to include the parcel map image in the generated document
+  const [includeParcelMap, setIncludeParcelMap] = useState(true);
 
   // Graph API IDs (fetched once when needed)
   const [driveId, setDriveId] = useState("");
@@ -736,8 +778,8 @@ export default function CompletePage() {
       }
     }
 
-    // Set defaults for listing docs
-    if (docType?.id === "listing_sale" || docType?.id === "listing_lease") {
+    // Set defaults for listing docs (sale + sale/lease have price display)
+    if (docType?.id === "listing_sale" || docType?.id === "listing_sale_lease") {
       defaults.listing_price_display = "The proposed sale price to be determined.";
 
       // Auto-populate term_start = today, term_end = 1 year from today
@@ -746,6 +788,25 @@ export default function CompletePage() {
       termEnd.setFullYear(termEnd.getFullYear() + 1);
       defaults.term_start = termStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
       defaults.term_end = termEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    }
+
+    // Set defaults for lease-only listing agreement (commission display auto-computed)
+    if (docType?.id === "listing_lease") {
+      // Auto-populate term_start = today, term_end = 1 year from today
+      const termStart = new Date();
+      const termEnd = new Date();
+      termEnd.setFullYear(termEnd.getFullYear() + 1);
+      defaults.term_start = termStart.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+      defaults.term_end = termEnd.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+
+      // Commission display defaults — "Five percent (5%)" / "Three percent (3%)"
+      const pct = parseInt(defaults.commission_pct || "5") || 5;
+      const reducedPct = parseInt(defaults.commission_reduced_pct || "3") || 3;
+      defaults.commission_pct_display = `${numberToWritten(String(pct))} percent (${pct}%)`;
+      defaults.commission_reduced_pct_display = `${numberToWritten(String(reducedPct))} percent (${reducedPct}%)`;
+      // Capitalize first letter
+      defaults.commission_pct_display = defaults.commission_pct_display.charAt(0).toUpperCase() + defaults.commission_pct_display.slice(1);
+      defaults.commission_reduced_pct_display = defaults.commission_reduced_pct_display.charAt(0).toUpperCase() + defaults.commission_reduced_pct_display.slice(1);
     }
 
     // Format currency and compute written variants for defaulted number fields
@@ -776,6 +837,7 @@ export default function CompletePage() {
     const dateStr = new Date().toISOString().split("T")[0];
     let prefix = "LOI_";
     if (docType?.id === "listing_sale") prefix = "Listing_Agreement_Sale_";
+    else if (docType?.id === "listing_sale_lease") prefix = "Listing_Agreement_Sale_Lease_";
     else if (docType?.id === "listing_lease") prefix = "Listing_Agreement_Lease_";
     return `${prefix}${address}_${dateStr}.docx`;
   }, [docType]);
@@ -989,7 +1051,7 @@ export default function CompletePage() {
       }
 
       // Ensure listing_price_display is up-to-date before generation
-      const isListingDoc = docType.id === "listing_sale" || docType.id === "listing_lease";
+      const isListingDoc = docType.id === "listing_sale" || docType.id === "listing_sale_lease";
       if (isListingDoc) {
         const finalPrice = parseFloat((currentValues.listing_price || "").replace(/[$,]/g, "")) || 0;
         const finalPerAcre = parseFloat((currentValues.price_per_acre || "").replace(/[$,]/g, "")) || 0;
@@ -1002,6 +1064,20 @@ export default function CompletePage() {
         }
       }
 
+      // Ensure commission display strings are up-to-date for lease listing agreement
+      if (docType.id === "listing_lease") {
+        const pctVal = parseInt((currentValues.commission_pct || "").replace(/[^0-9]/g, "")) || 0;
+        const reducedVal = parseInt((currentValues.commission_reduced_pct || "").replace(/[^0-9]/g, "")) || 0;
+        if (pctVal > 0) {
+          const pctDisplay = `${numberToWritten(String(pctVal))} percent (${pctVal}%)`;
+          currentValues.commission_pct_display = pctDisplay.charAt(0).toUpperCase() + pctDisplay.slice(1);
+        }
+        if (reducedVal > 0) {
+          const reducedDisplay = `${numberToWritten(String(reducedVal))} percent (${reducedVal}%)`;
+          currentValues.commission_reduced_pct_display = reducedDisplay.charAt(0).toUpperCase() + reducedDisplay.slice(1);
+        }
+      }
+
       const res = await fetch("/api/docs/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1009,6 +1085,8 @@ export default function CompletePage() {
           docType: docType.id,
           variables: currentValues,
           clauses: clausePayload,
+          // Include parcel map image if toggle is on and we have a capture
+          ...(includeParcelMap && parcelMapImage ? { parcelMapImage } : {}),
         }),
       });
 
@@ -1048,7 +1126,7 @@ export default function CompletePage() {
       console.error("Regeneration error:", err);
       setIsRegenerating(false);
     }
-  }, [docType, clausePayload, buildFileName, varDefs]);
+  }, [docType, clausePayload, buildFileName, varDefs, includeParcelMap, parcelMapImage]);
 
   // ── Helper to trigger a debounced regen ──
   const triggerDebouncedRegen = useCallback(() => {
@@ -1137,7 +1215,7 @@ export default function CompletePage() {
         // ── Listing Agreement: auto-compute listing_price_display ──
         // Shows formatted price (+ optional per-acre) or default text when empty
         if (token === "listing_price" || token === "price_per_acre" || token === "acreage") {
-          const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_lease";
+          const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_sale_lease";
           if (isListingDoc) {
             const rawPrice = (updated.listing_price || "").replace(/[$,]/g, "").trim();
             const rawPerAcre = (updated.price_per_acre || "").replace(/[$,]/g, "").trim();
@@ -1167,6 +1245,27 @@ export default function CompletePage() {
               updated.listing_price_display = formatCurrency(String(finalPrice));
             } else {
               updated.listing_price_display = "The proposed sale price to be determined.";
+            }
+          }
+        }
+
+        // ── Lease Listing Agreement: auto-compute commission display strings ──
+        // "Five percent (5%)" / "Three percent (3%)" from numeric inputs
+        if (token === "commission_pct" || token === "commission_reduced_pct") {
+          if (docType?.id === "listing_lease") {
+            const pctVal = parseInt((updated.commission_pct || "").replace(/[^0-9]/g, "")) || 0;
+            const reducedVal = parseInt((updated.commission_reduced_pct || "").replace(/[^0-9]/g, "")) || 0;
+            if (pctVal > 0) {
+              const pctDisplay = `${numberToWritten(String(pctVal))} percent (${pctVal}%)`;
+              updated.commission_pct_display = pctDisplay.charAt(0).toUpperCase() + pctDisplay.slice(1);
+            } else {
+              updated.commission_pct_display = "";
+            }
+            if (reducedVal > 0) {
+              const reducedDisplay = `${numberToWritten(String(reducedVal))} percent (${reducedVal}%)`;
+              updated.commission_reduced_pct_display = reducedDisplay.charAt(0).toUpperCase() + reducedDisplay.slice(1);
+            } else {
+              updated.commission_reduced_pct_display = "";
             }
           }
         }
@@ -1229,7 +1328,7 @@ export default function CompletePage() {
         }
 
         // Recompute listing_price_display after formatting
-        const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_lease";
+        const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_sale_lease";
         if (isListingDoc && (token === "listing_price" || token === "price_per_acre")) {
           const finalPrice = parseFloat((updated.listing_price || "").replace(/[$,]/g, "")) || 0;
           const finalPerAcre = parseFloat((updated.price_per_acre || "").replace(/[$,]/g, "")) || 0;
@@ -1348,7 +1447,16 @@ export default function CompletePage() {
   const handleParcelConfirm = useCallback(
     (selection: ParcelSelection) => {
       setShowParcelPicker(false);
-      const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_lease";
+      // Store selected parcels so re-opening the picker restores the selection
+      if (selection.selectedParcels) {
+        setStoredParcels(selection.selectedParcels);
+      }
+      // Store the captured map image (if any)
+      if (selection.mapImage) {
+        setParcelMapImage(selection.mapImage);
+        setIncludeParcelMap(true);
+      }
+      const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_sale_lease" || docType?.id === "listing_lease";
       setFieldValues((prev) => {
         const updated = { ...prev };
         if (selection.property_address) updated.property_address = selection.property_address;
@@ -1856,6 +1964,13 @@ export default function CompletePage() {
             strictMode={isStrictMode}
             verifiedFields={verifiedFields}
             onToggleVerify={handleToggleVerify}
+            hasParcelMapImage={!!parcelMapImage}
+            includeParcelMap={includeParcelMap}
+            onToggleParcelMap={() => {
+              setIncludeParcelMap((prev) => !prev);
+              // Trigger regeneration so the document updates with/without the map image
+              triggerDebouncedRegen();
+            }}
           />
         </div>
       </div>
@@ -1881,8 +1996,9 @@ export default function CompletePage() {
         <ParcelPickerModal
           onConfirm={handleParcelConfirm}
           onClose={() => setShowParcelPicker(false)}
-          includeAcreage={docType.id === "loi_land" || docType.id === "listing_sale"}
+          includeAcreage={docType.id === "loi_land" || docType.id === "listing_sale" || docType.id === "listing_sale_lease"}
           mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
+          initialParcels={storedParcels.length > 0 ? storedParcels : undefined}
         />
       )}
     </div>

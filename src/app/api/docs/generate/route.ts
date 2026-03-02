@@ -45,10 +45,95 @@ function cleanSplitTokens(xml: string): string {
   });
 }
 
+/**
+ * Inject a parcel map PNG image into the .docx ZIP as the last body element.
+ * Uses raw OOXML manipulation (no extra library needed).
+ * Non-fatal — returns silently on error so the doc still generates without the image.
+ */
+function injectParcelMapImage(zip: PizZip, dataUrl: string): void {
+  try {
+    // ── 1. Decode base64 data URL → binary buffer ──
+    const base64Match = dataUrl.match(/^data:image\/png;base64,(.+)$/);
+    if (!base64Match) {
+      console.warn("[injectParcelMapImage] Invalid data URL format");
+      return;
+    }
+    const imgBuffer = Buffer.from(base64Match[1], "base64");
+
+    // ── 2. Add PNG file into the zip ──
+    zip.file("word/media/parcel_map.png", imgBuffer);
+
+    // ── 3. Update [Content_Types].xml — add PNG content type if missing ──
+    const contentTypesFile = zip.file("[Content_Types].xml");
+    if (!contentTypesFile) return;
+    let contentTypesXml = contentTypesFile.asText();
+    if (!contentTypesXml.includes('Extension="png"')) {
+      contentTypesXml = contentTypesXml.replace(
+        "</Types>",
+        '<Default Extension="png" ContentType="image/png"/></Types>'
+      );
+    }
+    zip.file("[Content_Types].xml", contentTypesXml);
+
+    // ── 4. Update word/_rels/document.xml.rels — add relationship for the image ──
+    const relsFile = zip.file("word/_rels/document.xml.rels");
+    if (!relsFile) return;
+    let relsXml = relsFile.asText();
+    // Only add if not already present
+    if (!relsXml.includes("rIdParcelMap")) {
+      relsXml = relsXml.replace(
+        "</Relationships>",
+        '<Relationship Id="rIdParcelMap" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/parcel_map.png"/></Relationships>'
+      );
+    }
+    zip.file("word/_rels/document.xml.rels", relsXml);
+
+    // ── 5. Ensure OOXML namespaces are declared on <w:document> root ──
+    const docFile = zip.file("word/document.xml");
+    if (!docFile) return;
+    let docXml = docFile.asText();
+
+    // Namespaces we need for DrawingML images
+    const nsMap: Record<string, string> = {
+      "xmlns:wp": "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing",
+      "xmlns:a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+      "xmlns:pic": "http://schemas.openxmlformats.org/drawingml/2006/picture",
+      "xmlns:r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    };
+
+    // Find the <w:document ...> opening tag and inject missing namespaces
+    const docTagMatch = docXml.match(/<w:document[^>]*>/);
+    if (docTagMatch) {
+      let docTag = docTagMatch[0];
+      for (const [attr, val] of Object.entries(nsMap)) {
+        if (!docTag.includes(attr)) {
+          docTag = docTag.replace(">", ` ${attr}="${val}">`);
+        }
+      }
+      docXml = docXml.replace(docTagMatch[0], docTag);
+    }
+
+    // ── 6. Build the DrawingML paragraph for the image ──
+    // Image dimensions: 6" wide × 4.5" tall (EMUs: 1 inch = 914400 EMU)
+    const widthEmu = 6 * 914400;   // 5486400
+    const heightEmu = 4.5 * 914400; // 4114800
+
+    const drawingParagraph = `<w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${widthEmu}" cy="${heightEmu}"/><wp:docPr id="99" name="Parcel Map"/><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="99" name="parcel_map.png"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="rIdParcelMap"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${widthEmu}" cy="${heightEmu}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>`;
+
+    // ── 7. Insert before </w:body> — appends at end of document ──
+    docXml = docXml.replace("</w:body>", `${drawingParagraph}</w:body>`);
+
+    zip.file("word/document.xml", docXml);
+  } catch (err) {
+    // Non-fatal — doc generates without the image
+    console.warn("[injectParcelMapImage] Failed to inject image:", err);
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { docType, variables, clauses } = body;
+    const { docType, variables, clauses, parcelMapImage } = body;
 
     if (!docType || !variables) {
       return NextResponse.json(
@@ -63,6 +148,7 @@ export async function POST(request: NextRequest) {
       loi_land: "loi-land-tokenized.docx",
       loi_lease: "loi-lease-tokenized.docx",
       listing_sale: "sale-listing-agreement-tokenized.docx",
+      listing_sale_lease: "sale-lease-listing-agreement-tokenized.docx",
       listing_lease: "lease-listing-agreement-tokenized.docx",
     };
 
@@ -164,8 +250,16 @@ export async function POST(request: NextRequest) {
     // Render the document
     doc.render(data);
 
+    // Get the rendered ZIP for post-processing
+    const renderedZip = doc.getZip();
+
+    // Inject parcel map image if provided (non-fatal — doc still generates on error)
+    if (parcelMapImage && typeof parcelMapImage === "string") {
+      injectParcelMapImage(renderedZip, parcelMapImage);
+    }
+
     // Generate the output
-    const output = doc.getZip().generate({
+    const output = renderedZip.generate({
       type: "uint8array",
       compression: "DEFLATE",
     });

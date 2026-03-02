@@ -11,6 +11,7 @@ import {
 } from "@/lib/flow/utils";
 import FileDropZone from "./FileDropZone";
 import dynamic from "next/dynamic";
+import type { SelectedParcel } from "./ParcelPickerModal";
 
 // Dynamic import for ParcelPickerModal to avoid SSR issues with mapbox-gl
 const ParcelPickerModal = dynamic(() => import("./ParcelPickerModal"), {
@@ -242,6 +243,8 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
 
   // ── Parcel picker state ──
   const [showParcelPicker, setShowParcelPicker] = useState(false);
+  // Store selected parcels so re-opening the picker zooms back to them
+  const [storedParcels, setStoredParcels] = useState<SelectedParcel[]>([]);
 
   // ── Save defaults feedback ──
   const [defaultsSaving, setDefaultsSaving] = useState(false);
@@ -474,7 +477,11 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
   }, [listings, flashHighlight]);
 
   // ── Handle parcel picker confirm ──
-  const handleParcelConfirm = useCallback((selection: { property_address: string; parcel_number: string; seller_entity: string; acreage: string }) => {
+  const handleParcelConfirm = useCallback((selection: { property_address: string; parcel_number: string; seller_entity: string; acreage: string; selectedParcels?: SelectedParcel[] }) => {
+    // Store selected parcels so re-opening the picker restores them
+    if (selection.selectedParcels) {
+      setStoredParcels(selection.selectedParcels);
+    }
     const filledFields: string[] = [];
     setForm((prev) => {
       const updated = { ...prev };
@@ -1290,6 +1297,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           mapboxToken={mapboxToken}
           onConfirm={handleParcelConfirm}
           onClose={() => setShowParcelPicker(false)}
+          initialParcels={storedParcels.length > 0 ? storedParcels : undefined}
         />
       )}
     </div>
