@@ -264,7 +264,7 @@ export async function POST(request: NextRequest) {
       compression: "DEFLATE",
     });
 
-    return new NextResponse(output, {
+    return new NextResponse(Buffer.from(output), {
       status: 200,
       headers: {
         "Content-Type":
