@@ -279,8 +279,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     </p>` : ""}
                   </td>
                   <!-- Right: CRE8 logo -->
-                  <td valign="top" width="120" style="text-align:right;">
-                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="120" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:14px;font-weight:700;" />
+                  <td valign="top" width="90" style="text-align:right;">
+                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="90" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:14px;font-weight:700;" />
                   </td>
                 </tr>
               </table>
