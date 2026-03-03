@@ -14,6 +14,11 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Send test email state
+  const [sendingTest, setSendingTest] = useState(false);
+  const [testSent, setTestSent] = useState(false);
+  const [testError, setTestError] = useState<string | null>(null);
+
   // Fetch preview HTML on mount
   useEffect(() => {
     (async () => {
@@ -48,6 +53,35 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /** Send a real test email to kevin@cre8advisors.com via SendGrid */
+  async function handleSendTest() {
+    setSendingTest(true);
+    setTestError(null);
+    setTestSent(false);
+
+    try {
+      const res = await fetch("/api/email/send-test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          campaign,
+          recipientEmail: "kevin@cre8advisors.com",
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Send failed");
+      }
+
+      setTestSent(true);
+    } catch (err) {
+      setTestError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setSendingTest(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
@@ -60,12 +94,50 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
           <h3 className="font-bebas text-xl tracking-wide text-charcoal">
             Email Preview
           </h3>
-          <button
-            onClick={onClose}
-            className="text-muted-gray hover:text-charcoal text-lg"
-          >
-            &times;
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Send Test Email button */}
+            {testSent ? (
+              <span className="flex items-center gap-1.5 text-sm font-medium text-green">
+                {/* Checkmark icon */}
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                  <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Sent!
+              </span>
+            ) : testError ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-red-500">{testError}</span>
+                <button
+                  onClick={handleSendTest}
+                  className="text-sm font-medium text-green hover:underline"
+                >
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleSendTest}
+                disabled={sendingTest || !html}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-green text-black text-sm font-semibold rounded hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {sendingTest ? (
+                  <>
+                    <div className="w-3.5 h-3.5 border-2 border-black/30 border-t-black rounded-full animate-spin" />
+                    Sending...
+                  </>
+                ) : (
+                  "Send Test Email"
+                )}
+              </button>
+            )}
+            {/* Close button */}
+            <button
+              onClick={onClose}
+              className="text-muted-gray hover:text-charcoal text-lg"
+            >
+              &times;
+            </button>
+          </div>
         </div>
 
         {/* Preview content */}

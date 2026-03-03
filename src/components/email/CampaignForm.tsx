@@ -342,17 +342,52 @@ export default function CampaignForm({
                 />
               </div>
 
-              {/* Photo URL */}
+              {/* Photo selector — gallery thumbnails when listing has photos, text input fallback */}
               <div>
                 <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
-                  Photo URL
+                  Hero Photo
                 </label>
-                <input
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  placeholder="https://..."
-                  className="w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal focus:outline-none focus:ring-1 focus:ring-green"
-                />
+                {/* Gallery thumbnail strip — shown when selected listing has multiple photos */}
+                {selectedListing?.fieldData.gallery && selectedListing.fieldData.gallery.length > 0 ? (
+                  <div>
+                    <div className="flex gap-2 overflow-x-auto pb-2">
+                      {selectedListing.fieldData.gallery.map((img, i) => (
+                        <button
+                          key={i}
+                          onClick={() => setPhotoUrl(img.url)}
+                          className={`flex-shrink-0 rounded-md overflow-hidden transition-all duration-150 ${
+                            photoUrl === img.url
+                              ? "ring-2 ring-green ring-offset-1 opacity-100"
+                              : "opacity-60 hover:opacity-90"
+                          }`}
+                          title={img.alt || `Photo ${i + 1}`}
+                        >
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={img.url}
+                            alt={img.alt || `Listing photo ${i + 1}`}
+                            className="w-20 h-14 object-cover"
+                          />
+                        </button>
+                      ))}
+                    </div>
+                    {/* Show selected URL so they can see/override */}
+                    <input
+                      value={photoUrl}
+                      onChange={(e) => setPhotoUrl(e.target.value)}
+                      placeholder="Or paste a custom URL..."
+                      className="mt-2 w-full border border-border-light rounded-btn px-3 py-1.5 text-xs text-muted-gray focus:outline-none focus:ring-1 focus:ring-green"
+                    />
+                  </div>
+                ) : (
+                  /* Fallback text input when no listing selected or no gallery */
+                  <input
+                    value={photoUrl}
+                    onChange={(e) => setPhotoUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal focus:outline-none focus:ring-1 focus:ring-green"
+                  />
+                )}
               </div>
 
               {/* Highlights */}
