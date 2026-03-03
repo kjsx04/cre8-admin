@@ -29,6 +29,7 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
             highlights: campaign.highlights || [],
             listing_page_url: campaign.listing_page_url || "",
             listing_name: campaign.listing_name,
+            broker_id: campaign.broker_id,
             broker_name: campaign.broker_name,
             broker_email: campaign.broker_email,
             broker_phone: campaign.broker_phone || "",

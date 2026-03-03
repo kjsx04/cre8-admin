@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { CampaignFormData, CampaignType, CampaignFrequency, EmailSender, EmailSegment, Campaign } from "@/lib/email/types";
 import { EMAIL_LABELS } from "@/lib/email/constants";
 import { ListingItem, ListingFieldData, BROKERS, BROKER_CONTACTS } from "@/lib/admin-constants";
+import EmailPreview from "./EmailPreview";
 
 interface CampaignFormProps {
   onSubmit: (data: CampaignFormData, autoSchedule: boolean) => Promise<void>;
@@ -66,6 +67,9 @@ export default function CampaignForm({
 
   // Validation state
   const [showErrors, setShowErrors] = useState(false);
+
+  // Preview state
+  const [showPreview, setShowPreview] = useState(false);
 
   // CMS chips — computed from selected listing's field data
   const selectedListing = listings?.find((l) => l.id === listingId);
@@ -550,12 +554,40 @@ export default function CampaignForm({
                 Cancel
               </button>
               <button
+                onClick={() => setShowPreview(true)}
+                className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
+              >
+                Preview Email
+              </button>
+              <button
                 onClick={handleSubmit}
                 className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
               >
                 {isEdit ? "Update & Reschedule" : "Create & Schedule"}
               </button>
             </div>
+
+            {/* Email preview modal — uses current form state */}
+            {showPreview && (
+              <EmailPreview
+                campaign={{
+                  listing_id: listingId,
+                  listing_name: listingName,
+                  campaign_type: campaignType,
+                  email_label: resolvedLabel,
+                  heading_text: headingText || undefined,
+                  body_text: bodyText || undefined,
+                  photo_url: photoUrl || undefined,
+                  highlights: highlights.filter((h) => h.trim()),
+                  listing_page_url: listingPageUrl || undefined,
+                  broker_id: brokerId,
+                  broker_name: selectedSender?.name || BROKERS[brokerId] || "",
+                  broker_email: selectedSender?.email || BROKER_CONTACTS[brokerId]?.email || "",
+                  broker_phone: selectedSender?.phone || BROKER_CONTACTS[brokerId]?.phone || "",
+                }}
+                onClose={() => setShowPreview(false)}
+              />
+            )}
       </div>
     </div>
   );

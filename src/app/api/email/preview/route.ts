@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
-import { renderEmailHtml } from "@/lib/email/constants";
-import { getTypeColor } from "@/lib/email/utils";
+import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 
 // POST /api/email/preview — render email HTML for preview modal
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
 
-    const label = body.email_label || "Just Listed";
-    const html = renderEmailHtml({
-      label,
-      labelColor: getTypeColor(label),
-      heading: body.heading_text || body.listing_name || "Property Listing",
-      bodyText: body.body_text || "",
-      photoUrl: body.photo_url || "",
-      highlights: body.highlights || [],
-      listingUrl: body.listing_page_url || "",
-      brokerName: body.broker_name || "",
-      brokerEmail: body.broker_email || "",
-      brokerPhone: body.broker_phone || "",
-    });
+    const vars = buildTemplateVars(body);
+    let html = renderEmailHtml(vars);
+
+    // Replace SendGrid unsubscribe merge tag with "#" for preview so the link renders but doesn't break
+    html = html.replace(/\{\{\{unsubscribe\}\}\}/g, "#");
 
     return NextResponse.json({ html });
   } catch (error) {

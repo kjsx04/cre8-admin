@@ -189,23 +189,10 @@ async function createSendGridSingleSend(
   if (!apiKey) return null;
 
   try {
-    // Import renderEmailHtml dynamically to avoid bundling in client
-    const { renderEmailHtml } = await import("@/lib/email/constants");
-    const { getTypeColor } = await import("@/lib/email/utils");
+    // Import template helpers dynamically to avoid bundling in client
+    const { buildTemplateVars, renderEmailHtml } = await import("@/lib/email/constants");
 
-    const label = campaign.email_label as string;
-    const html = renderEmailHtml({
-      label,
-      labelColor: getTypeColor(label),
-      heading: (campaign.heading_text as string) || (campaign.listing_name as string),
-      bodyText: (campaign.body_text as string) || "",
-      photoUrl: (campaign.photo_url as string) || "",
-      highlights: (campaign.highlights as string[]) || [],
-      listingUrl: (campaign.listing_page_url as string) || "",
-      brokerName: campaign.broker_name as string,
-      brokerEmail: campaign.broker_email as string,
-      brokerPhone: (campaign.broker_phone as string) || "",
-    });
+    const html = renderEmailHtml(buildTemplateVars(campaign as Record<string, unknown>));
 
     // Create Single Send in SendGrid
     const createRes = await fetch("https://api.sendgrid.com/v3/marketing/singlesends", {
@@ -215,12 +202,12 @@ async function createSendGridSingleSend(
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        name: `${label}: ${campaign.listing_name}`,
+        name: `${campaign.email_label}: ${campaign.listing_name}`,
         send_to: campaign.segment_id && campaign.segment_id !== "all"
           ? { segment_ids: [campaign.segment_id] }
           : { all: true },
         email_config: {
-          subject: `${label}: ${campaign.listing_name}`,
+          subject: `${campaign.email_label}: ${campaign.listing_name}`,
           html_content: html,
           sender_id: undefined, // Will use default verified sender
           suppression_group_id: undefined,

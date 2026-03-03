@@ -78,21 +78,9 @@ export async function GET(request: NextRequest) {
           let sgId: string | null = null;
 
           if (apiKey) {
-            const { renderEmailHtml } = await import("@/lib/email/constants");
-            const { getTypeColor } = await import("@/lib/email/utils");
+            const { buildTemplateVars, renderEmailHtml } = await import("@/lib/email/constants");
 
-            const html = renderEmailHtml({
-              label: campaign.email_label,
-              labelColor: getTypeColor(campaign.email_label),
-              heading: campaign.heading_text || campaign.listing_name,
-              bodyText: campaign.body_text || "",
-              photoUrl: campaign.photo_url || "",
-              highlights: campaign.highlights || [],
-              listingUrl: campaign.listing_page_url || "",
-              brokerName: campaign.broker_name,
-              brokerEmail: campaign.broker_email,
-              brokerPhone: campaign.broker_phone || "",
-            });
+            const html = renderEmailHtml(buildTemplateVars(campaign as Record<string, unknown>));
 
             const createRes = await fetch("https://api.sendgrid.com/v3/marketing/singlesends", {
               method: "POST",

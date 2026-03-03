@@ -136,4 +136,8 @@ export interface EmailTemplateVars {
   brokerName: string;
   brokerEmail: string;
   brokerPhone: string;
+  preheaderText: string;       // Hidden inbox preview text
+  brokerHeadshotUrl: string;   // Square PNG from Webflow CDN
+  brokerTitle: string;         // "Associate Broker" etc.
+  propertyAddress: string;     // Street address line below heading
 }
