@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from "react";
 import { CampaignFormData, CampaignType, CampaignFrequency, EmailSender, EmailSegment, Campaign } from "@/lib/email/types";
-import { EMAIL_LABELS } from "@/lib/email/constants";
 import { ListingItem, ListingFieldData, BROKERS, BROKER_CONTACTS } from "@/lib/admin-constants";
 import EmailPreview from "./EmailPreview";
 
@@ -48,11 +47,12 @@ export default function CampaignForm({
   const [segments, setSegments] = useState<EmailSegment[]>([]);
 
   // Form state
+  const [campaignCategory, setCampaignCategory] = useState<"listing" | "tenant_rep">("listing");
   const [listingId, setListingId] = useState(existingCampaign?.listing_id || "");
   const [listingName, setListingName] = useState(existingCampaign?.listing_name || "");
   const [campaignType, setCampaignType] = useState<CampaignType>(existingCampaign?.campaign_type || "one-time");
-  const [emailLabel, setEmailLabel] = useState(existingCampaign?.email_label || "Just Listed");
-  const [customLabel, setCustomLabel] = useState("");
+  const [templateStyle, setTemplateStyle] = useState<"new_listing" | "broker_blast">("new_listing");
+  const [emailLabel, setEmailLabel] = useState(existingCampaign?.email_label || "");
   const [headingText, setHeadingText] = useState(existingCampaign?.heading_text || "");
   const [bodyText, setBodyText] = useState(existingCampaign?.body_text || "");
   const [photoUrl, setPhotoUrl] = useState(existingCampaign?.photo_url || "");
@@ -157,10 +157,9 @@ export default function CampaignForm({
   const availableChips = cmsChips.filter((chip) => !isChipAdded(chip.value));
 
   // Validation: required fields
-  const resolvedLabel = emailLabel === "custom" ? customLabel : emailLabel;
   const missingListing = !listingId;
   const missingBroker = !brokerId;
-  const missingLabel = !resolvedLabel.trim();
+  const missingLabel = !emailLabel.trim();
 
   const handleSubmit = () => {
     // Check required fields — show errors if missing
@@ -173,7 +172,7 @@ export default function CampaignForm({
       listing_id: listingId,
       listing_name: listingName,
       campaign_type: campaignType,
-      email_label: resolvedLabel,
+      email_label: emailLabel.trim(),
       heading_text: headingText || undefined,
       body_text: bodyText || undefined,
       photo_url: photoUrl || undefined,
@@ -219,6 +218,36 @@ export default function CampaignForm({
 
         {/* Form body */}
         <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+              {/* Campaign category toggle */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
+                  Campaign Category
+                </label>
+                <div className="flex gap-2">
+                  {([{ id: "listing", label: "Listing" }, { id: "tenant_rep", label: "Tenant Rep" }] as const).map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setCampaignCategory(cat.id)}
+                      className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
+                        ${campaignCategory === cat.id
+                          ? "bg-charcoal text-white"
+                          : "bg-light-gray text-medium-gray hover:text-charcoal"
+                        }`}
+                    >
+                      {cat.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Tenant Rep — Coming Soon placeholder */}
+              {campaignCategory === "tenant_rep" ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <p className="text-lg font-semibold text-charcoal">Coming Soon</p>
+                  <p className="text-sm text-muted-gray mt-1">Tenant rep campaigns are not yet available.</p>
+                </div>
+              ) : (
+              <>
               {/* Listing selector */}
               <div>
                 <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
@@ -272,44 +301,39 @@ export default function CampaignForm({
                 </div>
               </div>
 
-              {/* Email label */}
+              {/* Template style toggle */}
               <div>
                 <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
-                  Email Label <span className="text-red-400">*</span>
+                  Template Style
                 </label>
-                <div className="flex gap-2 flex-wrap">
-                  {EMAIL_LABELS.map((label) => (
+                <div className="flex gap-2">
+                  {([{ id: "new_listing", label: "New Listing" }, { id: "broker_blast", label: "Broker Blast" }] as const).map((style) => (
                     <button
-                      key={label}
-                      onClick={() => setEmailLabel(label)}
-                      className={`px-3 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
-                        ${emailLabel === label
+                      key={style.id}
+                      onClick={() => setTemplateStyle(style.id)}
+                      className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
+                        ${templateStyle === style.id
                           ? "bg-charcoal text-white"
                           : "bg-light-gray text-medium-gray hover:text-charcoal"
                         }`}
                     >
-                      {label}
+                      {style.label}
                     </button>
                   ))}
-                  <button
-                    onClick={() => setEmailLabel("custom")}
-                    className={`px-3 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
-                      ${emailLabel === "custom"
-                        ? "bg-charcoal text-white"
-                        : "bg-light-gray text-medium-gray hover:text-charcoal"
-                      }`}
-                  >
-                    Custom
-                  </button>
                 </div>
-                {emailLabel === "custom" && (
-                  <input
-                    value={customLabel}
-                    onChange={(e) => setCustomLabel(e.target.value)}
-                    placeholder="Enter custom label..."
-                    className={`mt-2 w-full border rounded-btn px-3 py-2 text-sm text-charcoal focus:outline-none focus:ring-1 ${fieldBorder(showErrors && missingLabel)}`}
-                  />
-                )}
+              </div>
+
+              {/* Heading — short description (replaces old Email Label button group) */}
+              <div>
+                <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
+                  Heading - Short Description <span className="text-red-400">*</span>
+                </label>
+                <input
+                  value={emailLabel}
+                  onChange={(e) => setEmailLabel(e.target.value)}
+                  placeholder="e.g. Just Listed, Price Reduced, New to Market..."
+                  className={`w-full border rounded-btn px-3 py-2 text-sm text-charcoal focus:outline-none focus:ring-1 ${fieldBorder(showErrors && missingLabel)}`}
+                />
                 {showErrors && missingLabel && (
                   <p className="text-xs text-red-400 mt-1">Required</p>
                 )}
@@ -578,6 +602,8 @@ export default function CampaignForm({
                   </div>
                 </>
               )}
+              </>
+              )}
             </div>
 
             {/* Footer */}
@@ -588,18 +614,22 @@ export default function CampaignForm({
               >
                 Cancel
               </button>
-              <button
-                onClick={() => setShowPreview(true)}
-                className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
-              >
-                Preview Email
-              </button>
-              <button
-                onClick={handleSubmit}
-                className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
-              >
-                {isEdit ? "Update & Reschedule" : "Create & Schedule"}
-              </button>
+              {campaignCategory === "listing" && (
+                <>
+                  <button
+                    onClick={() => setShowPreview(true)}
+                    className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
+                  >
+                    Preview Email
+                  </button>
+                  <button
+                    onClick={handleSubmit}
+                    className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
+                  >
+                    {isEdit ? "Update & Reschedule" : "Create & Schedule"}
+                  </button>
+                </>
+              )}
             </div>
 
             {/* Email preview modal — uses current form state */}
@@ -609,7 +639,7 @@ export default function CampaignForm({
                   listing_id: listingId,
                   listing_name: listingName,
                   campaign_type: campaignType,
-                  email_label: resolvedLabel,
+                  email_label: emailLabel.trim(),
                   heading_text: headingText || undefined,
                   body_text: bodyText || undefined,
                   photo_url: photoUrl || undefined,
