@@ -1649,11 +1649,11 @@ export default function CompletePage() {
     }, 1000);
 
     // If parcel map is enabled, also download the map image as a separate .jpg
+    // Both downloads must happen synchronously from the click — setTimeout loses
+    // the user gesture context and Chrome silently blocks the second download.
     if (includeParcelMapRef.current && parcelMapImageRef.current) {
       const baseName = fileName.replace(/\.docx$/i, "");
-      setTimeout(() => {
-        downloadDataUrl(parcelMapImageRef.current, `${baseName}_Parcel_Map.jpg`);
-      }, 500);
+      downloadDataUrl(parcelMapImageRef.current, `${baseName}_Parcel_Map.jpg`);
     }
   }, [fileBase64, fileName]);
 
