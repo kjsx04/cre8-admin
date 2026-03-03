@@ -253,15 +253,37 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
         <!-- Email card — 600px desktop, fluid on mobile -->
         <table role="presentation" class="card-bg" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#1A1A1A;">
 
-          <!-- Header — CRE8 logo on black background -->
+          <!-- Combined header — Label + Heading on left, CRE8 logo on right -->
           <tr>
-            <td style="background-color:#000000;padding:24px 32px;text-align:center;">
+            <td style="background-color:#1A1A1A;padding:28px 32px;">
               <!--[if mso]>
               <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
-              <v:fill type="tile" color="#000000"/>
+              <v:fill type="tile" color="#1A1A1A"/>
               <v:textbox style="mso-fit-shape-to-text:true" inset="0,0,0,0">
               <![endif]-->
-              <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="140" height="auto" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:18px;font-weight:700;" />
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <!-- Left: Label + Heading + Address -->
+                  <td valign="top" style="padding-right:16px;">
+                    <!-- Label — green uppercase text -->
+                    <p style="margin:0 0 10px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
+                      ${escapeHtml(vars.label)}
+                    </p>
+                    <!-- Heading — Bebas Neue -->
+                    <h1 style="margin:0;font-family:'Bebas Neue',Arial,Helvetica,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
+                      ${escapeHtml(vars.heading)}
+                    </h1>
+                    ${vars.propertyAddress ? `
+                    <p style="margin:6px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
+                      ${escapeHtml(vars.propertyAddress)}
+                    </p>` : ""}
+                  </td>
+                  <!-- Right: CRE8 logo -->
+                  <td valign="top" width="120" style="text-align:right;">
+                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="120" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:14px;font-weight:700;" />
+                  </td>
+                </tr>
+              </table>
               <!--[if mso]>
               </v:textbox>
               </v:rect>
@@ -276,24 +298,6 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
               <img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
             </td>
           </tr>` : ""}
-
-          <!-- Label + Heading + Address -->
-          <tr>
-            <td style="padding:28px 32px 0 32px;">
-              <!-- Label — plain green uppercase text -->
-              <p style="margin:0 0 12px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
-                ${escapeHtml(vars.label)}
-              </p>
-              <!-- Heading — Bebas Neue -->
-              <h1 style="margin:0;font-family:'Bebas Neue',Arial,Helvetica,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
-                ${escapeHtml(vars.heading)}
-              </h1>
-              ${vars.propertyAddress ? `
-              <p style="margin:6px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:15px;color:#999999;line-height:1.4;">
-                ${escapeHtml(vars.propertyAddress)}
-              </p>` : ""}
-            </td>
-          </tr>
 
           <!-- Body text (optional) -->
           ${vars.bodyText ? `
