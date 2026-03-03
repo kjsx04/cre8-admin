@@ -79,11 +79,11 @@ const BROKER_HEADSHOTS: Record<string, string> = {
 
 // ── Broker titles ──
 const BROKER_TITLES: Record<string, string> = {
-  "6987ab84b1ac0ee1e143f72f": "Principal",             // Rommie
-  "6987abdaa473a39098593f50": "Designated Broker",      // Andy
-  "6987fada67c88dd8b9b89e39": "Associate Broker",       // Lindsey
-  "6987fb2fa8757569eefd70fa": "Associate Broker",       // Chad
-  "6987fb6d372758be66e14cb8": "Associate Broker",       // Kevin
+  "6987ab84b1ac0ee1e143f72f": "Partner",                // Rommie
+  "6987abdaa473a39098593f50": "Partner",                // Andy
+  "6987fada67c88dd8b9b89e39": "Senior Advisor",         // Lindsey
+  "6987fb2fa8757569eefd70fa": "Senior Advisor",         // Chad
+  "6987fb6d372758be66e14cb8": "Advisor",                // Kevin
 };
 
 /**
@@ -115,7 +115,7 @@ export function buildTemplateVars(
     // New fields — auto-derived from campaign data
     preheaderText: `${label}: ${heading}`,
     brokerHeadshotUrl: BROKER_HEADSHOTS[brokerId] || "",
-    brokerTitle: BROKER_TITLES[brokerId] || "Associate Broker",
+    brokerTitle: BROKER_TITLES[brokerId] || "Advisor",
     propertyAddress: (data.property_address as string) || "",
   };
 }
@@ -291,11 +291,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>
 
-          <!-- Hero property photo — full bleed (no side padding) -->
+          <!-- Hero property photo — full bleed, clickable to listing page -->
           ${vars.photoUrl ? `
           <tr>
             <td style="padding:0;line-height:0;font-size:0;">
-              <img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
+              ${vars.listingUrl
+                ? `<a href="${vars.listingUrl}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;"><img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" /></a>`
+                : `<img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" />`}
             </td>
           </tr>` : ""}
 
