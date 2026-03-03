@@ -270,7 +270,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       ${escapeHtml(vars.label)}
                     </p>
                     <!-- Heading — Bebas Neue -->
-                    <h1 style="margin:0;font-family:'Bebas Neue',Impact,'Arial Black',Arial,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
+                    <h1 style="margin:0;font-family:'Bebas Neue','Arial Narrow',Arial,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
                       ${escapeHtml(vars.heading)}
                     </h1>
                     ${vars.propertyAddress ? `
@@ -331,7 +331,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     <!--[if mso]>
                     <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${vars.listingUrl}" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="8%" strokecolor="#8CC644" fillcolor="#8CC644">
                     <w:anchorlock/>
-                    <center style="color:#000000;font-family:Impact,'Arial Black',Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
+                    <center style="color:#000000;font-family:'Arial Narrow',Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
                       ${escapeHtml(ctaText)}
                     </center>
                     </v:roundrect>
