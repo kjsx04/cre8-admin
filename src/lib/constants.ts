@@ -640,7 +640,7 @@ export function getVariableMap(docType: string): VariableDef[] {
 
 // ── Webflow CMS API endpoint (via Cloudflare Worker) ──
 
-export const CMS_API_BASE = "https://cre8-worker.kevinsmith-dpe.workers.dev";
+export const CMS_API_BASE = "https://cre8-api-proxy.kjsx04.workers.dev";
 
 // ── Webflow Collection IDs ──
 
