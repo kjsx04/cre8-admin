@@ -160,8 +160,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                   <tr>
                                     <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
+                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
+                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
                                     </td>
                                   </tr>
                                 </table>
@@ -170,8 +170,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                   <tr>
                                     <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${right.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(right.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(right.value)}</p>
+                                      ${right.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(right.label)}</p>` : ""}
+                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(right.value)}</p>
                                     </td>
                                   </tr>
                                 </table>
@@ -185,8 +185,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                   <tr>
                                     <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
+                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
+                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
                                     </td>
                                   </tr>
                                 </table>
@@ -238,7 +238,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     [data-ogsc] .body { background-color: #FFFFFF !important; }
   </style>
 </head>
-<body class="body" style="margin:0;padding:0;background-color:#FFFFFF;font-family:'DM Sans',Arial,Helvetica,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body class="body" style="margin:0;padding:0;background-color:#FFFFFF;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
   <!-- Preheader — hidden inbox preview text -->
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
@@ -266,21 +266,21 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                   <!-- Left: Label + Heading + Address -->
                   <td valign="top" style="padding-right:16px;">
                     <!-- Label — green uppercase text -->
-                    <p style="margin:0 0 10px 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
+                    <p style="margin:0 0 10px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
                       ${escapeHtml(vars.label)}
                     </p>
                     <!-- Heading — Bebas Neue -->
-                    <h1 style="margin:0;font-family:'Bebas Neue',Arial,Helvetica,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
+                    <h1 style="margin:0;font-family:'Bebas Neue',Impact,'Arial Black',Arial,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
                       ${escapeHtml(vars.heading)}
                     </h1>
                     ${vars.propertyAddress ? `
-                    <p style="margin:6px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
+                    <p style="margin:6px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
                       ${escapeHtml(vars.propertyAddress)}
                     </p>` : ""}
                   </td>
                   <!-- Right: CRE8 logo -->
                   <td valign="top" width="90" style="text-align:right;">
-                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="90" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:14px;font-weight:700;" />
+                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="90" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;" />
                   </td>
                 </tr>
               </table>
@@ -305,7 +305,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           ${vars.bodyText ? `
           <tr>
             <td style="padding:20px 32px 0 32px;">
-              <p style="margin:0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
+              <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
                 ${escapeHtml(vars.bodyText)}
               </p>
             </td>
@@ -331,13 +331,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     <!--[if mso]>
                     <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${vars.listingUrl}" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="8%" strokecolor="#8CC644" fillcolor="#8CC644">
                     <w:anchorlock/>
-                    <center style="color:#000000;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
+                    <center style="color:#000000;font-family:Impact,'Arial Black',Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
                       ${escapeHtml(ctaText)}
                     </center>
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <a href="${vars.listingUrl}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
+                    <a href="${vars.listingUrl}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
                       ${escapeHtml(ctaText)}
                     </a>
                     <!--<![endif]-->
@@ -375,7 +375,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 <img src="${vars.brokerHeadshotUrl}" alt="${escapeHtml(vars.brokerName)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
                               </td>` : ""}
                               <!-- Broker info -->
-                              <td valign="middle" style="font-family:'DM Sans',Arial,Helvetica,sans-serif;">
+                              <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
                                 <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
                                   ${escapeHtml(vars.brokerName)}
                                 </p>
@@ -404,16 +404,16 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <tr>
             <td style="background-color:#000000;border-top:1px solid #333333;padding:28px 32px 24px 32px;text-align:center;">
               <!-- Small CRE8 logo -->
-              <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="100" height="auto" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans',Arial,sans-serif;font-size:14px;font-weight:700;" />
+              <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="100" height="auto" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;" />
 
               <!-- Company address + phone -->
-              <p style="margin:14px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:12px;color:#666666;line-height:1.5;">
+              <p style="margin:14px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#666666;line-height:1.5;">
                 ${escapeHtml(CRE8_ADDRESS)}<br/>
                 ${escapeHtml(CRE8_PHONE)}
               </p>
 
               <!-- Social links — uppercase -->
-              <p style="margin:14px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
+              <p style="margin:14px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
                 <a href="${CRE8_LINKEDIN}" target="_blank" style="color:#8CC644;text-decoration:none;">LinkedIn</a>
                 &nbsp;&nbsp;&middot;&nbsp;&nbsp;
                 <a href="${CRE8_INSTAGRAM}" target="_blank" style="color:#8CC644;text-decoration:none;">Instagram</a>
@@ -422,7 +422,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
               </p>
 
               <!-- Unsubscribe (SendGrid merge tag) -->
-              <p style="margin:18px 0 0 0;font-family:'DM Sans',Arial,Helvetica,sans-serif;font-size:11px;line-height:1.4;">
+              <p style="margin:18px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:1.4;">
                 <a href="{{{unsubscribe}}}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>
               </p>
             </td>
