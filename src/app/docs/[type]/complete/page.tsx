@@ -664,7 +664,7 @@ export default function CompletePage() {
     { id: string; included: boolean; variables: Record<string, string>; customText?: string }[]
   >([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
-  const [isExporting, setIsExporting] = useState(false); // Brief loading state for download/save with parcel map
+  const [isExporting] = useState(false); // Kept for button disabled state (always false now — parcel map downloads separately)
   const [isAiExtracting, setIsAiExtracting] = useState(false);
 
   // AI animation state — tracks which tokens are currently being animated
@@ -860,9 +860,7 @@ export default function CompletePage() {
     const storedPayload = sessionStorage.getItem(`generate_payload_${docType.id}`);
 
     if (storedDoc && storedPayload) {
-      // Restore field values from sessionStorage, but DON'T use the cached fileBase64 —
-      // it may contain a parcel map image that crashes the preview renderer (DrawingML OOXML).
-      // Instead, restore fields/clauses and trigger a fresh preview generation (without image).
+      // Restore field values from sessionStorage and trigger a fresh preview generation.
       const parsedDoc = JSON.parse(storedDoc);
       const parsedPayload = JSON.parse(storedPayload);
       setFileName(parsedDoc.fileName);
@@ -1099,9 +1097,7 @@ export default function CompletePage() {
           docType: docType.id,
           variables: currentValues,
           clauses: clausePayload,
-          // NOTE: parcelMapImage is intentionally excluded from preview generation.
-          // The DrawingML OOXML namespaces crash the client-side preview renderer (mammoth.js).
-          // The image is injected only at download/save time via generateExportBlob().
+          // Parcel map image is downloaded as a separate .jpg file — not embedded in the .docx.
         }),
       });
 
@@ -1143,92 +1139,25 @@ export default function CompletePage() {
     }
   }, [docType, clausePayload, buildFileName, varDefs]);
 
-  // ── Generate a fresh .docx blob for export (download/save) WITH the parcel map image ──
-  // This is separate from regenerateDocument because the preview can't render DrawingML OOXML.
-  // Only called when includeParcelMap is on and we have a captured image.
-  const generateExportBlob = useCallback(async (): Promise<Blob> => {
-    if (!docType) throw new Error("No doc type");
-
-    // Read latest field values from ref (same approach as regenerateDocument)
-    const currentValues = { ...fieldValuesRef.current };
-
-    // Auto-format dollar fields before sending
-    for (const varDef of varDefs) {
-      if (varDef.numberField && isDollarToken(varDef.token) && currentValues[varDef.token]) {
-        const raw = currentValues[varDef.token];
-        const isPsf = varDef.token === "base_rent_psf" || varDef.token === "ti_allowance_psf";
-        if (isPsf) {
-          const cleaned = raw.replace(/[$,]/g, "").trim();
-          const n = parseFloat(cleaned);
-          currentValues[varDef.token] = isNaN(n) ? raw : "$" + n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-        } else {
-          currentValues[varDef.token] = formatCurrency(raw);
-        }
-        if (varDef.writtenVariant) {
-          currentValues[varDef.writtenVariant] = dollarToWritten(raw);
-        }
-      }
-    }
-
-    // listing_price_display auto-compute (same logic as regenerateDocument)
-    const isListingDoc = docType.id === "listing_sale" || docType.id === "listing_sale_lease";
-    if (isListingDoc) {
-      const finalPrice = parseFloat((currentValues.listing_price || "").replace(/[$,]/g, "")) || 0;
-      const finalPerAcre = parseFloat((currentValues.price_per_acre || "").replace(/[$,]/g, "")) || 0;
-      if (finalPrice > 0 && finalPerAcre > 0) {
-        currentValues.listing_price_display = `${formatCurrency(String(finalPrice))} (${formatCurrency(String(finalPerAcre))} per acre)`;
-      } else if (finalPrice > 0) {
-        currentValues.listing_price_display = formatCurrency(String(finalPrice));
-      } else {
-        currentValues.listing_price_display = "The proposed sale price to be determined.";
-      }
-    }
-
-    // Commission display auto-compute for lease listing agreement
-    if (docType.id === "listing_lease") {
-      const pctVal = parseInt((currentValues.commission_pct || "").replace(/[^0-9]/g, "")) || 0;
-      const reducedVal = parseInt((currentValues.commission_reduced_pct || "").replace(/[^0-9]/g, "")) || 0;
-      if (pctVal > 0) {
-        const pctDisplay = `${numberToWritten(String(pctVal))} percent (${pctVal}%)`;
-        currentValues.commission_pct_display = pctDisplay.charAt(0).toUpperCase() + pctDisplay.slice(1);
-      }
-      if (reducedVal > 0) {
-        const reducedDisplay = `${numberToWritten(String(reducedVal))} percent (${reducedVal}%)`;
-        currentValues.commission_reduced_pct_display = reducedDisplay.charAt(0).toUpperCase() + reducedDisplay.slice(1);
-      }
-    }
-
-    const res = await fetch("/api/docs/generate", {
-      method: "POST",
-      cache: "no-store",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        docType: docType.id,
-        variables: currentValues,
-        clauses: clausePayload,
-        // Include the parcel map image for export
-        ...(includeParcelMapRef.current && parcelMapImageRef.current
-          ? { parcelMapImage: parcelMapImageRef.current }
-          : {}),
-      }),
-    });
-
-    if (!res.ok) {
-      // Handle non-JSON error responses (e.g. Vercel 413 body too large)
-      const text = await res.text();
-      let msg = "Export generation failed";
-      try { msg = JSON.parse(text).error || msg; } catch { /* not JSON */ }
-      throw new Error(msg);
-    }
-
-    // Read as ArrayBuffer first, then create Blob with explicit type
-    // (res.blob() can inherit incorrect types from Vercel edge caching)
-    const arrayBuffer = await res.arrayBuffer();
-    console.log("[Export] Response size:", arrayBuffer.byteLength, "bytes, first 4:", new Uint8Array(arrayBuffer.slice(0, 4)));
-    return new Blob([arrayBuffer], {
-      type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    });
-  }, [docType, clausePayload, varDefs]);
+  // ── Helper: download a data URL as a file (used for parcel map image) ──
+  function downloadDataUrl(dataUrl: string, filename: string) {
+    const base64 = dataUrl.split(",")[1];
+    const mime = dataUrl.match(/^data:([^;]+)/)?.[1] || "image/jpeg";
+    const bytes = atob(base64);
+    const arr = new Uint8Array(bytes.length);
+    for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+    const blob = new Blob([arr], { type: mime });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      document.body.removeChild(link);
+    }, 1000);
+  }
 
   // ── Helper to trigger a debounced regen ──
   const triggerDebouncedRegen = useCallback(() => {
@@ -1698,50 +1627,35 @@ export default function CompletePage() {
     };
   }, []);
 
-  // Download file locally — if parcel map is on, generate a fresh .docx with the image first
-  const downloadFile = useCallback(async () => {
+  // Download .docx locally (always fast path) + separate parcel map .jpg if enabled
+  const downloadFile = useCallback(() => {
     if (!fileBase64 || !fileName) return;
 
-    // Fast path: no parcel map → convert base64 to Blob for clean download
-    // (Using base64 data URL directly as link.href corrupts the .docx ZIP structure)
-    if (!includeParcelMapRef.current || !parcelMapImageRef.current) {
-      const base64Data = fileBase64.split(",")[1];
-      const byteChars = atob(base64Data);
-      const byteArray = new Uint8Array(byteChars.length);
-      for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
-      const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = fileName;
-      link.click();
+    // Download the .docx — convert base64 data URL to Blob for clean download
+    const base64Data = fileBase64.split(",")[1];
+    const byteChars = atob(base64Data);
+    const byteArray = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) byteArray[i] = byteChars.charCodeAt(i);
+    const blob = new Blob([byteArray], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
       URL.revokeObjectURL(url);
-      return;
-    }
+      document.body.removeChild(link);
+    }, 1000);
 
-    // Slow path: generate a fresh .docx with the parcel map image injected
-    try {
-      setIsExporting(true);
-      const blob = await generateExportBlob();
-      console.log("[Download] Blob size:", blob.size, "type:", blob.type);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.style.display = "none";
-      link.href = url;
-      link.download = fileName;
-      document.body.appendChild(link);
-      link.click();
-      // Delay cleanup to ensure browser has initiated the download
+    // If parcel map is enabled, also download the map image as a separate .jpg
+    if (includeParcelMapRef.current && parcelMapImageRef.current) {
+      const baseName = fileName.replace(/\.docx$/i, "");
       setTimeout(() => {
-        URL.revokeObjectURL(url);
-        document.body.removeChild(link);
-      }, 1000);
-    } catch (err) {
-      console.error("Export download error:", err);
-    } finally {
-      setIsExporting(false);
+        downloadDataUrl(parcelMapImageRef.current, `${baseName}_Parcel_Map.jpg`);
+      }, 500);
     }
-  }, [fileBase64, fileName, generateExportBlob]);
+  }, [fileBase64, fileName]);
 
   // Upload to SharePoint
   async function handleSave() {
@@ -1767,14 +1681,8 @@ export default function CompletePage() {
         setDriveId(drive);
       }
 
-      // If parcel map is on, generate a fresh .docx with the image; otherwise use preview base64
-      let arrayBuffer: ArrayBuffer;
-      if (includeParcelMapRef.current && parcelMapImageRef.current) {
-        const blob = await generateExportBlob();
-        arrayBuffer = await blob.arrayBuffer();
-      } else {
-        arrayBuffer = base64ToArrayBuffer(fileBase64);
-      }
+      // Upload the .docx (always from preview base64 — parcel map is a separate file)
+      const arrayBuffer = base64ToArrayBuffer(fileBase64);
       const siteId = await getSiteId(token);
 
       const webUrl = await uploadToSharePoint(
@@ -1785,6 +1693,29 @@ export default function CompletePage() {
         fileName,
         arrayBuffer
       );
+
+      // If parcel map is enabled, also upload the .jpg image to the same SharePoint folder
+      if (includeParcelMapRef.current && parcelMapImageRef.current) {
+        try {
+          const imgBase64 = parcelMapImageRef.current.split(",")[1];
+          const imgBytes = atob(imgBase64);
+          const imgArray = new Uint8Array(imgBytes.length);
+          for (let i = 0; i < imgBytes.length; i++) imgArray[i] = imgBytes.charCodeAt(i);
+          const imgBuffer = imgArray.buffer;
+          const baseName = fileName.replace(/\.docx$/i, "");
+          await uploadToSharePoint(
+            token,
+            siteId,
+            drive,
+            saveFolder,
+            `${baseName}_Parcel_Map.jpg`,
+            imgBuffer
+          );
+        } catch (imgErr) {
+          // Non-fatal — .docx already saved, just log the image upload failure
+          console.warn("Parcel map image upload failed:", imgErr);
+        }
+      }
 
       setSharePointUrl(webUrl);
       setPageState("saved");
@@ -2143,8 +2074,7 @@ export default function CompletePage() {
               const newVal = !includeParcelMapRef.current;
               includeParcelMapRef.current = newVal;
               setIncludeParcelMap(newVal);
-              // No regen needed — preview never includes the image.
-              // Toggle only affects download/save via generateExportBlob().
+              // No regen needed — parcel map downloads as a separate .jpg file.
             }}
           />
         </div>
