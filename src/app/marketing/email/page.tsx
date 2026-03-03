@@ -263,7 +263,7 @@ export default function EmailPage() {
           {/* New campaign button */}
           <button
             onClick={() => setShowForm(true)}
-            className="px-4 py-2 bg-green text-white text-sm font-semibold rounded-btn hover:brightness-110 transition"
+            className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
           >
             + New Campaign
           </button>

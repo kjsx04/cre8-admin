@@ -56,7 +56,7 @@ export default function EditListingPage() {
 
   return (
     <AppShell>
-      <div style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div style={{ fontFamily: "'Barlow', sans-serif" }}>
         {/* Loading state */}
         {loading && (
           <div className="flex items-center justify-center py-20 text-[#999] text-sm">

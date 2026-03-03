@@ -13,7 +13,7 @@ export default function TimelineBar({ deal }: TimelineBarProps) {
   if (dates.length === 0) {
     return (
       <div className="bg-white border border-border-light rounded-card p-4">
-        <h3 className="font-dm font-semibold text-sm text-charcoal mb-2">Timeline</h3>
+        <h3 className="font-bebas text-base tracking-wide uppercase text-charcoal mb-2">Timeline</h3>
         <p className="text-sm text-muted-gray">No dates set yet</p>
       </div>
     );
@@ -21,7 +21,7 @@ export default function TimelineBar({ deal }: TimelineBarProps) {
 
   return (
     <div className="bg-white border border-border-light rounded-card p-4">
-      <h3 className="font-dm font-semibold text-sm text-charcoal mb-4">Timeline</h3>
+      <h3 className="font-bebas text-base tracking-wide uppercase text-charcoal mb-4">Timeline</h3>
 
       {/* Vertical timeline with dots */}
       <div className="relative">

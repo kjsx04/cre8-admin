@@ -621,8 +621,8 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
               if (dupeNameWarn || dupeSlugWarn) return;
               setShowPublishModal(true);
             }}
-            className="bg-[#8CC644] text-white font-semibold px-5 py-2 rounded-btn text-sm
-                       hover:bg-[#7AB800] transition-colors"
+            className="bg-green text-black uppercase tracking-wide font-semibold px-5 py-2 rounded-btn text-sm
+                       hover:bg-green/90 transition-colors"
           >
             Publish
           </button>

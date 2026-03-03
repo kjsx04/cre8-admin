@@ -29,7 +29,7 @@ export default function ConfirmModal({
 
   const btnClass = confirmColor === "red"
     ? "bg-red-500 hover:bg-red-600 text-white"
-    : "bg-green hover:bg-green/90 text-white";
+    : "bg-green hover:bg-green/90 text-black uppercase tracking-wide";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

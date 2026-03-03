@@ -70,15 +70,15 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
 
         {/* Panel */}
         <div className="relative bg-light-gray w-full max-w-lg overflow-y-auto">
-          {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-border-light px-6 py-4 z-10">
+          {/* Header — dark chrome */}
+          <div className="sticky top-0 bg-charcoal px-6 py-5 z-10">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="font-bebas text-2xl tracking-wide text-charcoal truncate">
+                <h2 className="font-bebas text-2xl tracking-wide text-white truncate">
                   {deal.deal_name}
                 </h2>
                 {deal.property_address && (
-                  <p className="text-sm text-muted-gray truncate">{deal.property_address}</p>
+                  <p className="text-sm text-white/50 truncate">{deal.property_address}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -87,7 +87,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
                 </span>
                 <button
                   onClick={onClose}
-                  className="text-muted-gray hover:text-charcoal transition-colors p-1"
+                  className="text-white/50 hover:text-white transition-colors p-1"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -101,22 +101,22 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setEditing(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-border-light rounded-btn
-                             hover:border-green text-charcoal transition-colors duration-200"
+                  className="px-3 py-1.5 text-xs font-medium border border-border-gray text-white rounded-btn
+                             hover:border-white/50 transition-colors duration-200"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => setShowCloseModal(true)}
-                  className="px-3 py-1.5 text-xs font-medium bg-green text-white rounded-btn
+                  className="px-3 py-1.5 text-xs font-medium bg-green text-black uppercase tracking-wide rounded-btn
                              hover:bg-green/90 transition-colors duration-200"
                 >
                   Close Deal
                 </button>
                 <button
                   onClick={() => setShowCancelModal(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-red-200 text-red-600 rounded-btn
-                             hover:bg-red-50 transition-colors duration-200"
+                  className="px-3 py-1.5 text-xs font-medium border border-red-400/50 text-red-400 rounded-btn
+                             hover:bg-red-400/10 transition-colors duration-200"
                 >
                   Cancel Deal
                 </button>

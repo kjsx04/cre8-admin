@@ -367,43 +367,51 @@ export default function FlowPage() {
   const dropHighlight = dropTargetColumn ? getDropHighlightConfig(dropTargetColumn) : null;
 
   return (
-    <div className="px-6 py-6 max-w-6xl mx-auto">
-      {/* Summary bar */}
-      <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4 mb-6">
-        <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
-        <SummaryCard label="Pipeline Value" value={formatCurrency(totalPipeline)} />
-        <SummaryCard label="Total Take-Home" value={formatCurrency(totalTakeHome)} accent />
-        {/* Forecast card — 3 sub-columns with editable day windows */}
-        <div className="bg-white border border-border-light rounded-card p-4">
-          <p className="text-xs text-muted-gray mb-2">Take-Home Forecast</p>
-          <div className="flex">
-            {forecastDays.map((days, i) => (
-              <div key={i} className={`flex-1 text-center ${i > 0 ? "border-l border-border-light pl-3" : ""} ${i < forecastDays.length - 1 ? "pr-3" : ""}`}>
-                <p className="text-lg font-bold text-green">{formatCurrency(calcForecastTakeHome(days))}</p>
-                <div className="flex items-center justify-center gap-1 mt-1">
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    value={days}
-                    onChange={(e) => {
-                      const val = parseInt(e.target.value.replace(/\D/g, "")) || 0;
-                      setForecastDays((prev) => prev.map((d, j) => (j === i ? val : d)));
-                    }}
-                    className="w-[3ch] text-xs text-center text-medium-gray border-b border-transparent bg-transparent
-                               hover:border-border-light focus:outline-none focus:border-green focus:text-charcoal
-                               [appearance:textfield]"
-                  />
-                  <span className="text-xs text-muted-gray">days</span>
-                </div>
+    <div>
+      {/* ── Dark header zone ── */}
+      <div className="bg-charcoal px-6 pt-6 pb-6">
+        <div className="max-w-6xl mx-auto">
+          {/* Summary bar — dark cards */}
+          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
+            <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
+            <SummaryCard label="Pipeline Value" value={formatCurrency(totalPipeline)} />
+            <SummaryCard label="Total Take-Home" value={formatCurrency(totalTakeHome)} accent />
+            {/* Forecast card — 3 sub-columns with editable day windows */}
+            <div className="bg-dark-gray border border-border-gray rounded-card p-4">
+              <p className="text-xs uppercase tracking-wide text-white/50 mb-2">Take-Home Forecast</p>
+              <div className="flex">
+                {forecastDays.map((days, i) => (
+                  <div key={i} className={`flex-1 text-center ${i > 0 ? "border-l border-border-gray pl-3" : ""} ${i < forecastDays.length - 1 ? "pr-3" : ""}`}>
+                    <p className="font-bebas text-2xl text-green">{formatCurrency(calcForecastTakeHome(days))}</p>
+                    <div className="flex items-center justify-center gap-1 mt-1">
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={days}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value.replace(/\D/g, "")) || 0;
+                          setForecastDays((prev) => prev.map((d, j) => (j === i ? val : d)));
+                        }}
+                        className="w-[3ch] text-xs text-center text-white/50 border-b border-transparent bg-transparent
+                                   hover:border-border-gray focus:outline-none focus:border-green focus:text-white
+                                   [appearance:textfield]"
+                      />
+                      <span className="text-xs text-white/40">days</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-            ))}
+            </div>
           </div>
         </div>
       </div>
 
+      {/* ── Light content area ── */}
+      <div className="px-6 py-6 max-w-6xl mx-auto">
+
       {/* Auto-move notification bar */}
       {autoMoveNotices.length > 0 && (
-        <div className="mb-4 p-3 rounded-btn border border-blue-200 bg-blue-50 text-sm text-blue-800">
+        <div className="mb-4 p-3 rounded-card border border-blue-200 bg-blue-50 text-sm text-blue-800">
           <div className="flex items-center gap-2 mb-1">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
               <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
@@ -422,7 +430,7 @@ export default function FlowPage() {
 
       {/* Urgent date alert */}
       {urgentDate && urgentDate.next && urgentDate.next.urgency !== "green" && urgentDate.next.urgency !== "gray" && (
-        <div className={`mb-4 p-3 rounded-btn border text-sm flex items-center gap-2
+        <div className={`mb-4 p-3 rounded-card border text-sm flex items-center gap-2
           ${urgentDate.next.urgency === "red"
             ? "bg-red-50 border-red-200 text-red-700"
             : "bg-amber-50 border-amber-200 text-amber-700"}`}
@@ -450,7 +458,7 @@ export default function FlowPage() {
                   onClick={() => setActiveTab(i)}
                   className={`px-4 py-2 text-sm font-medium rounded-btn transition-colors duration-200
                     ${activeTab === i
-                      ? "bg-green text-white"
+                      ? "bg-charcoal text-white"
                       : "text-medium-gray hover:text-charcoal hover:bg-light-gray"}`}
                 >
                   {tab.label} ({count})
@@ -467,7 +475,7 @@ export default function FlowPage() {
                 onClick={() => setViewMode("board")}
                 className={`p-1.5 transition-colors duration-200 ${
                   viewMode === "board"
-                    ? "bg-green text-white"
+                    ? "bg-charcoal text-white"
                     : "text-medium-gray hover:text-charcoal bg-white"
                 }`}
                 title="Board view"
@@ -483,7 +491,7 @@ export default function FlowPage() {
                 onClick={() => setViewMode("list")}
                 className={`p-1.5 transition-colors duration-200 ${
                   viewMode === "list"
-                    ? "bg-green text-white"
+                    ? "bg-charcoal text-white"
                     : "text-medium-gray hover:text-charcoal bg-white"
                 }`}
                 title="List view"
@@ -500,7 +508,7 @@ export default function FlowPage() {
 
         <button
           onClick={() => setShowNewForm(true)}
-          className="px-4 py-2 text-sm font-semibold bg-green text-white rounded-btn
+          className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
                      hover:bg-green/90 transition-colors duration-200 flex items-center gap-1"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -604,7 +612,7 @@ export default function FlowPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="fixed inset-0 bg-black/30" />
           <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
-            <h3 className="font-bebas text-xl tracking-wide text-charcoal mb-2">
+            <h3 className="font-bebas text-2xl tracking-wide text-charcoal mb-2">
               Extension Deadline Reached
             </h3>
             <p className="text-sm text-medium-gray mb-4">
@@ -623,7 +631,7 @@ export default function FlowPage() {
               </button>
               <button
                 onClick={handleExtensionFiled}
-                className="px-4 py-2 text-sm font-semibold bg-green text-white rounded-btn
+                className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
                            hover:bg-green/90 transition-colors duration-200"
               >
                 Yes — Extension Filed
@@ -632,16 +640,17 @@ export default function FlowPage() {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 }
 
-// Small summary stat card
+// Small summary stat card — dark treatment for charcoal header zone
 function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="bg-white border border-border-light rounded-card p-4">
-      <p className="text-xs text-muted-gray mb-1">{label}</p>
-      <p className={`text-lg font-bold ${accent ? "text-green" : "text-charcoal"}`}>{value}</p>
+    <div className="bg-dark-gray border border-border-gray rounded-card p-4">
+      <p className="text-xs uppercase tracking-wide text-white/50 mb-1">{label}</p>
+      <p className={`font-bebas text-2xl ${accent ? "text-green" : "text-white"}`}>{value}</p>
     </div>
   );
 }

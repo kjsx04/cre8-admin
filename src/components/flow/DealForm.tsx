@@ -1182,7 +1182,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                       <button
                         type="button"
                         onClick={() => updateDateRow(dd.tempId, { editing: false })}
-                        className="px-3 py-1 text-xs font-medium bg-green text-white rounded-btn
+                        className="px-3 py-1 text-xs font-medium bg-green text-black uppercase tracking-wide rounded-btn
                                    hover:bg-green/90 transition-colors"
                       >
                         Done
@@ -1283,7 +1283,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           <button
             type="submit"
             disabled={saving || !form.deal_name.trim() || (hasExplicitSplits && !splitsValid)}
-            className="px-6 py-2 text-sm font-semibold bg-green text-white rounded-btn
+            className="px-6 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
                        hover:bg-green/90 transition-colors duration-200 disabled:opacity-50"
           >
             {saving ? "Saving..." : isEditing ? "Save Changes" : "Create Deal"}

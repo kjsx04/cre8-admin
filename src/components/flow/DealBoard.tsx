@@ -101,17 +101,17 @@ export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: Deal
             onDragOver={(e) => handleDragOver(e, col.key)}
             onDragLeave={(e) => handleDragLeave(e, col.key)}
             onDrop={(e) => handleDrop(e, col.key)}
-            className={`rounded-card border-2 border-dashed transition-colors duration-200 p-3 min-h-[200px]
+            className={`rounded-card border border-border-light transition-colors duration-200 p-3 min-h-[200px]
               ${isOver
                 ? "border-green bg-green/5"
-                : "border-border-light bg-light-gray/50"
+                : "bg-light-gray"
               }`}
           >
             {/* Column header */}
             <div className="mb-3 px-1">
               <div className="flex items-baseline justify-between">
-                <h3 className="font-bebas text-lg tracking-wide text-charcoal">{col.label}</h3>
-                <span className="text-xs font-medium text-muted-gray bg-white border border-border-light rounded-full px-2 py-0.5">
+                <h3 className="font-bebas text-base tracking-wide uppercase text-charcoal">{col.label}</h3>
+                <span className="text-xs font-medium text-muted-gray bg-white border border-border-light rounded-btn px-2 py-0.5">
                   {colDeals.length}
                 </span>
               </div>

@@ -229,6 +229,11 @@ export default function ParcelPickerModal({
             ],
             tileSize: 256,
           },
+          // Vector source for road + city labels
+          "mapbox-streets-v": {
+            type: "vector",
+            url: "mapbox://mapbox.mapbox-streets-v8",
+          },
         },
         layers: [
           {
@@ -247,6 +252,44 @@ export default function ParcelPickerModal({
             source: "mapbox-streets",
             paint: {
               "raster-opacity": 0.4,
+            },
+          },
+          // Road name labels (visible at all zoom levels)
+          {
+            id: "road-labels",
+            type: "symbol",
+            source: "mapbox-streets-v",
+            "source-layer": "road",
+            layout: {
+              "symbol-placement": "line",
+              "text-field": ["get", "name"],
+              "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 16, 13],
+              "text-font": ["DIN Pro Regular", "Arial Unicode MS Regular"],
+              "text-max-angle": 30,
+              "text-padding": 2,
+            },
+            paint: {
+              "text-color": "rgba(255, 255, 255, 0.7)",
+              "text-halo-color": "rgba(0, 0, 0, 0.8)",
+              "text-halo-width": 1.2,
+            },
+          },
+          // City / place name labels
+          {
+            id: "place-labels",
+            type: "symbol",
+            source: "mapbox-streets-v",
+            "source-layer": "place_label",
+            layout: {
+              "text-field": ["get", "name"],
+              "text-size": ["interpolate", ["linear"], ["zoom"], 6, 12, 12, 18],
+              "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+              "text-max-width": 8,
+            },
+            paint: {
+              "text-color": "rgba(255, 255, 255, 0.85)",
+              "text-halo-color": "rgba(0, 0, 0, 0.85)",
+              "text-halo-width": 1.5,
             },
           },
         ],
@@ -387,7 +430,7 @@ export default function ParcelPickerModal({
           // Zoom to the selected parcels
           const bounds = computeBounds(initialParcels);
           if (bounds) {
-            map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+            map.fitBounds(bounds, { padding: 120, maxZoom: 17 });
           }
         }
 
@@ -486,6 +529,7 @@ export default function ParcelPickerModal({
   // ── Load parcels from all 3 ArcGIS endpoints for the current viewport ──
   const loadParcels = useCallback((map: mapboxgl.Map) => {
     const zoom = map.getZoom();
+    console.log(`[ParcelPicker] loadParcels called — zoom: ${zoom.toFixed(2)}`);
     if (zoom < 14) return; // Don't fetch below parcel zoom
 
     const bounds = map.getBounds();
@@ -518,11 +562,20 @@ export default function ParcelPickerModal({
         `&spatialRel=esriSpatialRelIntersects` +
         `&inSR=4326`;
 
+      console.log(`[ParcelPicker] Fetching ${ds.id}...`);
+
       try {
         const res = await fetch(url, { signal: controller.signal });
         const data = await res.json();
 
+        // ArcGIS can return { error: {...} } with a 200 status
+        if (data.error) {
+          console.error(`[ParcelPicker] ${ds.id} ArcGIS error:`, data.error);
+          return;
+        }
+
         if (data.features && data.features.length > 0) {
+          console.log(`[ParcelPicker] ${ds.id} → ${data.features.length} features`);
           // Tag each feature with _source for county-aware field mapping
           for (const f of data.features) {
             if (f.properties) f.properties._source = ds.id;
@@ -532,24 +585,35 @@ export default function ParcelPickerModal({
             const dedupKey = `${ds.id}:${rawId}`;
             featuresRef.current.set(dedupKey, f);
           }
+        } else {
+          console.log(`[ParcelPicker] ${ds.id} → 0 features (or no features array)`);
         }
       } catch (err: unknown) {
         // Abort errors are expected when user pans quickly
         if (err instanceof Error && err.name === "AbortError") return;
-        console.warn(`[${ds.id}] parcel fetch failed:`, err);
+        console.error(`[ParcelPicker] ${ds.id} fetch error:`, err);
       }
     });
 
     // After all sources resolve, update the map source
     Promise.allSettled(promises).then(() => {
+      // mapRef.current is null after unmount cleanup — safe to bail
       if (!mapRef.current) return;
+
+      const totalFeatures = featuresRef.current.size;
+      console.log(`[ParcelPicker] All fetches done — ${totalFeatures} total features`);
+
       const source = mapRef.current.getSource("parcels") as mapboxgl.GeoJSONSource | undefined;
-      if (!source) return;
+      if (!source) {
+        console.warn("[ParcelPicker] 'parcels' source not found on map");
+        return;
+      }
 
       source.setData({
         type: "FeatureCollection",
         features: Array.from(featuresRef.current.values()),
       });
+      console.log("[ParcelPicker] source.setData() called successfully");
 
       setLoadingParcels(false);
     });
@@ -583,7 +647,7 @@ export default function ParcelPickerModal({
 
         if (bounds) {
           // Zoom to parcels with padding so the capture looks good
-          map.fitBounds(bounds, { padding: 80, maxZoom: 17 });
+          map.fitBounds(bounds, { padding: 120, maxZoom: 17 });
 
           // Wait for tiles to finish loading (idle event) with 5s safety timeout
           await new Promise<void>((resolve) => {

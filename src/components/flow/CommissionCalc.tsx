@@ -24,7 +24,7 @@ export default function CommissionCalc({ deal }: CommissionCalcProps) {
 
   return (
     <div className="bg-white border border-border-light rounded-card p-4">
-      <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Commission Breakdown</h3>
+      <h3 className="font-bebas text-base tracking-wide uppercase text-charcoal mb-3">Commission Breakdown</h3>
 
       <div className="space-y-2 text-sm">
         {/* Price */}

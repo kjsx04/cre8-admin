@@ -665,6 +665,7 @@ export default function CompletePage() {
   >([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isExporting] = useState(false); // Kept for button disabled state (always false now — parcel map downloads separately)
+  const [showMapPreview, setShowMapPreview] = useState(false); // Parcel map preview modal
   const [isAiExtracting, setIsAiExtracting] = useState(false);
 
   // AI animation state — tracks which tokens are currently being animated
@@ -1648,12 +1649,9 @@ export default function CompletePage() {
       document.body.removeChild(link);
     }, 1000);
 
-    // If parcel map is enabled, also download the map image as a separate .jpg
-    // Both downloads must happen synchronously from the click — setTimeout loses
-    // the user gesture context and Chrome silently blocks the second download.
+    // If parcel map is enabled, show a preview modal instead of auto-downloading
     if (includeParcelMapRef.current && parcelMapImageRef.current) {
-      const baseName = fileName.replace(/\.docx$/i, "");
-      downloadDataUrl(parcelMapImageRef.current, `${baseName}_Parcel_Map.jpg`);
+      setShowMapPreview(true);
     }
   }, [fileBase64, fileName]);
 
@@ -2097,6 +2095,56 @@ export default function CompletePage() {
       )}
 
       {/* Parcel Picker Modal — map-based parcel selection */}
+      {/* Parcel map preview modal — 80% of screen, shows captured map image */}
+      {showMapPreview && parcelMapImageRef.current && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/60" onClick={() => setShowMapPreview(false)} />
+
+          {/* Modal — 80% of viewport */}
+          <div className="relative bg-charcoal rounded-card border border-border-gray flex flex-col"
+               style={{ width: "80vw", height: "80vh" }}>
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 border-b border-border-gray shrink-0">
+              <h3 className="text-white font-semibold text-sm">Parcel Map Preview</h3>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const baseName = fileName.replace(/\.docx$/i, "");
+                    downloadDataUrl(parcelMapImageRef.current!, `${baseName}_Parcel_Map.jpg`);
+                  }}
+                  className="bg-green text-black uppercase tracking-wide font-semibold text-xs px-4 py-2 rounded-btn
+                             hover:brightness-110 transition-all duration-200 flex items-center gap-2"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                    <polyline points="7 10 12 15 17 10" />
+                    <line x1="12" y1="15" x2="12" y2="3" />
+                  </svg>
+                  Download
+                </button>
+                <button
+                  onClick={() => setShowMapPreview(false)}
+                  className="text-medium-gray hover:text-white text-xl transition-colors"
+                >
+                  &times;
+                </button>
+              </div>
+            </div>
+
+            {/* Image container — fills remaining space */}
+            <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={parcelMapImageRef.current}
+                alt="Parcel map"
+                className="max-w-full max-h-full object-contain rounded"
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showParcelPicker && (
         <ParcelPickerModal
           onConfirm={handleParcelConfirm}

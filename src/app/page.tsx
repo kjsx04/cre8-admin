@@ -177,7 +177,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="px-6 py-4" style={{ fontFamily: "'DM Sans', sans-serif" }}>
+      <div className="px-6 py-4" style={{ fontFamily: "'Barlow', sans-serif" }}>
         {/* ---- Page heading ---- */}
         <h1 className="text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
 

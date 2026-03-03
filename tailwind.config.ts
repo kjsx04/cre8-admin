@@ -26,7 +26,7 @@ const config: Config = {
       },
       fontFamily: {
         bebas: ['"Bebas Neue"', "sans-serif"],
-        dm: ['"DM Sans"', "sans-serif"],
+        dm: ['"Barlow"', "sans-serif"],
       },
       borderRadius: {
         card: "8px",

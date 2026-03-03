@@ -551,7 +551,7 @@ export default function CampaignForm({
               </button>
               <button
                 onClick={handleSubmit}
-                className="px-5 py-2 bg-green text-white text-sm font-semibold rounded-btn hover:brightness-110 transition"
+                className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
               >
                 {isEdit ? "Update & Reschedule" : "Create & Schedule"}
               </button>

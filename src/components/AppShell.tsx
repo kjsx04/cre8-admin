@@ -10,7 +10,7 @@ import NavBar from "@/components/NavBar";
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
-      <div className="min-h-screen bg-[#F5F5F7] flex flex-col">
+      <div className="min-h-screen bg-light-gray flex flex-col">
         <NavBar />
         <main className="flex-1">{children}</main>
       </div>

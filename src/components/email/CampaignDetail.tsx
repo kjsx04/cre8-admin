@@ -210,7 +210,7 @@ export default function CampaignDetail({
                 <button
                   onClick={handleResume}
                   disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-green text-white text-sm font-medium rounded-btn hover:brightness-110 transition disabled:opacity-50"
+                  className="w-full px-4 py-2.5 bg-green text-black uppercase tracking-wide text-sm font-medium rounded-btn hover:brightness-110 transition disabled:opacity-50"
                 >
                   {actionLoading ? "Resuming..." : "Resume Campaign"}
                 </button>
