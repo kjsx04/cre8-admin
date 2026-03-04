@@ -13,6 +13,7 @@ const config: Config = {
         black: "#000000",
         white: "#FFFFFF",
         green: "#8CC644",
+        "green-dark": "#6B9A33",
         charcoal: "#1A1A1A",
         "dark-gray": "#2A2A2A",
         "medium-gray": "#666666",
@@ -26,11 +27,11 @@ const config: Config = {
       },
       fontFamily: {
         bebas: ['"Bebas Neue"', "sans-serif"],
-        dm: ['"Barlow"', "sans-serif"],
+        dm: ['"DM Sans"', "sans-serif"],
       },
       borderRadius: {
         card: "8px",
-        btn: "6px",
+        btn: "4px",
       },
     },
   },

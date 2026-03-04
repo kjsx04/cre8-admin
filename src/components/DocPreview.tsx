@@ -79,7 +79,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
 
   if (error) {
     return (
-      <div className="bg-dark-gray border border-border-gray rounded-card p-6 text-center">
+      <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-card p-6 text-center">
         <p className="text-medium-gray text-sm">{error}</p>
       </div>
     );
@@ -89,7 +89,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
     <div className="relative">
       {/* Loading overlay while rendering */}
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-dark-gray rounded-card z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-[#F5F5F5] rounded-card z-10">
           <div className="flex flex-col items-center gap-3">
             <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
             <p className="text-medium-gray text-sm">Rendering preview...</p>
@@ -100,7 +100,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
       {/* The docx-preview renders into this container */}
       <div
         ref={containerRef}
-        className="docx-preview-container border border-border-gray"
+        className="docx-preview-container border border-[#E0E0E0]"
         style={{ minHeight: loading ? "300px" : undefined }}
       />
     </div>

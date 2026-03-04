@@ -368,20 +368,20 @@ export default function FlowPage() {
 
   return (
     <div>
-      {/* ── Dark header zone ── */}
-      <div className="bg-charcoal px-6 pt-6 pb-6">
+      {/* ── Summary header zone ── */}
+      <div className="bg-white border-b border-[#E0E0E0] px-6 pt-6 pb-6">
         <div className="max-w-6xl mx-auto">
-          {/* Summary bar — dark cards */}
+          {/* Summary bar */}
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
             <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
             <SummaryCard label="Pipeline Value" value={formatCurrency(totalPipeline)} />
             <SummaryCard label="Total Take-Home" value={formatCurrency(totalTakeHome)} accent />
             {/* Forecast card — 3 sub-columns with editable day windows */}
-            <div className="bg-dark-gray border border-border-gray rounded-card p-4">
-              <p className="text-xs uppercase tracking-wide text-white/50 mb-2">Take-Home Forecast</p>
+            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
+              <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-2">Take-Home Forecast</p>
               <div className="flex">
                 {forecastDays.map((days, i) => (
-                  <div key={i} className={`flex-1 text-center ${i > 0 ? "border-l border-border-gray pl-3" : ""} ${i < forecastDays.length - 1 ? "pr-3" : ""}`}>
+                  <div key={i} className={`flex-1 text-center ${i > 0 ? "border-l border-[#E0E0E0] pl-3" : ""} ${i < forecastDays.length - 1 ? "pr-3" : ""}`}>
                     <p className="font-bebas text-2xl text-green">{formatCurrency(calcForecastTakeHome(days))}</p>
                     <div className="flex items-center justify-center gap-1 mt-1">
                       <input
@@ -392,11 +392,11 @@ export default function FlowPage() {
                           const val = parseInt(e.target.value.replace(/\D/g, "")) || 0;
                           setForecastDays((prev) => prev.map((d, j) => (j === i ? val : d)));
                         }}
-                        className="w-[3ch] text-xs text-center text-white/50 border-b border-transparent bg-transparent
-                                   hover:border-border-gray focus:outline-none focus:border-green focus:text-white
+                        className="w-[3ch] text-xs text-center text-[rgba(0,0,0,0.45)] border-b border-transparent bg-transparent
+                                   hover:border-[#E0E0E0] focus:outline-none focus:border-green focus:text-[#1A1A1A]
                                    [appearance:textfield]"
                       />
-                      <span className="text-xs text-white/40">days</span>
+                      <span className="text-xs text-[rgba(0,0,0,0.35)]">days</span>
                     </div>
                   </div>
                 ))}
@@ -458,8 +458,8 @@ export default function FlowPage() {
                   onClick={() => setActiveTab(i)}
                   className={`px-4 py-2 text-sm font-medium rounded-btn transition-colors duration-200
                     ${activeTab === i
-                      ? "bg-charcoal text-white"
-                      : "text-medium-gray hover:text-charcoal hover:bg-light-gray"}`}
+                      ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
+                      : "text-medium-gray hover:text-charcoal hover:bg-light-gray border border-transparent"}`}
                 >
                   {tab.label} ({count})
                 </button>
@@ -645,12 +645,12 @@ export default function FlowPage() {
   );
 }
 
-// Small summary stat card — dark treatment for charcoal header zone
+// Small summary stat card
 function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="bg-dark-gray border border-border-gray rounded-card p-4">
-      <p className="text-xs uppercase tracking-wide text-white/50 mb-1">{label}</p>
-      <p className={`font-bebas text-2xl ${accent ? "text-green" : "text-white"}`}>{value}</p>
+    <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
+      <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">{label}</p>
+      <p className={`font-bebas text-2xl ${accent ? "text-green" : "text-[#1A1A1A]"}`}>{value}</p>
     </div>
   );
 }

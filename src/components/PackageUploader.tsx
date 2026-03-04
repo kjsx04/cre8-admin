@@ -247,7 +247,7 @@ export default function PackageUploader({
             <p className="text-sm text-[#333] font-medium">
               {assets.packageFile?.name || "Package PDF"}
             </p>
-            <p className="text-xs text-[#999] mt-1">
+            <p className="text-xs text-[#777] mt-1">
               Click or drop to replace
             </p>
           </div>
@@ -257,7 +257,7 @@ export default function PackageUploader({
             <p className="text-sm text-[#666]">
               Drop PDF here or click to browse
             </p>
-            <p className="text-xs text-[#999] mt-1">
+            <p className="text-xs text-[#777] mt-1">
               Auto-converts to JPG previews (max 10MB)
             </p>
           </div>
@@ -266,7 +266,7 @@ export default function PackageUploader({
 
       {/* Existing package indicator (edit mode, no new upload) */}
       {existingPackageUrl && !assets.packageFile && !hasImages && (
-        <div className="flex items-center gap-2 mt-2 text-xs text-[#999]">
+        <div className="flex items-center gap-2 mt-2 text-xs text-[#777]">
           <span>&#128196;</span>
           <span>Existing package on file</span>
           <a
@@ -318,7 +318,7 @@ export default function PackageUploader({
                     setStar(idx);
                   }}
                   className={`absolute top-1 right-7 w-6 h-6 rounded flex items-center justify-center text-sm
-                    ${isMarketing ? "bg-green text-white" : "bg-black/40 text-white/70 hover:text-white"}`}
+                    ${isMarketing ? "bg-green text-black" : "bg-black/40 text-white/70 hover:text-white"}`}
                   title="Set as marketing image"
                 >
                   &#9733;
@@ -340,7 +340,7 @@ export default function PackageUploader({
 
                 {/* Marketing label */}
                 {isMarketing && (
-                  <div className="absolute bottom-1 right-1 bg-green text-white text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">
+                  <div className="absolute bottom-1 right-1 bg-green text-black text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">
                     Marketing
                   </div>
                 )}

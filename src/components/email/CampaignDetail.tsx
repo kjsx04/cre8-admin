@@ -181,7 +181,7 @@ export default function CampaignDetail({
               {/* Preview button */}
               <button
                 onClick={() => setShowPreview(true)}
-                className="w-full px-4 py-2.5 bg-charcoal text-white text-sm font-medium rounded-btn hover:bg-dark-gray transition-colors"
+                className="w-full px-4 py-2.5 bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-sm font-medium rounded-btn hover:bg-[#E0E0E0] transition-colors"
               >
                 Preview Email
               </button>

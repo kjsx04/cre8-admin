@@ -16,9 +16,9 @@
 
 /* Base styles */
 body {
-  font-family: "Barlow", sans-serif;
-  background: var(--black);
-  color: var(--white);
+  font-family: "DM Sans", sans-serif;
+  background: #FFFFFF;
+  color: #1A1A1A;
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -32,19 +32,19 @@ select:focus {
   border-color: var(--green);
 }
 
-/* Scrollbar styling for dark theme */
+/* Scrollbar styling for light theme */
 ::-webkit-scrollbar {
   width: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: var(--charcoal);
+  background: #F5F5F5;
 }
 ::-webkit-scrollbar-thumb {
-  background: var(--border-gray);
+  background: #D0D0D0;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: var(--medium-gray);
+  background: #AAAAAA;
 }
 
 /* docx-preview overrides — white document inside dark UI */
@@ -90,22 +90,24 @@ select:focus {
   color: #1A1A1A;
 }
 .email-calendar .fc .fc-button {
-  background: #2A2A2A;
+  background: #F0F0F0;
+  color: #1A1A1A;
   border: none;
-  font-family: "Barlow", sans-serif;
+  font-family: "DM Sans", sans-serif;
   font-size: 0.75rem;
   font-weight: 600;
   padding: 4px 12px;
   border-radius: 6px;
 }
 .email-calendar .fc .fc-button:hover {
-  background: #1A1A1A;
+  background: #E0E0E0;
 }
 .email-calendar .fc .fc-button-active {
   background: #1A1A1A !important;
+  color: #FFFFFF !important;
 }
 .email-calendar .fc .fc-daygrid-day-number {
-  font-family: "Barlow", sans-serif;
+  font-family: "DM Sans", sans-serif;
   font-size: 0.8rem;
   color: #666666;
   padding: 4px 8px;
@@ -114,12 +116,12 @@ select:focus {
   border-radius: 4px;
   padding: 2px 6px;
   font-size: 0.72rem;
-  font-family: "Barlow", sans-serif;
+  font-family: "DM Sans", sans-serif;
   font-weight: 600;
   border: none;
 }
 .email-calendar .fc .fc-col-header-cell-cushion {
-  font-family: "Barlow", sans-serif;
+  font-family: "DM Sans", sans-serif;
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.05em;

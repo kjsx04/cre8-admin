@@ -640,16 +640,16 @@ export default function ParcelPickerModal({
       />
 
       {/* Modal container */}
-      <div className="relative max-w-4xl w-full mx-4 h-[80vh] bg-charcoal border border-border-gray rounded-card flex flex-col overflow-hidden">
+      <div className="relative max-w-4xl w-full mx-4 h-[80vh] bg-white border border-[#E0E0E0] rounded-card flex flex-col overflow-hidden">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-border-gray flex-shrink-0">
-          <h2 className="font-bebas text-xl tracking-wide text-white">
+        <div className="flex items-center justify-between px-5 py-3 border-b border-[#E0E0E0] flex-shrink-0">
+          <h2 className="font-bebas text-xl tracking-wide text-[#1A1A1A]">
             SELECT <span className="text-green">PARCEL</span>
           </h2>
           <button
             onClick={onClose}
-            className="text-medium-gray hover:text-white transition-colors p-1"
+            className="text-medium-gray hover:text-[#1A1A1A] transition-colors p-1"
             title="Close"
             type="button"
           >
@@ -687,18 +687,18 @@ export default function ParcelPickerModal({
 
         {/* ── Selection bar — shows selected parcel chips + summary ── */}
         {selectedParcels.length > 0 && (
-          <div className="border-t border-border-gray px-5 py-3 flex-shrink-0 bg-dark-gray">
+          <div className="border-t border-[#E0E0E0] px-5 py-3 flex-shrink-0 bg-[#F5F5F5]">
             {/* APN chips */}
             <div className="flex flex-wrap gap-2 mb-2">
               {selectedParcels.map((p) => (
                 <span
                   key={p.key}
-                  className="inline-flex items-center gap-1.5 bg-charcoal border border-green/40 text-white text-xs px-2.5 py-1 rounded"
+                  className="inline-flex items-center gap-1.5 bg-[#F0F0F0] border border-green/40 text-[#1A1A1A] text-xs px-2.5 py-1 rounded"
                 >
                   {p.id}
                   <button
                     onClick={() => handleRemoveParcel(p.key)}
-                    className="text-medium-gray hover:text-white transition-colors"
+                    className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
                     title="Remove"
                     type="button"
                   >
@@ -716,20 +716,20 @@ export default function ParcelPickerModal({
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
                 {firstParcel.address && (
                   <span>
-                    <span className="text-border-gray">Address:</span>{" "}
-                    <span className="text-white">{firstParcel.address}</span>
+                    <span className="text-[#777]">Address:</span>{" "}
+                    <span className="text-[#1A1A1A]">{firstParcel.address}</span>
                   </span>
                 )}
                 {firstParcel.owner && (
                   <span>
-                    <span className="text-border-gray">Owner:</span>{" "}
-                    <span className="text-white">{firstParcel.owner}</span>
+                    <span className="text-[#777]">Owner:</span>{" "}
+                    <span className="text-[#1A1A1A]">{firstParcel.owner}</span>
                   </span>
                 )}
                 {firstParcel.acreage && (
                   <span>
-                    <span className="text-border-gray">Acreage:</span>{" "}
-                    <span className="text-white">{firstParcel.acreage} ac</span>
+                    <span className="text-[#777]">Acreage:</span>{" "}
+                    <span className="text-[#1A1A1A]">{firstParcel.acreage} ac</span>
                   </span>
                 )}
               </div>
@@ -738,12 +738,12 @@ export default function ParcelPickerModal({
         )}
 
         {/* ── Footer — Done + Cancel ── */}
-        <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-border-gray flex-shrink-0">
+        <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-[#E0E0E0] flex-shrink-0">
           <button
             onClick={onClose}
             type="button"
-            className="bg-dark-gray border border-border-gray text-white font-semibold text-sm px-5 py-2 rounded-btn
-                       hover:border-green transition-colors duration-200"
+            className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2 rounded-btn
+                       hover:border-[#999] transition-colors duration-200"
           >
             Cancel
           </button>

@@ -1117,7 +1117,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                         onClick={() => updateDateRow(dd.tempId, { mode: "absolute" })}
                         className={`px-3 py-1 text-xs rounded-btn border transition-colors ${
                           dd.mode === "absolute"
-                            ? "bg-green text-white border-green"
+                            ? "bg-green text-black border-green"
                             : "border-border-light text-medium-gray hover:border-green"
                         }`}
                       >
@@ -1128,7 +1128,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                         onClick={() => updateDateRow(dd.tempId, { mode: "relative" })}
                         className={`px-3 py-1 text-xs rounded-btn border transition-colors ${
                           dd.mode === "relative"
-                            ? "bg-green text-white border-green"
+                            ? "bg-green text-black border-green"
                             : "border-border-light text-medium-gray hover:border-green"
                         }`}
                       >

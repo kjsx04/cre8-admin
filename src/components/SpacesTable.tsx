@@ -124,13 +124,13 @@ export default function SpacesTable({ value, onChange }: SpacesTableProps) {
       {/* Table header */}
       {rows.length > 0 && (
         <div className="grid grid-cols-[1fr_120px_90px_36px] gap-2 mb-2">
-          <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
             Space Name
           </span>
-          <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
             Size
           </span>
-          <span className="text-[10px] font-semibold text-[#999] uppercase tracking-wider">
+          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
             Unit
           </span>
           <span />
@@ -180,7 +180,7 @@ export default function SpacesTable({ value, onChange }: SpacesTableProps) {
             type="button"
             onClick={() => removeRow(idx)}
             className="w-8 h-8 rounded-btn border border-[#E5E5E5] flex items-center justify-center
-                       text-[#999] hover:text-[#CC3333] hover:border-[#CC3333] transition-colors text-sm"
+                       text-[#777] hover:text-[#CC3333] hover:border-[#CC3333] transition-colors text-sm"
             title="Remove row"
           >
             ✕

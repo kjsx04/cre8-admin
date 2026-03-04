@@ -78,7 +78,7 @@ export default function VoiceInput({ onTranscript }: VoiceInputProps) {
         ${
           isListening
             ? "bg-red-600/20 border border-red-500 text-red-400"
-            : "bg-dark-gray border border-border-gray text-medium-gray hover:border-green hover:text-green"
+            : "bg-[#F5F5F5] border border-[#E0E0E0] text-medium-gray hover:border-green hover:text-green"
         }`}
       title={isListening ? "Stop recording" : "Start voice input"}
     >

@@ -572,7 +572,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           <button
             onClick={() => router.push("/")}
             className="w-8 h-8 rounded-btn border border-[#E5E5E5] flex items-center justify-center
-                       text-[#999] hover:text-[#333] hover:border-[#CCC] transition-colors text-sm"
+                       text-[#777] hover:text-[#333] hover:border-[#CCC] transition-colors text-sm"
             title="Back to listings"
           >
             ←
@@ -606,8 +606,8 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           <button
             onClick={handleSaveDraft}
             disabled={isSaving.current}
-            className="bg-[#1a1a1a] text-white font-semibold px-5 py-2 rounded-btn text-sm
-                       hover:bg-[#333] transition-colors disabled:opacity-50"
+            className="bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] font-semibold px-5 py-2 rounded-btn text-sm
+                       hover:bg-[#E0E0E0] transition-colors disabled:opacity-50"
           >
             Save Draft
           </button>
@@ -705,7 +705,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
               }}
             />
           ) : (
-            <p className="text-sm text-[#999]">
+            <p className="text-sm text-[#777]">
               Mapbox token not configured — map unavailable.
             </p>
           )}
@@ -916,7 +916,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           <p className="text-[10px] text-[#CC3333] mt-1">{dupeSlugWarn}</p>
         )}
         {key === "slug" && !isDupeSlug && value && (
-          <p className="text-[10px] text-[#999] mt-1">
+          <p className="text-[10px] text-[#777] mt-1">
             cre8advisors.com/listings/{value}
           </p>
         )}
@@ -954,7 +954,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
                   className={`w-4 h-4 rounded-sm border-[1.5px] flex items-center justify-center flex-shrink-0 text-[10px]
                     ${
                       isChecked
-                        ? "bg-green border-green text-white"
+                        ? "bg-green border-green text-black"
                         : "border-[#CCC]"
                     }`}
                 >

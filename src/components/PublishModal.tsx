@@ -637,13 +637,13 @@ export default function PublishModal({
                             ? "text-[#B8860B]"
                             : step.status === "skipped"
                               ? "text-[#BBB]"
-                              : "text-[#999]"
+                              : "text-[#777]"
                   }`}
                 >
                   {step.label}
                 </span>
                 {step.detail && (
-                  <span className="text-[11px] text-[#999] ml-2">
+                  <span className="text-[11px] text-[#777] ml-2">
                     {step.detail}
                   </span>
                 )}
@@ -672,8 +672,8 @@ export default function PublishModal({
                   runPublish();
                 }, 0);
               }}
-              className="px-4 py-2 text-sm font-semibold text-white bg-[#1a1a1a] rounded-btn
-                         hover:bg-[#333] transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-[#1A1A1A] bg-[#F0F0F0] border border-[#E0E0E0] rounded-btn
+                         hover:bg-[#E0E0E0] transition-colors"
             >
               Retry
             </button>
@@ -685,7 +685,7 @@ export default function PublishModal({
             }}
             className={`px-4 py-2 text-sm font-semibold rounded-btn transition-colors ${
               finished
-                ? "bg-[#8CC644] text-white hover:bg-[#7AB800]"
+                ? "bg-[#8CC644] text-black hover:bg-[#7AB800]"
                 : "border border-[#E5E5E5] text-[#666] hover:border-[#CCC]"
             }`}
           >

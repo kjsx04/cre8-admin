@@ -140,7 +140,7 @@ export default function SchedulingAnimation({
                 <p className="text-xs text-red-500 pl-7">{apiError}</p>
                 <button
                   onClick={onRetry}
-                  className="ml-7 px-3 py-1 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-dark-gray transition-colors"
+                  className="ml-7 px-3 py-1 bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-xs font-medium rounded-btn hover:bg-[#E0E0E0] transition-colors"
                 >
                   Retry
                 </button>

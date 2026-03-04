@@ -25,14 +25,14 @@ export default function MarketingSidebar() {
               href={mod.href}
               className={`flex items-center gap-2.5 px-3 py-2 rounded-btn text-sm font-medium transition-colors duration-150
                 ${active
-                  ? "bg-charcoal text-white"
+                  ? "bg-[#F0F0F0] text-[#1A1A1A] border-l-2 border-green"
                   : "text-medium-gray hover:bg-light-gray hover:text-charcoal"
                 }`}
             >
               {/* Icon placeholder — simple letter badge */}
               <span
                 className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold
-                  ${active ? "bg-green text-white" : "bg-light-gray text-medium-gray"}`}
+                  ${active ? "bg-green text-black" : "bg-light-gray text-medium-gray"}`}
               >
                 {mod.icon}
               </span>

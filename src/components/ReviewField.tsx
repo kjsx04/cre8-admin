@@ -32,7 +32,7 @@ export default function ReviewField({
     <div className="flex flex-col gap-1">
       {/* Label + confidence flag */}
       <div className="flex items-center gap-2">
-        <label className="text-sm font-medium text-white">{variable.label}</label>
+        <label className="text-sm font-medium text-[#1A1A1A]">{variable.label}</label>
         {showWarning && (
           <span className="text-xs text-yellow-400 flex items-center gap-1" title="Review this field carefully">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -50,10 +50,10 @@ export default function ReviewField({
         type="text"
         value={variable.value}
         onChange={(e) => onChange(token, e.target.value)}
-        className={`w-full px-3 py-2 rounded-btn text-sm text-white
-          bg-dark-gray border transition-colors duration-200
+        className={`w-full px-3 py-2 rounded-btn text-sm text-[#1A1A1A]
+          bg-white border transition-colors duration-200
           focus:border-green
-          ${showWarning ? "border-yellow-500/50" : "border-border-gray"}
+          ${showWarning ? "border-yellow-500/50" : "border-[#E0E0E0]"}
         `}
       />
 

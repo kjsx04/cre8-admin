@@ -81,13 +81,13 @@ export default function FileUploadZone({
             <p className="text-sm text-[#333] font-medium truncate">
               {file.name}
             </p>
-            <p className="text-xs text-[#999] mt-0.5">Click to replace</p>
+            <p className="text-xs text-[#777] mt-0.5">Click to replace</p>
           </div>
         ) : hasExisting ? (
           <div>
             <div className="text-lg mb-1">&#128196;</div>
             <p className="text-sm text-[#333]">Existing file on record</p>
-            <p className="text-xs text-[#999] mt-0.5">Click to replace</p>
+            <p className="text-xs text-[#777] mt-0.5">Click to replace</p>
           </div>
         ) : (
           <div>

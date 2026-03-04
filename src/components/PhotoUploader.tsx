@@ -104,7 +104,7 @@ export default function PhotoUploader({
             ? `${photoCount} photo${photoCount > 1 ? "s" : ""} added — click to add more`
             : "Drop images here or click to browse"}
         </p>
-        <p className="text-xs text-[#999] mt-0.5">
+        <p className="text-xs text-[#777] mt-0.5">
           JPG, PNG accepted — max 4MB each
         </p>
       </div>

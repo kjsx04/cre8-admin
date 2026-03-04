@@ -22,8 +22,8 @@ export default function DocTypeCard({ docType }: DocTypeCardProps) {
       className={`text-left w-full p-6 rounded-card border transition-all duration-200
         ${
           docType.enabled
-            ? "bg-dark-gray border-border-gray hover:border-green cursor-pointer"
-            : "bg-charcoal border-border-gray opacity-50 cursor-not-allowed"
+            ? "bg-white border-[#E0E0E0] hover:border-green cursor-pointer"
+            : "bg-[#F5F5F5] border-[#E0E0E0] opacity-50 cursor-not-allowed"
         }`}
     >
       {/* Coming Soon indicator for disabled cards */}
@@ -32,7 +32,7 @@ export default function DocTypeCard({ docType }: DocTypeCardProps) {
       )}
 
       {/* Name */}
-      <h3 className="text-white font-semibold text-lg mb-1">{docType.name}</h3>
+      <h3 className="text-[#1A1A1A] font-semibold text-lg mb-1">{docType.name}</h3>
 
       {/* Description */}
       <p className="text-medium-gray text-sm">{docType.description}</p>

@@ -230,8 +230,8 @@ export default function CampaignForm({
                       onClick={() => setCampaignCategory(cat.id)}
                       className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
                         ${campaignCategory === cat.id
-                          ? "bg-charcoal text-white"
-                          : "bg-light-gray text-medium-gray hover:text-charcoal"
+                          ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
+                          : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
                         }`}
                     >
                       {cat.label}
@@ -291,8 +291,8 @@ export default function CampaignForm({
                       onClick={() => setCampaignType(t)}
                       className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
                         ${campaignType === t
-                          ? "bg-charcoal text-white"
-                          : "bg-light-gray text-medium-gray hover:text-charcoal"
+                          ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
+                          : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
                         }`}
                     >
                       {t === "one-time" ? "One-Time" : "Recurring"}
@@ -313,8 +313,8 @@ export default function CampaignForm({
                       onClick={() => setTemplateStyle(style.id)}
                       className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
                         ${templateStyle === style.id
-                          ? "bg-charcoal text-white"
-                          : "bg-light-gray text-medium-gray hover:text-charcoal"
+                          ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
+                          : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
                         }`}
                     >
                       {style.label}

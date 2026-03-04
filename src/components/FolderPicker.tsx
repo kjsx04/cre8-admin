@@ -91,15 +91,15 @@ export default function FolderPicker({
     >
       {/* Modal */}
       <div
-        className="bg-charcoal border border-border-gray rounded-card w-full max-w-md max-h-[70vh] flex flex-col"
+        className="bg-white border border-[#E0E0E0] rounded-card w-full max-w-md max-h-[70vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="p-4 border-b border-border-gray flex items-center justify-between">
-          <h2 className="font-bebas text-xl tracking-wide text-white">CHOOSE FOLDER</h2>
+        <div className="p-4 border-b border-[#E0E0E0] flex items-center justify-between">
+          <h2 className="font-bebas text-xl tracking-wide text-[#1A1A1A]">CHOOSE FOLDER</h2>
           <button
             onClick={onClose}
-            className="text-medium-gray hover:text-white transition-colors"
+            className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -109,7 +109,7 @@ export default function FolderPicker({
         </div>
 
         {/* Breadcrumb path */}
-        <div className="px-4 py-2 border-b border-border-gray flex items-center gap-1 text-xs overflow-x-auto">
+        <div className="px-4 py-2 border-b border-[#E0E0E0] flex items-center gap-1 text-xs overflow-x-auto">
           <button
             onClick={() => setBrowsePath("")}
             className="text-medium-gray hover:text-green transition-colors flex-shrink-0"
@@ -118,7 +118,7 @@ export default function FolderPicker({
           </button>
           {pathSegments.map((seg, i) => (
             <span key={i} className="flex items-center gap-1 flex-shrink-0">
-              <span className="text-border-gray">/</span>
+              <span className="text-[#CCCCCC]">/</span>
               <button
                 onClick={() => setBrowsePath(pathSegments.slice(0, i + 1).join("/"))}
                 className="text-medium-gray hover:text-green transition-colors"
@@ -135,7 +135,7 @@ export default function FolderPicker({
           {browsePath && (
             <button
               onClick={navigateUp}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-dark-gray transition-colors text-left"
+              className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-[#F5F5F5] transition-colors text-left"
             >
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
                 <polyline points="15 18 9 12 15 6" />
@@ -164,7 +164,7 @@ export default function FolderPicker({
               <button
                 key={folder.id}
                 onClick={() => navigateInto(folder.name)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-dark-gray transition-colors text-left"
+                className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-[#F5F5F5] transition-colors text-left"
               >
                 {/* Folder icon */}
                 <svg
@@ -180,13 +180,13 @@ export default function FolderPicker({
                 >
                   <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                 </svg>
-                <span className="text-white text-sm truncate">{folder.name}</span>
+                <span className="text-[#1A1A1A] text-sm truncate">{folder.name}</span>
               </button>
             ))}
         </div>
 
         {/* Footer — select this folder */}
-        <div className="p-4 border-t border-border-gray">
+        <div className="p-4 border-t border-[#E0E0E0]">
           <button
             onClick={selectCurrent}
             className="w-full bg-green text-black font-semibold text-sm py-2.5 rounded-btn

@@ -114,14 +114,14 @@ function CollapsibleSection({
   return (
     <div
       ref={(el) => sectionRef?.(section.title, el)}
-      className="bg-dark-gray border border-border-gray rounded-card overflow-hidden"
+      className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden"
     >
       {/* Section header — click to expand/collapse */}
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-charcoal transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
       >
-        <span className="text-white text-sm font-semibold">{section.title}</span>
+        <span className="text-[#1A1A1A] text-sm font-semibold">{section.title}</span>
         <div className="flex items-center gap-2">
           <span className="text-medium-gray text-xs">
             {filledCount}/{editableTokens.length}
@@ -164,7 +164,7 @@ function CollapsibleSection({
                   {label}
                   {/* Small hint for dollar fields: formatting happens when you leave the input */}
                   {isDollar && (
-                    <span className="text-border-gray ml-1 font-normal">
+                    <span className="text-[#777] ml-1 font-normal">
                       — type number, formats on exit
                     </span>
                   )}
@@ -176,12 +176,12 @@ function CollapsibleSection({
                     onChange={(e) => onFieldChange(token, e.target.value)}
                     onBlur={() => onFieldBlur(token)}
                     placeholder={isDollar ? "e.g. 2500000" : ""}
-                    className={`flex-1 bg-charcoal border rounded px-3 py-1.5
-                               text-white text-sm transition-all duration-300
+                    className={`flex-1 bg-white border rounded px-3 py-1.5
+                               text-[#1A1A1A] text-sm transition-all duration-300
                                focus:border-green
                                ${isFilling
                                  ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]"
-                                 : "border-border-gray"
+                                 : "border-[#E0E0E0]"
                                }`}
                   />
                   {/* Verification checkmark — strict mode only */}
@@ -197,7 +197,7 @@ function CollapsibleSection({
                       }
                       className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200
                         ${!hasFillValue
-                          ? "bg-charcoal border border-border-gray text-border-gray cursor-not-allowed"
+                          ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
                           : isVerified
                             ? "bg-green/15 border border-green text-green hover:bg-green/25"
                             : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
@@ -318,16 +318,16 @@ function SellerBrokerTypeahead({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           placeholder="Search seller broker..."
-          className="w-full bg-charcoal border border-border-gray rounded px-3 py-1.5 pr-7
-                     text-white text-sm focus:border-green transition-colors
-                     placeholder:text-border-gray"
+          className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5 pr-7
+                     text-[#1A1A1A] text-sm focus:border-green transition-colors
+                     placeholder:text-[#777]"
         />
         {/* Clear button (X) — only shows when there's text */}
         {query && (
           <button
             type="button"
             onClick={clearSelection}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-medium-gray hover:text-white transition-colors"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-medium-gray hover:text-[#1A1A1A] transition-colors"
           >
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -339,7 +339,7 @@ function SellerBrokerTypeahead({
 
       {/* Dropdown results */}
       {isOpen && filtered.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-charcoal border border-border-gray rounded shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-white border border-[#E0E0E0] rounded shadow-lg max-h-64 overflow-y-auto">
           {filtered.map((broker, idx) => (
             <button
               key={`${broker.name}-${broker.company}`}
@@ -348,10 +348,10 @@ function SellerBrokerTypeahead({
               onClick={() => selectBroker(broker)}
               onMouseEnter={() => setHighlightIdx(idx)}
               className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors ${
-                idx === highlightIdx ? "bg-dark-gray" : "hover:bg-dark-gray"
+                idx === highlightIdx ? "bg-[#F5F5F5]" : "hover:bg-[#F5F5F5]"
               }`}
             >
-              <span className="text-white truncate">{broker.name}</span>
+              <span className="text-[#1A1A1A] truncate">{broker.name}</span>
               <span className="text-medium-gray text-xs ml-2 truncate max-w-[45%] text-right">{broker.company}</span>
             </button>
           ))}
@@ -384,12 +384,12 @@ function CmsDropdowns({
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className="bg-dark-gray border border-border-gray rounded-card overflow-hidden">
+    <div className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden">
       <button
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-charcoal transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
       >
-        <span className="text-white text-sm font-semibold">Brokers & Listing</span>
+        <span className="text-[#1A1A1A] text-sm font-semibold">Brokers & Listing</span>
         <svg
           width="14"
           height="14"
@@ -414,8 +414,8 @@ function CmsDropdowns({
               value={selectedCre8Broker}
               onChange={(e) => onCre8BrokerChange(e.target.value)}
               disabled={loadingCms}
-              className="w-full bg-charcoal border border-border-gray rounded px-3 py-1.5
-                         text-white text-sm focus:border-green transition-colors
+              className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5
+                         text-[#1A1A1A] text-sm focus:border-green transition-colors
                          disabled:opacity-50"
             >
               <option value="">Select broker...</option>
@@ -428,7 +428,7 @@ function CmsDropdowns({
           {/* Seller Broker — searchable typeahead */}
           <div>
             <label className="block text-medium-gray text-xs mb-1">
-              Seller Broker <span className="text-border-gray">(optional)</span>
+              Seller Broker <span className="text-[#777]">(optional)</span>
             </label>
             <SellerBrokerTypeahead onSelect={onSellerBrokerChange} />
           </div>
@@ -436,14 +436,14 @@ function CmsDropdowns({
           {/* CRE8 Listing */}
           <div>
             <label className="block text-medium-gray text-xs mb-1">
-              CRE8 Listing <span className="text-border-gray">(pre-fills address)</span>
+              CRE8 Listing <span className="text-[#777]">(pre-fills address)</span>
             </label>
             <select
               value={selectedListing}
               onChange={(e) => onListingChange(e.target.value)}
               disabled={loadingCms}
-              className="w-full bg-charcoal border border-border-gray rounded px-3 py-1.5
-                         text-white text-sm focus:border-green transition-colors
+              className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5
+                         text-[#1A1A1A] text-sm focus:border-green transition-colors
                          disabled:opacity-50"
             >
               <option value="">None</option>
@@ -597,7 +597,7 @@ function FieldSidebar({
                       aria-checked={includeParcelMap}
                       onClick={onToggleParcelMap}
                       className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${
-                        includeParcelMap ? "bg-green" : "bg-dark-gray border border-border-gray"
+                        includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"
                       }`}
                     >
                       <span
@@ -606,11 +606,11 @@ function FieldSidebar({
                         }`}
                       />
                     </button>
-                    <span className="text-xs text-medium-gray group-hover:text-white transition-colors">
+                    <span className="text-xs text-medium-gray group-hover:text-[#1A1A1A] transition-colors">
                       Attach parcel map to document
                     </span>
                   </label>
-                  <p className="text-[10px] text-border-gray leading-tight pl-10">
+                  <p className="text-[10px] text-[#777] leading-tight pl-10">
                     Satellite image of the selected parcel(s) will appear at the end of the downloaded document.
                   </p>
                 </div>
@@ -1755,7 +1755,7 @@ export default function CompletePage() {
             <button
               onClick={() => setShowFolderPicker(true)}
               disabled={!driveId || !accessToken}
-              className="text-green text-sm hover:underline disabled:text-border-gray disabled:cursor-not-allowed flex-shrink-0"
+              className="text-green text-sm hover:underline disabled:text-[#777] disabled:cursor-not-allowed flex-shrink-0"
             >
               {driveId && accessToken ? "Change" : "Loading..."}
             </button>
@@ -1766,7 +1766,7 @@ export default function CompletePage() {
             <button
               onClick={downloadFile}
               disabled={!fileBase64 || isExporting}
-              className="bg-dark-gray border border-border-gray text-white font-semibold text-sm px-5 py-2.5 rounded-btn
+              className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
                          hover:border-green transition-colors duration-200
                          disabled:opacity-50 disabled:cursor-not-allowed
                          flex items-center gap-2"
@@ -1846,7 +1846,7 @@ export default function CompletePage() {
               href={sharePointUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-dark-gray border border-border-gray text-white font-semibold text-sm px-5 py-2.5 rounded-btn
+              className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
                          hover:border-green transition-colors duration-200
                          flex items-center gap-2"
             >
@@ -1854,7 +1854,7 @@ export default function CompletePage() {
             </a>
             <button
               onClick={() => router.push("/docs")}
-              className="text-medium-gray text-sm hover:text-white transition-colors px-3 py-2.5"
+              className="text-medium-gray text-sm hover:text-[#1A1A1A] transition-colors px-3 py-2.5"
             >
               New
             </button>
@@ -1888,7 +1888,7 @@ export default function CompletePage() {
           </button>
           <button
             onClick={downloadFile}
-            className="bg-dark-gray border border-border-gray text-white font-semibold text-sm px-5 py-2.5 rounded-btn
+            className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
                        hover:border-green transition-colors duration-200"
           >
             Download Instead
@@ -1902,7 +1902,7 @@ export default function CompletePage() {
   // ── Render ──
   // ══════════════════════════════════════════════════
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] bg-black">
+    <div className="flex flex-col h-[calc(100vh-56px)] bg-[#F5F5F5]">
       {/* AI fill animation styles */}
       <style jsx global>{`
         .ai-filling input {
@@ -1915,18 +1915,18 @@ export default function CompletePage() {
       `}</style>
 
       {/* Header bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-border-gray flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-[#E0E0E0] flex-shrink-0">
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push("/docs")}
-            className="text-medium-gray hover:text-white transition-colors"
+            className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
             title="Back to documents"
           >
             <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M10 12L6 8L10 4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <h1 className="font-bebas text-2xl tracking-wide text-white">
+          <h1 className="font-bebas text-2xl tracking-wide text-[#1A1A1A]">
             DOCUMENT <span className="text-green">EDITOR</span>
           </h1>
         </div>
@@ -1936,12 +1936,12 @@ export default function CompletePage() {
       {/* ── Mobile tab bar — only visible on small screens ──
            Lets users switch between the edit form and the document preview.
            On desktop (lg+) both panes are always visible side by side. */}
-      <div className="flex lg:hidden border-b border-border-gray flex-shrink-0">
+      <div className="flex lg:hidden border-b border-[#E0E0E0] flex-shrink-0">
         <button
           onClick={() => setMobileTab("form")}
           className={`flex-1 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
             mobileTab === "form"
-              ? "text-white border-green"
+              ? "text-[#1A1A1A] border-green"
               : "text-medium-gray border-transparent"
           }`}
         >
@@ -1951,7 +1951,7 @@ export default function CompletePage() {
           onClick={() => setMobileTab("preview")}
           className={`flex-1 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
             mobileTab === "preview"
-              ? "text-white border-green"
+              ? "text-[#1A1A1A] border-green"
               : "text-medium-gray border-transparent"
           }`}
         >
@@ -1975,10 +1975,10 @@ export default function CompletePage() {
         >
           {/* Regenerating overlay */}
           {isRegenerating && (
-            <div className="absolute inset-0 bg-black/40 z-20 flex items-center justify-center rounded-lg">
-              <div className="flex items-center gap-3 bg-charcoal px-5 py-3 rounded-card border border-border-gray">
+            <div className="absolute inset-0 bg-white/60 z-20 flex items-center justify-center rounded-lg">
+              <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-card border border-[#E0E0E0] shadow-lg">
                 <div className="w-5 h-5 border-2 border-green border-t-transparent rounded-full animate-spin" />
-                <span className="text-white text-sm">Updating...</span>
+                <span className="text-[#1A1A1A] text-sm">Updating...</span>
               </div>
             </div>
           )}
@@ -2000,14 +2000,14 @@ export default function CompletePage() {
 
           {/* Parcel map placeholder — shown when a map image is captured and toggle is on */}
           {fileBase64 && parcelMapImage && includeParcelMap && (
-            <div className="mt-3 border border-dashed border-border-gray rounded-card px-4 py-3 flex items-center gap-3 bg-charcoal/50">
+            <div className="mt-3 border border-dashed border-[#E0E0E0] rounded-card px-4 py-3 flex items-center gap-3 bg-[#F5F5F5]">
               {/* Map pin icon */}
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
                 <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
                 <circle cx="12" cy="10" r="3" />
               </svg>
               <div>
-                <p className="text-white text-xs font-medium">Parcel map image will be included at the end of the document</p>
+                <p className="text-[#1A1A1A] text-xs font-medium">Parcel map image will be included at the end of the document</p>
                 <p className="text-medium-gray text-[10px] leading-tight mt-0.5">
                   Not shown in preview — appears in downloaded and saved files only.
                 </p>
@@ -2037,7 +2037,7 @@ export default function CompletePage() {
              On mobile: only visible when mobileTab === "form"
              On desktop: always visible */}
         <div
-          className={`lg:w-[35%] w-full border-t lg:border-t-0 lg:border-l border-border-gray overflow-y-auto p-4
+          className={`lg:w-[35%] w-full border-t lg:border-t-0 lg:border-l border-[#E0E0E0] overflow-y-auto p-4
             ${mobileTab === "form" ? "block" : "hidden lg:block"}`}
         >
           <FieldSidebar
@@ -2079,7 +2079,7 @@ export default function CompletePage() {
       </div>
 
       {/* Bottom bar — full width, always visible */}
-      <div className="border-t border-border-gray px-6 py-3 flex-shrink-0 bg-charcoal">
+      <div className="border-t border-[#E0E0E0] px-6 py-3 flex-shrink-0 bg-white">
         <BottomBar />
       </div>
 
@@ -2102,11 +2102,11 @@ export default function CompletePage() {
           <div className="absolute inset-0 bg-black/60" onClick={() => setShowMapPreview(false)} />
 
           {/* Modal — 80% of viewport */}
-          <div className="relative bg-charcoal rounded-card border border-border-gray flex flex-col"
+          <div className="relative bg-white rounded-card border border-[#E0E0E0] flex flex-col"
                style={{ width: "80vw", height: "80vh" }}>
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-border-gray shrink-0">
-              <h3 className="text-white font-semibold text-sm">Parcel Map Preview</h3>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-[#E0E0E0] shrink-0">
+              <h3 className="text-[#1A1A1A] font-semibold text-sm">Parcel Map Preview</h3>
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => {
@@ -2125,7 +2125,7 @@ export default function CompletePage() {
                 </button>
                 <button
                   onClick={() => setShowMapPreview(false)}
-                  className="text-medium-gray hover:text-white text-xl transition-colors"
+                  className="text-medium-gray hover:text-[#1A1A1A] text-xl transition-colors"
                 >
                   &times;
                 </button>

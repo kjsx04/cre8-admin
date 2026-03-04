@@ -115,7 +115,7 @@ export default function ListingMapPicker({
 
       {/* Lat/lng display */}
       {latitude != null && longitude != null && (
-        <div className="flex items-center gap-4 mt-2 text-xs text-[#999]">
+        <div className="flex items-center gap-4 mt-2 text-xs text-[#777]">
           <span>
             Lat: <span className="text-[#333] font-medium">{latitude.toFixed(6)}</span>
           </span>
@@ -133,7 +133,7 @@ export default function ListingMapPicker({
         </div>
       )}
       {latitude == null && (
-        <p className="text-xs text-[#999] mt-2">
+        <p className="text-xs text-[#777] mt-2">
           Click the map to place a pin
         </p>
       )}

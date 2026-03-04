@@ -36,8 +36,8 @@ export default function ClauseCard({
     <div
       className={`border rounded-card p-4 transition-all duration-200 ${
         clause.included
-          ? "border-border-gray bg-dark-gray"
-          : "border-border-gray/50 bg-charcoal opacity-60"
+          ? "border-[#E0E0E0] bg-white"
+          : "border-[#E0E0E0]/50 bg-[#F5F5F5] opacity-60"
       }`}
     >
       {/* Header row */}
@@ -68,7 +68,7 @@ export default function ClauseCard({
           <div className="flex-1">
             {/* Clause name + source badge */}
             <div className="flex items-center gap-2 mb-1">
-              <span className="text-white text-sm font-semibold">{clause.label}</span>
+              <span className="text-[#1A1A1A] text-sm font-semibold">{clause.label}</span>
               <span className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass}`}>
                 {sourceLabel}
               </span>
@@ -109,7 +109,7 @@ export default function ClauseCard({
                 type="text"
                 value={value}
                 onChange={(e) => onVariableChange(clause.id, varToken, e.target.value)}
-                className="px-2 py-1 text-xs bg-charcoal border border-border-gray rounded text-white
+                className="px-2 py-1 text-xs bg-white border border-[#E0E0E0] rounded text-[#1A1A1A]
                            focus:border-green transition-colors w-32"
               />
             </div>
@@ -122,7 +122,7 @@ export default function ClauseCard({
         <div className="mt-3 ml-8 flex items-center gap-3">
           <button
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-medium-gray hover:text-white transition-colors flex items-center gap-1"
+            className="text-xs text-medium-gray hover:text-[#1A1A1A] transition-colors flex items-center gap-1"
           >
             <svg
               width="12"
@@ -157,11 +157,11 @@ export default function ClauseCard({
               value={clause.text}
               onChange={(e) => onTextChange(clause.id, e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 text-xs bg-charcoal border border-border-gray rounded
-                         text-white focus:border-green transition-colors font-dm leading-relaxed"
+              className="w-full px-3 py-2 text-xs bg-white border border-[#E0E0E0] rounded
+                         text-[#1A1A1A] focus:border-green transition-colors font-dm leading-relaxed"
             />
           ) : (
-            <p className="text-xs text-medium-gray leading-relaxed bg-charcoal rounded p-3">
+            <p className="text-xs text-medium-gray leading-relaxed bg-[#F5F5F5] rounded p-3">
               {clause.text}
             </p>
           )}

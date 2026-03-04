@@ -117,15 +117,15 @@ export default function AIAssistBar({
   }
 
   return (
-    <div className="bg-dark-gray border border-border-gray rounded-card overflow-hidden">
+    <div className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden">
       {/* Header — click to expand/collapse */}
       <button
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-charcoal transition-colors"
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
       >
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-green" />
-          <span className="text-white text-sm font-semibold">AI ASSIST</span>
+          <span className="text-[#1A1A1A] text-sm font-semibold">AI ASSIST</span>
         </div>
         <svg
           width="14"
@@ -156,8 +156,8 @@ export default function AIAssistBar({
             }
             rows={3}
             disabled={isExtracting}
-            className="w-full bg-charcoal border border-border-gray rounded px-3 py-2
-                       text-white text-sm placeholder:text-medium-gray
+            className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-2
+                       text-[#1A1A1A] text-sm placeholder:text-medium-gray
                        focus:border-green transition-colors resize-y leading-relaxed
                        disabled:opacity-50"
           />
@@ -193,8 +193,8 @@ export default function AIAssistBar({
             {/* Photo button — file input for image/document */}
             <label
               title="Upload photo or document"
-              className={`bg-charcoal border border-border-gray text-medium-gray p-2 rounded-btn
-                         hover:border-green hover:text-white transition-colors cursor-pointer
+              className={`bg-[#F0F0F0] border border-[#E0E0E0] text-medium-gray p-2 rounded-btn
+                         hover:border-green hover:text-[#1A1A1A] transition-colors cursor-pointer
                          ${isExtracting ? "opacity-40 pointer-events-none" : ""}`}
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

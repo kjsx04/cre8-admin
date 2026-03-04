@@ -177,7 +177,7 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="px-6 py-4" style={{ fontFamily: "'Barlow', sans-serif" }}>
+      <div className="px-6 py-4">
         {/* ---- Page heading ---- */}
         <h1 className="text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
 
@@ -193,7 +193,7 @@ export default function DashboardPage() {
                   ${
                     activeStatus === tab
                       ? "bg-white text-[#1a1a1a] border border-[#E5E5E5] shadow-sm"
-                      : "text-[#999] hover:text-[#333] border border-transparent"
+                      : "text-[#777] hover:text-[#333] border border-transparent"
                   }`}
               >
                 {tab}
@@ -237,7 +237,7 @@ export default function DashboardPage() {
                       className={`w-4 h-4 rounded-sm border-[1.5px] flex items-center justify-center flex-shrink-0 text-[11px]
                         ${
                           activePropertyTypes.includes(name)
-                            ? "bg-green border-green text-white"
+                            ? "bg-green border-green text-black"
                             : "border-[#CCC]"
                         }`}
                     >
@@ -252,7 +252,7 @@ export default function DashboardPage() {
                       e.stopPropagation();
                       setActivePropertyTypes([]);
                     }}
-                    className="w-full text-center text-[11px] text-[#999] hover:text-[#CC3333] py-2 border-t border-[#F0F0F0] mt-1 transition-colors"
+                    className="w-full text-center text-[11px] text-[#777] hover:text-[#CC3333] py-2 border-t border-[#F0F0F0] mt-1 transition-colors"
                   >
                     Clear filter
                   </button>
@@ -296,7 +296,7 @@ export default function DashboardPage() {
                       className={`w-4 h-4 rounded-sm border-[1.5px] flex items-center justify-center flex-shrink-0 text-[11px]
                         ${
                           activeBrokers.includes(name)
-                            ? "bg-green border-green text-white"
+                            ? "bg-green border-green text-black"
                             : "border-[#CCC]"
                         }`}
                     >
@@ -311,7 +311,7 @@ export default function DashboardPage() {
                       e.stopPropagation();
                       setActiveBrokers([]);
                     }}
-                    className="w-full text-center text-[11px] text-[#999] hover:text-[#CC3333] py-2 border-t border-[#F0F0F0] mt-1 transition-colors"
+                    className="w-full text-center text-[11px] text-[#777] hover:text-[#CC3333] py-2 border-t border-[#F0F0F0] mt-1 transition-colors"
                   >
                     Clear filter
                   </button>
@@ -321,7 +321,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Listing count */}
-          <span className="text-sm text-[#999] whitespace-nowrap">
+          <span className="text-sm text-[#777] whitespace-nowrap">
             {filteredItems.length === items.length
               ? `All ${items.length}`
               : `${filteredItems.length} of ${items.length}`}
@@ -335,12 +335,12 @@ export default function DashboardPage() {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-white border border-[#E5E5E5] rounded-btn px-3 py-1.5 text-sm text-[#333]
-                         placeholder:text-[#999] outline-none focus:border-green transition-colors w-52"
+                         placeholder:text-[#777] outline-none focus:border-green transition-colors w-52"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
-                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#999] hover:text-[#333] text-xs"
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-[#777] hover:text-[#333] text-xs"
               >
                 ✕
               </button>
@@ -370,7 +370,7 @@ export default function DashboardPage() {
               (col) => (
                 <div
                   key={col}
-                  className="text-[11px] font-semibold text-[#999] uppercase tracking-wider"
+                  className="text-[11px] font-semibold text-[#777] uppercase tracking-wider"
                 >
                   {col}
                 </div>
@@ -382,7 +382,7 @@ export default function DashboardPage() {
           <div ref={tbodyRef} className="overflow-y-auto">
             {/* Loading state */}
             {loading && (
-              <div className="flex items-center justify-center py-12 text-[#999] text-sm">
+              <div className="flex items-center justify-center py-12 text-[#777] text-sm">
                 <div className="w-[18px] h-[18px] border-2 border-[#E5E5E5] border-t-green rounded-full animate-spin mr-2.5" />
                 Loading listings...
               </div>
@@ -395,7 +395,7 @@ export default function DashboardPage() {
                 <br />
                 <button
                   onClick={fetchListings}
-                  className="mt-2.5 px-4 py-1.5 rounded bg-[#1a1a1a] text-white text-[13px] hover:bg-[#333] transition-colors"
+                  className="mt-2.5 px-4 py-1.5 rounded bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-[13px] hover:bg-[#E0E0E0] transition-colors"
                 >
                   Retry
                 </button>
@@ -404,7 +404,7 @@ export default function DashboardPage() {
 
             {/* Empty state */}
             {!loading && !error && filteredItems.length === 0 && (
-              <div className="text-center py-12 text-[#999] text-sm">
+              <div className="text-center py-12 text-[#777] text-sm">
                 No listings match your filters
               </div>
             )}

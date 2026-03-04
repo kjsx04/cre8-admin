@@ -43,7 +43,7 @@ export default function DocsPage() {
           <img src="/cre8-logo.svg" alt="CRE8" className="h-7 w-auto" />
           <span className="font-bebas text-[24px] tracking-wide text-[#1a1a1a]">Docs</span>
         </div>
-        <p className="text-[#999] text-sm">
+        <p className="text-[#777] text-sm">
           Select a document type to get started.
         </p>
       </div>
@@ -53,7 +53,7 @@ export default function DocsPage() {
         {CATEGORIES.map((cat) => (
           <div key={cat.label}>
             {/* Category heading */}
-            <h2 className="text-xs font-semibold uppercase tracking-widest text-[#999] mb-2 px-1">
+            <h2 className="text-xs font-semibold uppercase tracking-widest text-[#777] mb-2 px-1">
               {cat.label}
             </h2>
 
@@ -76,7 +76,7 @@ export default function DocsPage() {
                     <div className="flex items-center gap-2">
                       {/* "Coming Soon" badge for disabled items */}
                       {!enabled && (
-                        <span className="text-[10px] text-[#999] uppercase tracking-wide">
+                        <span className="text-[10px] text-[#777] uppercase tracking-wide">
                           Coming Soon
                         </span>
                       )}
@@ -86,7 +86,7 @@ export default function DocsPage() {
                         height="14"
                         viewBox="0 0 16 16"
                         fill="none"
-                        className={enabled ? "text-[#999]" : "text-[#CCC]"}
+                        className={enabled ? "text-[#777]" : "text-[#CCC]"}
                       >
                         <path
                           d="M6 12L10 8L6 4"

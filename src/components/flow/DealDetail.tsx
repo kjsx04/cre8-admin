@@ -70,15 +70,15 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
 
         {/* Panel */}
         <div className="relative bg-light-gray w-full max-w-lg overflow-y-auto">
-          {/* Header — dark chrome */}
-          <div className="sticky top-0 bg-charcoal px-6 py-5 z-10">
+          {/* Header */}
+          <div className="sticky top-0 bg-white border-b border-[#E0E0E0] px-6 py-5 z-10">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h2 className="font-bebas text-2xl tracking-wide text-white truncate">
+                <h2 className="font-bebas text-2xl tracking-wide text-[#1A1A1A] truncate">
                   {deal.deal_name}
                 </h2>
                 {deal.property_address && (
-                  <p className="text-sm text-white/50 truncate">{deal.property_address}</p>
+                  <p className="text-sm text-[rgba(0,0,0,0.45)] truncate">{deal.property_address}</p>
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
@@ -87,7 +87,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
                 </span>
                 <button
                   onClick={onClose}
-                  className="text-white/50 hover:text-white transition-colors p-1"
+                  className="text-muted-gray hover:text-charcoal transition-colors p-1"
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                     <path d="M18 6L6 18M6 6l12 12" />
@@ -101,8 +101,8 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setEditing(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-border-gray text-white rounded-btn
-                             hover:border-white/50 transition-colors duration-200"
+                  className="px-3 py-1.5 text-xs font-medium border border-[#E0E0E0] text-[#1A1A1A] rounded-btn
+                             hover:border-[#999] transition-colors duration-200"
                 >
                   Edit
                 </button>

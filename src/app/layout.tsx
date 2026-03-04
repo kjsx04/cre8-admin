@@ -29,11 +29,11 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Google Fonts: Bebas Neue + Barlow */}
+        {/* Google Fonts: Bebas Neue + DM Sans */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
-          href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600;700&display=swap"
           rel="stylesheet"
         />
         {/* Mapbox GL CSS — used by ParcelPickerModal (must match installed version) */}
@@ -49,7 +49,7 @@ export default function RootLayout({
           <MsalProvider instance={msalInstance}>{children}</MsalProvider>
         ) : (
           /* Loading screen while MSAL initializes */
-          <div className="min-h-screen bg-black flex items-center justify-center">
+          <div className="min-h-screen bg-white flex items-center justify-center">
             <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
           </div>
         )}

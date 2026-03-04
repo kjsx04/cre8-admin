@@ -247,14 +247,14 @@ export default function EmailPage() {
             <button
               onClick={() => setViewMode("calendar")}
               className={`px-3 py-1.5 text-xs font-medium transition-colors
-                ${viewMode === "calendar" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal"}`}
+                ${viewMode === "calendar" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"}`}
             >
               Calendar
             </button>
             <button
               onClick={() => setViewMode("list")}
               className={`px-3 py-1.5 text-xs font-medium transition-colors
-                ${viewMode === "list" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal"}`}
+                ${viewMode === "list" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"}`}
             >
               List
             </button>
@@ -299,8 +299,8 @@ export default function EmailPage() {
                     onClick={() => setActiveTab(i)}
                     className={`px-3 py-1.5 text-sm font-medium rounded-btn transition-colors duration-150
                       ${activeTab === i
-                        ? "bg-charcoal text-white"
-                        : "text-muted-gray hover:text-charcoal hover:bg-light-gray"
+                        ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
+                        : "text-muted-gray hover:text-charcoal hover:bg-light-gray border border-transparent"
                       }`}
                   >
                     {tab.label}
