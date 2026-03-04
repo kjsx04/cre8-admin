@@ -19,6 +19,8 @@ import {
   getDropHighlightConfig,
   KanbanColumn,
 } from "@/lib/flow/utils";
+import { graphScopes } from "@/lib/msal-config";
+import { getSiteId, getDriveId, createDealFolder, uploadDealFile as uploadDealFileToSP } from "@/lib/graph";
 
 // Tab options for filtering deals
 const TABS: { label: string; statuses: DealStatus[] }[] = [
@@ -35,7 +37,7 @@ const COLUMN_TO_STATUS: Record<KanbanColumn, DealStatus> = {
 };
 
 export default function FlowPage() {
-  const { accounts } = useMsal();
+  const { instance, accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
 
   const [deals, setDeals] = useState<Deal[]>([]);
@@ -114,6 +116,40 @@ export default function FlowPage() {
     fetchDeals();
   }, [fetchDeals]);
 
+  // ── SharePoint deal file upload (fire-and-forget after deal save) ──
+  const uploadFileToSharePoint = useCallback(async (dealId: string, dealName: string, brokerName: string, file: File) => {
+    try {
+      const account = accounts[0];
+      if (!account) return;
+      const tokenResponse = await instance.acquireTokenSilent({ ...graphScopes, account });
+      const accessToken = tokenResponse.accessToken;
+
+      const siteId = await getSiteId(accessToken);
+      const driveId = await getDriveId(accessToken, siteId);
+
+      // Create deal folder (idempotent)
+      const folderUrl = await createDealFolder(accessToken, driveId, brokerName, dealName);
+
+      // Upload the file
+      const buffer = await file.arrayBuffer();
+      await uploadDealFileToSP(accessToken, driveId, brokerName, dealName, file.name, buffer, file.type || "application/octet-stream");
+
+      // Save the SharePoint folder URL on the deal (if we got one)
+      if (folderUrl) {
+        await fetch(`/api/flow/deals/${dealId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sharepoint_folder_url: folderUrl }),
+        });
+      }
+
+      console.log(`[Flow] File "${file.name}" uploaded to SharePoint for deal "${dealName}"`);
+    } catch (err) {
+      // Non-blocking — deal is already saved, file upload is best-effort
+      console.error("[Flow] SharePoint upload failed:", err);
+    }
+  }, [accounts, instance]);
+
   // ── Auto-move reconciliation — runs once after deals load ──
   useEffect(() => {
     if (loading || autoMoveRanRef.current || deals.length === 0) return;
@@ -182,8 +218,14 @@ export default function FlowPage() {
     runAutoMoves();
   }, [loading, deals, fetchDeals]);
 
+  // Get the logged-in broker's display name for SharePoint folder naming
+  const getBrokerName = useCallback(() => {
+    const broker = allBrokers.find((b) => b.id === brokerId);
+    return broker?.name || accounts[0]?.name || "Unknown";
+  }, [allBrokers, brokerId, accounts]);
+
   // Create a new deal (includes deal_dates as a separate array)
-  const handleCreate = async (data: DealFormData, dealDates?: DealDate[]) => {
+  const handleCreate = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     setSaving(true);
     try {
       const res = await fetch("/api/flow/deals", {
@@ -198,7 +240,14 @@ export default function FlowPage() {
         }),
       });
       if (!res.ok) throw new Error("Failed to create deal");
+      const createdDeal = await res.json();
       setShowNewForm(false);
+
+      // Fire-and-forget SharePoint upload if a file was dropped
+      if (pendingFile && createdDeal.id) {
+        uploadFileToSharePoint(createdDeal.id, data.deal_name, getBrokerName(), pendingFile);
+      }
+
       await fetchDeals();
     } catch (e) {
       console.error("Create failed:", e);
@@ -208,7 +257,7 @@ export default function FlowPage() {
   };
 
   // Update a deal (from DealDetail — edit, close, cancel, notes)
-  const handleUpdate = async (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[]) => {
+  const handleUpdate = async (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     try {
       const payload: Record<string, unknown> = { ...data };
       if (dealDates !== undefined) {
@@ -220,6 +269,13 @@ export default function FlowPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to update deal");
+
+      // Fire-and-forget SharePoint upload if a file was dropped
+      const dealName = (data as DealFormData).deal_name || selectedDeal?.deal_name || "Deal";
+      if (pendingFile) {
+        uploadFileToSharePoint(id, dealName, getBrokerName(), pendingFile);
+      }
+
       await fetchDeals();
       // Refresh the selected deal if it's the one we updated
       if (selectedDeal?.id === id) {
@@ -244,7 +300,7 @@ export default function FlowPage() {
   };
 
   // Save from the drop-triggered edit form — persist status + field changes
-  const handleDropSave = async (data: DealFormData, dealDates?: DealDate[]) => {
+  const handleDropSave = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     if (!dropEditDeal) return;
     setSaving(true);
     try {
@@ -261,6 +317,12 @@ export default function FlowPage() {
         body: JSON.stringify(payload),
       });
       if (!res.ok) throw new Error("Failed to update deal");
+
+      // Fire-and-forget SharePoint upload if a file was dropped
+      if (pendingFile) {
+        uploadFileToSharePoint(dropEditDeal.id, data.deal_name, getBrokerName(), pendingFile);
+      }
+
       setDropEditDeal(null);
       setDropTargetColumn(null);
       await fetchDeals();

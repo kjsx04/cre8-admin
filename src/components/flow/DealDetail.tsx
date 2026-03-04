@@ -1,8 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useMsal } from "@azure/msal-react";
 import { Deal, DealFormData, DealDate, Broker } from "@/lib/flow/types";
 import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS } from "@/lib/flow/utils";
+import { graphScopes } from "@/lib/msal-config";
+import { getSiteId, getDriveId, listFolderFiles, SharePointFile } from "@/lib/graph";
 import TimelineBar from "./TimelineBar";
 import CommissionCalc from "./CommissionCalc";
 import DealForm from "./DealForm";
@@ -12,11 +15,46 @@ interface DealDetailProps {
   deal: Deal;
   brokerId?: string;
   allBrokers?: Pick<Broker, "id" | "name" | "email">[];
-  onUpdate: (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[]) => Promise<void>;
+  onUpdate: (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[], pendingFile?: File) => Promise<void>;
   onClose: () => void;
 }
 
+// File type icon helper
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase() || "";
+  if (ext === "pdf") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="flex-shrink-0">
+        <rect x="4" y="2" width="16" height="20" rx="2" stroke="#DC2626" strokeWidth="1.5" />
+        <text x="12" y="15" textAnchor="middle" fill="#DC2626" fontSize="6" fontWeight="bold">PDF</text>
+      </svg>
+    );
+  }
+  if (ext === "docx" || ext === "doc") {
+    return (
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="flex-shrink-0">
+        <rect x="4" y="2" width="16" height="20" rx="2" stroke="#2563EB" strokeWidth="1.5" />
+        <text x="12" y="15" textAnchor="middle" fill="#2563EB" fontSize="5" fontWeight="bold">DOC</text>
+      </svg>
+    );
+  }
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5" className="flex-shrink-0">
+      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+      <polyline points="14 2 14 8 20 8" />
+    </svg>
+  );
+}
+
+// Format file size for display
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClose }: DealDetailProps) {
+  const { instance, accounts } = useMsal();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
@@ -24,12 +62,20 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
   const [notes, setNotes] = useState(deal.notes || "");
   const [notesSaving, setNotesSaving] = useState(false);
 
-  // Save edited deal (with deal_dates)
-  const handleSave = async (data: DealFormData, dealDates?: DealDate[]) => {
+  // Documents state
+  const [files, setFiles] = useState<SharePointFile[]>([]);
+  const [filesLoading, setFilesLoading] = useState(false);
+
+  // Save edited deal (with deal_dates + optional file for SharePoint upload)
+  const handleSave = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     setSaving(true);
-    await onUpdate(deal.id, data, dealDates);
+    await onUpdate(deal.id, data, dealDates, pendingFile);
     setSaving(false);
     setEditing(false);
+    // Re-fetch files after editing (a new file may have been uploaded)
+    if (pendingFile && deal.sharepoint_folder_url) {
+      setTimeout(() => fetchFiles(), 3000); // slight delay for SharePoint to process
+    }
   };
 
   // Close deal
@@ -58,6 +104,45 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
       setNotesSaving(false);
     }
   };
+
+  // ── Fetch files from the deal's SharePoint folder ──
+  const fetchFiles = useCallback(async () => {
+    if (!deal.sharepoint_folder_url) return;
+    const account = accounts[0];
+    if (!account) return;
+
+    setFilesLoading(true);
+    try {
+      const tokenResponse = await instance.acquireTokenSilent({ ...graphScopes, account });
+      const accessToken = tokenResponse.accessToken;
+      const siteId = await getSiteId(accessToken);
+      const driveId = await getDriveId(accessToken, siteId);
+
+      // Extract the folder path from the SharePoint URL
+      // URL format: https://cre8advisors.sharepoint.com/sites/CRE8Operations/Shared Documents/Deals/...
+      // We need the path after "Shared Documents/" or after the drive root
+      const url = new URL(deal.sharepoint_folder_url);
+      const pathMatch = url.pathname.match(/\/Shared%20Documents\/(.+)/i) || url.pathname.match(/\/Shared Documents\/(.+)/i);
+      let folderPath = "";
+      if (pathMatch) {
+        folderPath = decodeURIComponent(pathMatch[1]).replace(/\/+$/, "") + "/Documents";
+      }
+
+      if (folderPath) {
+        const result = await listFolderFiles(accessToken, driveId, folderPath);
+        setFiles(result);
+      }
+    } catch (err) {
+      console.error("[DealDetail] Failed to fetch files:", err);
+    } finally {
+      setFilesLoading(false);
+    }
+  }, [deal.sharepoint_folder_url, accounts, instance]);
+
+  // Fetch files on mount if deal has a SharePoint folder
+  useEffect(() => {
+    fetchFiles();
+  }, [fetchFiles]);
 
   const isActive = deal.status !== "closed" && deal.status !== "cancelled";
 
@@ -208,6 +293,83 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
                 </div>
               </div>
             </div>
+
+            {/* Documents — only show if deal has a SharePoint folder */}
+            {deal.sharepoint_folder_url && (
+              <div className="bg-white border border-border-light rounded-card p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="font-dm font-semibold text-sm text-charcoal">Documents</h3>
+                  <a
+                    href={deal.sharepoint_folder_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-green hover:underline"
+                  >
+                    Open in SharePoint
+                  </a>
+                </div>
+
+                {filesLoading ? (
+                  <div className="flex items-center gap-2 py-3">
+                    <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
+                    <span className="text-xs text-muted-gray">Loading files...</span>
+                  </div>
+                ) : files.length === 0 ? (
+                  <p className="text-xs text-muted-gray py-2">
+                    No documents yet — drop a file in the edit form to get started
+                  </p>
+                ) : (
+                  <div className="space-y-1">
+                    {files.map((file) => (
+                      <div
+                        key={file.id}
+                        className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-light-gray transition-colors"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileIcon name={file.name} />
+                          <div className="min-w-0">
+                            <p className="text-sm text-charcoal truncate">{file.name}</p>
+                            <p className="text-xs text-muted-gray">
+                              {formatFileSize(file.size)} · {new Date(file.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </p>
+                          </div>
+                        </div>
+                        {/* Download button */}
+                        {file.downloadUrl ? (
+                          <a
+                            href={file.downloadUrl}
+                            download={file.name}
+                            className="p-1 text-muted-gray hover:text-charcoal transition-colors flex-shrink-0"
+                            title="Download"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                              <polyline points="7 10 12 15 17 10" />
+                              <line x1="12" y1="15" x2="12" y2="3" />
+                            </svg>
+                          </a>
+                        ) : (
+                          <a
+                            href={file.webUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="p-1 text-muted-gray hover:text-charcoal transition-colors flex-shrink-0"
+                            title="Open in SharePoint"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                              <polyline points="15 3 21 3 21 9" />
+                              <line x1="10" y1="14" x2="21" y2="3" />
+                            </svg>
+                          </a>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Notes */}
             <div className="bg-white border border-border-light rounded-card p-4">

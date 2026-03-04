@@ -124,6 +124,7 @@ export async function POST(request: NextRequest) {
       listing_id: body.listing_id || null,
       parcel_number: body.parcel_number || null,
       additional_splits: body.additional_splits || [],
+      sharepoint_folder_url: body.sharepoint_folder_url || null,
     })
     .select()
     .single();

@@ -60,6 +60,7 @@ export interface Deal {
   additional_splits: AdditionalSplit[];  // extra commission deductions
   deal_dates?: DealDate[];         // dynamic critical dates (joined from deal_dates table)
   deal_members?: DealMember[];     // brokers assigned to this deal (joined from deal_members table)
+  sharepoint_folder_url?: string | null;  // URL to deal's SharePoint folder
   created_at: string;
   updated_at: string;
 }
@@ -104,6 +105,7 @@ export interface ExtractedDealData {
   effective_date?: string;
   escrow_open_date?: string;
   notes?: string;
+  document_type?: "loi" | "psa" | "other";  // AI-detected doc type
   // AI now extracts dates as milestone objects instead of day-count fields
   deal_dates?: { label: string; date?: string; offset_days?: number; offset_reference?: string }[];
 }
@@ -137,4 +139,16 @@ export interface CriticalDate {
   isPast: boolean;
   daysAway: number;          // negative = overdue
   urgency: "green" | "yellow" | "red" | "gray";
+}
+
+// ── File from a deal's SharePoint folder ──
+
+export interface DealFile {
+  id: string;
+  name: string;
+  webUrl: string;
+  size: number;
+  lastModified: string;
+  mimeType: string;
+  downloadUrl?: string;     // pre-authenticated temporary download link
 }

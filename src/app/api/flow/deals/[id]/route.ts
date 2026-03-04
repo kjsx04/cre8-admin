@@ -67,6 +67,7 @@ export async function PATCH(
   if (body.listing_id !== undefined) updates.listing_id = body.listing_id || null;
   if (body.parcel_number !== undefined) updates.parcel_number = body.parcel_number || null;
   if (body.additional_splits !== undefined) updates.additional_splits = body.additional_splits;
+  if (body.sharepoint_folder_url !== undefined) updates.sharepoint_folder_url = body.sharepoint_folder_url;
 
   // Update the deal record
   const { data: deal, error } = await supabase

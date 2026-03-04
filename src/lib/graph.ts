@@ -180,6 +180,121 @@ export async function createFolder(
 }
 
 /* ============================================================
+   DEAL-SPECIFIC HELPERS
+   ============================================================ */
+
+/**
+ * Create a SharePoint folder for a deal: /Deals/{brokerName}/{dealName}/Documents/
+ * Idempotent — handles 409 (already exists) gracefully.
+ * Returns the folder's web URL (or empty string if folder already existed).
+ */
+export async function createDealFolder(
+  accessToken: string,
+  driveId: string,
+  brokerName: string,
+  dealName: string
+): Promise<string> {
+  // Sanitize folder names — remove characters not allowed in SharePoint
+  const safeBroker = brokerName.replace(/[<>:"/\\|?*]/g, "").trim();
+  const safeDeal = dealName.replace(/[<>:"/\\|?*]/g, "").trim();
+
+  // Create parent folders: Deals → Deals/{broker} → Deals/{broker}/{deal}
+  await createFolder(accessToken, driveId, "", "Deals");
+  await createFolder(accessToken, driveId, "Deals", safeBroker);
+  const dealFolderUrl = await createFolder(accessToken, driveId, `Deals/${safeBroker}`, safeDeal);
+
+  // Create Documents subfolder
+  await createFolder(accessToken, driveId, `Deals/${safeBroker}/${safeDeal}`, "Documents");
+
+  // If deal folder already existed (409), build the URL from the path
+  if (!dealFolderUrl) {
+    // Folder already exists — construct a browse URL (won't have the exact webUrl, but close)
+    return "";
+  }
+  return dealFolderUrl;
+}
+
+/**
+ * Upload a file to a deal's SharePoint folder.
+ * Files under 4MB use simple PUT; larger files are rejected with a warning.
+ * Returns the uploaded file's web URL.
+ */
+export async function uploadDealFile(
+  accessToken: string,
+  driveId: string,
+  brokerName: string,
+  dealName: string,
+  fileName: string,
+  fileContent: ArrayBuffer,
+  contentType = "application/octet-stream"
+): Promise<string> {
+  // 4MB limit for simple PUT upload
+  if (fileContent.byteLength > 4 * 1024 * 1024) {
+    console.warn("[uploadDealFile] File exceeds 4MB — skipping upload. LOIs/PSAs are typically < 1MB.");
+    return "";
+  }
+
+  const safeBroker = brokerName.replace(/[<>:"/\\|?*]/g, "").trim();
+  const safeDeal = dealName.replace(/[<>:"/\\|?*]/g, "").trim();
+  const folderPath = `Deals/${safeBroker}/${safeDeal}/Documents/`;
+
+  return uploadToSharePoint(accessToken, "" /* siteId unused */, driveId, folderPath, fileName, fileContent, contentType);
+}
+
+/** Result type for files listed from a SharePoint folder */
+export interface SharePointFile {
+  id: string;
+  name: string;
+  webUrl: string;
+  size: number;
+  lastModified: string;
+  mimeType: string;
+  downloadUrl: string;
+}
+
+/**
+ * List files in a SharePoint folder.
+ * Returns files sorted by last modified (newest first).
+ */
+export async function listFolderFiles(
+  accessToken: string,
+  driveId: string,
+  folderPath: string
+): Promise<SharePointFile[]> {
+  const cleanPath = folderPath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const endpoint = cleanPath
+    ? `${GRAPH_BASE}/drives/${driveId}/root:/${encodeURIComponent(cleanPath).replace(/%2F/g, "/")}:/children`
+    : `${GRAPH_BASE}/drives/${driveId}/root/children`;
+
+  // Only fetch files (not folders), sorted newest first
+  const url = `${endpoint}?$filter=file ne null&$orderby=lastModifiedDateTime desc&$select=id,name,webUrl,size,lastModifiedDateTime,file,@microsoft.graph.downloadUrl`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    // 404 = folder doesn't exist yet — return empty
+    if (response.status === 404) return [];
+    throw new Error(`Failed to list folder files: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  return (data.value || []).map((item: Record<string, unknown>) => {
+    const fileInfo = item.file as Record<string, unknown> | null;
+    return {
+      id: item.id as string,
+      name: item.name as string,
+      webUrl: item.webUrl as string,
+      size: item.size as number,
+      lastModified: item.lastModifiedDateTime as string,
+      mimeType: (fileInfo?.mimeType as string) || "application/octet-stream",
+      downloadUrl: (item["@microsoft.graph.downloadUrl"] as string) || "",
+    };
+  });
+}
+
+/* ============================================================
    LISTING-SPECIFIC HELPERS
    ============================================================ */
 

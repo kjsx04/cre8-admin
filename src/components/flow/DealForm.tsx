@@ -49,7 +49,7 @@ interface FormMember {
 
 interface DealFormProps {
   deal?: Deal;                // if editing, pre-fill from existing deal
-  onSave: (data: DealFormData, dealDates?: DealDate[]) => void;
+  onSave: (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => void;
   onCancel: () => void;
   saving?: boolean;
   mapboxToken?: string;       // Mapbox token for parcel picker
@@ -246,6 +246,9 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
   // Store selected parcels so re-opening the picker zooms back to them
   const [storedParcels, setStoredParcels] = useState<SelectedParcel[]>([]);
 
+  // ── Pending file for SharePoint upload after save ──
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+
   // ── Save defaults feedback ──
   const [defaultsSaving, setDefaultsSaving] = useState(false);
   const [defaultsSaved, setDefaultsSaved] = useState(false);
@@ -390,30 +393,31 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     const filledFields: string[] = [];
     setForm((prev) => {
       const updated = { ...prev };
-      // Map simple fields
+      // Map simple fields — overwrite any field the AI extracted (source of truth)
       const simpleFields: (keyof ExtractedDealData)[] = [
         "deal_name", "property_address", "deal_type", "price",
         "commission_rate", "effective_date", "escrow_open_date", "notes",
       ];
       for (const key of simpleFields) {
         const value = data[key];
-        if (value && key in updated) {
+        if (value !== undefined && key in updated) {
           const formKey = key as keyof DealFormData;
-          if (typeof updated[formKey] === "string" && !updated[formKey]) {
-            (updated as Record<string, unknown>)[formKey] = String(value);
-            filledFields.push(key);
-          }
+          (updated as Record<string, unknown>)[formKey] = String(value);
+          filledFields.push(key);
         }
+      }
+      // If doc is an LOI and form has an effective_date, clear it
+      if (data.document_type === "loi" && updated.effective_date) {
+        updated.effective_date = "";
+        filledFields.push("effective_date");
       }
       return updated;
     });
 
-    // Map extracted deal_dates into the dynamic dates state
+    // Map extracted deal_dates into the dynamic dates state — overwrite existing
     if (data.deal_dates && Array.isArray(data.deal_dates) && data.deal_dates.length > 0) {
-      setDealDates((prev) => {
-        // Only add dates if there are none yet
-        if (prev.length > 0) return prev;
-        return data.deal_dates!.map((dd, i) => ({
+      setDealDates(
+        data.deal_dates.map((dd, i) => ({
           tempId: tempId(),
           label: dd.label || "Milestone",
           date: dd.date || "",
@@ -422,8 +426,8 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           offset_from: dd.offset_reference || "escrow_open",
           sort_order: i + 1,
           editing: !dd.date, // open edit mode if date wasn't resolved
-        }));
-      });
+        }))
+      );
       filledFields.push("deal_dates");
     }
 
@@ -709,7 +713,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
         sort_order: i,
       }));
 
-    onSave(formData, apiDates as DealDate[]);
+    onSave(formData, apiDates as DealDate[], pendingFile || undefined);
   };
 
   // Shared input classes — green highlight for AI auto-fill, amber for Kanban drop context
@@ -747,10 +751,12 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           </div>
         )}
 
-        {/* ── File Drop Zone (new deals only) ── */}
-        {!isEditing && (
-          <FileDropZone onExtracted={handleExtracted} />
-        )}
+        {/* ── File Drop Zone (always visible — compact in edit mode) ── */}
+        <FileDropZone
+          onExtracted={handleExtracted}
+          onFileReady={(file) => setPendingFile(file)}
+          compact={isEditing}
+        />
 
         {/* ── CRE8 Listing Selector (searchable) ── */}
         <ListingSearch

@@ -1,21 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 
-// System prompt — extracts deal data including dynamic date milestones
+// System prompt — extracts deal data including dynamic date milestones + document type detection
 const SYSTEM_PROMPT = `You extract commercial real estate deal data from documents (LOIs, PSAs, escrow timelines, listing agreements).
 
 Return ONLY a JSON object with the fields you can confidently extract. Omit any field you're not sure about.
 
 Available fields:
+- document_type (string, REQUIRED) — always include this. One of: "loi", "psa", or "other"
 - deal_name (string) — property name or deal title
 - property_address (string) — full street address
 - deal_type ("sale" or "lease")
 - price (string) — numeric only, no dollar signs or commas (e.g. "2500000")
 - commission_rate (string) — percentage as a number (e.g. "3" for 3%)
-- effective_date (string) — YYYY-MM-DD format
+- effective_date (string) — YYYY-MM-DD format. IMPORTANT: Only extract this for PSAs, NOT for LOIs.
 - escrow_open_date (string) — YYYY-MM-DD format
 - notes (string) — any important details not captured by other fields
 - deal_dates (array) — milestone dates extracted from the document
+
+Document type detection:
+- "loi" — contains phrases like "Letter of Intent", "LOI", "expression of interest", "non-binding offer", "intent to purchase"
+- "psa" — contains phrases like "Purchase and Sale Agreement", "PSA", "Contract for Sale", "Buyer agrees to purchase", "escrow agreement", "closing agent"
+- "other" — anything else (escrow timelines, listing agreements, etc.)
+
+IMPORTANT: If the document is an LOI, do NOT extract effective_date. LOIs are pre-escrow documents without an effective date.
 
 For deal_dates, return an array of objects. Each object has:
 - label (string) — descriptive name like "Feasibility Ends", "Inside Close", "Outside Close", "Extension", "Inspection Deadline"
@@ -124,6 +132,11 @@ export async function POST(request: NextRequest) {
     // Strip any markdown code fences if present
     const cleaned = responseText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
     const extracted = JSON.parse(cleaned);
+
+    // Safety net: if AI detected an LOI, never return an effective_date
+    if (extracted.document_type === "loi") {
+      delete extracted.effective_date;
+    }
 
     return NextResponse.json(extracted);
   } catch (err) {
