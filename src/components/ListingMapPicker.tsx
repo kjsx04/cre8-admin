@@ -56,7 +56,7 @@ export default function ListingMapPicker({
     }
   }, []);
 
-  // ---- Initialize map ----
+  // ---- Initialize map with CRE8 dark satellite style ----
   useEffect(() => {
     if (!containerRef.current || !mapboxToken) return;
 
@@ -69,9 +69,97 @@ export default function ListingMapPicker({
       : PHX_CENTER;
     const zoom = hasCoords ? 14 : PHX_ZOOM;
 
+    // CRE8 dark satellite style — matches parcel picker
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const style: any = {
+      version: 8 as const,
+      name: "CRE8 Satellite",
+      sources: {
+        "mapbox-satellite": {
+          type: "raster",
+          tiles: [
+            `https://api.mapbox.com/v4/mapbox.satellite/{z}/{x}/{y}@2x.jpg90?access_token=${mapboxToken}`,
+          ],
+          tileSize: 256,
+          maxzoom: 19,
+        },
+        "mapbox-streets": {
+          type: "raster",
+          tiles: [
+            `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${mapboxToken}`,
+          ],
+          tileSize: 256,
+        },
+        // Vector source for road + city labels
+        "mapbox-streets-v": {
+          type: "vector",
+          url: "mapbox://mapbox.mapbox-streets-v8",
+        },
+      },
+      layers: [
+        {
+          id: "satellite-tiles",
+          type: "raster",
+          source: "mapbox-satellite",
+          paint: {
+            "raster-opacity": 1,
+            "raster-saturation": -0.1,
+            "raster-brightness-max": 0.85,
+          },
+        },
+        {
+          id: "dark-overlay",
+          type: "raster",
+          source: "mapbox-streets",
+          paint: {
+            "raster-opacity": 0.4,
+          },
+        },
+        // Road name labels
+        {
+          id: "road-labels",
+          type: "symbol",
+          source: "mapbox-streets-v",
+          "source-layer": "road",
+          layout: {
+            "symbol-placement": "line",
+            "text-field": ["get", "name"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 10, 9, 16, 13],
+            "text-font": ["DIN Pro Regular", "Arial Unicode MS Regular"],
+            "text-max-angle": 30,
+            "text-padding": 2,
+          },
+          paint: {
+            "text-color": "rgba(255, 255, 255, 0.7)",
+            "text-halo-color": "rgba(0, 0, 0, 0.8)",
+            "text-halo-width": 1.2,
+          },
+        },
+        // City / place labels
+        {
+          id: "place-labels",
+          type: "symbol",
+          source: "mapbox-streets-v",
+          "source-layer": "place_label",
+          layout: {
+            "text-field": ["get", "name"],
+            "text-size": ["interpolate", ["linear"], ["zoom"], 6, 12, 12, 18],
+            "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+            "text-max-width": 8,
+          },
+          paint: {
+            "text-color": "rgba(255, 255, 255, 0.85)",
+            "text-halo-color": "rgba(0, 0, 0, 0.85)",
+            "text-halo-width": 1.5,
+          },
+        },
+      ],
+      glyphs: "mapbox://fonts/mapbox/{fontstack}/{range}.pbf",
+    };
+
     const map = new mapboxgl.Map({
       container: containerRef.current,
-      style: "mapbox://styles/mapbox/satellite-streets-v12",
+      style,
       center,
       zoom,
     });
@@ -104,6 +192,22 @@ export default function ListingMapPicker({
     // Only run on mount — coords are handled via placeMarker
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapboxToken]);
+
+  // ---- Sync pin when lat/lng props change (e.g. from parcel picker) ----
+  useEffect(() => {
+    if (!mapRef.current) return;
+    if (latitude == null || longitude == null) return;
+
+    // Place/move the marker
+    placeMarker(latitude, longitude);
+
+    // Fly to the new location
+    mapRef.current.flyTo({
+      center: [longitude, latitude],
+      zoom: 16,
+      duration: 1200,
+    });
+  }, [latitude, longitude, placeMarker]);
 
   return (
     <div>

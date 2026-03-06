@@ -419,12 +419,16 @@ export default function PublishModal({
           const siteId = await getSiteId(graphToken);
           driveId = await getDriveId(graphToken, siteId);
 
+          // Build SharePoint folder name: "{Name} — {City}" (em dash, matching existing convention)
+          const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
+          const spFolderName = cityShort ? `${listingName} — ${cityShort}` : listingName;
+
           // Create folder structure
           updateStep(8, "active", "Creating folders");
-          await createListingFolders(graphToken, driveId, listingName);
+          await createListingFolders(graphToken, driveId, spFolderName);
 
           // Upload files to SharePoint
-          const spBase = `Listings/Active/${listingName}`;
+          const spBase = `Listings/Active/${spFolderName}`;
 
           // Package PDF
           if (packageAssets.packageFile) {

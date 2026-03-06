@@ -308,7 +308,9 @@ export async function createListingFolders(
   driveId: string,
   listingName: string
 ): Promise<void> {
-  const base = `Listings/Active/${listingName}`;
+  // Sanitize folder name — remove characters not allowed in SharePoint
+  const safeName = listingName.replace(/[<>:"/\\|?*]/g, "").trim();
+  const base = `Listings/Active/${safeName}`;
   const subfolders = [
     "Package",
     "Package/Links",
@@ -318,8 +320,12 @@ export async function createListingFolders(
     "Documents",
   ];
 
-  // Create base folder first
-  await createFolder(accessToken, driveId, "Listings/Active", listingName);
+  // Create parent folders first (Graph API needs them to exist)
+  await createFolder(accessToken, driveId, "", "Listings");
+  await createFolder(accessToken, driveId, "Listings", "Active");
+
+  // Create listing folder
+  await createFolder(accessToken, driveId, "Listings/Active", safeName);
 
   // Create subfolders sequentially (parent must exist before child)
   for (const sub of subfolders) {
