@@ -419,9 +419,22 @@ export default function PublishModal({
           const siteId = await getSiteId(graphToken);
           driveId = await getDriveId(graphToken, siteId);
 
-          // Build SharePoint folder name: "{Name} — {City}" (em dash, matching existing convention)
-          const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
-          const spFolderName = cityShort ? `${listingName} — ${cityShort}` : listingName;
+          // Build SharePoint folder name matching existing convention:
+          // Physical address → "{Address} — {City}" (e.g. "458 S Gilbert — Mesa")
+          // Cross streets   → "{Streets} — {Direction}" (e.g. "Cornman & Curry — NEC")
+          const directionPrefixes = ["NEC", "NWC", "SEC", "SWC", "NE", "NW", "SE", "SW"];
+          const trimmedName = listingName.trim();
+          let spFolderName = trimmedName;
+          const matchedPrefix = directionPrefixes.find((p) => trimmedName.startsWith(p + " "));
+          if (matchedPrefix) {
+            // Cross-street listing — move direction to after em dash
+            const crossStreets = trimmedName.slice(matchedPrefix.length).trim();
+            spFolderName = `${crossStreets} — ${matchedPrefix}`;
+          } else {
+            // Physical address — append city
+            const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
+            if (cityShort) spFolderName = `${trimmedName} — ${cityShort}`;
+          }
 
           // Create folder structure
           updateStep(8, "active", "Creating folders");
