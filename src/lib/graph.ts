@@ -422,7 +422,21 @@ export async function syncToExcel(
   retries = 3
 ): Promise<void> {
   const encodedPath = encodeURIComponent(EXCEL_PATH).replace(/%2F/g, "/");
-  const tableBase = `${GRAPH_BASE}/drives/${driveId}/root:/${encodedPath}:/workbook/tables/${EXCEL_TABLE}`;
+  const fileCheckUrl = `${GRAPH_BASE}/drives/${driveId}/root:/${encodedPath}`;
+  const tableBase = `${fileCheckUrl}:/workbook/tables/${EXCEL_TABLE}`;
+
+  // Verify the Excel file exists first (helps diagnose path vs permission issues)
+  const fileCheck = await fetch(fileCheckUrl, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!fileCheck.ok) {
+    const body = await fileCheck.text();
+    console.error(`[syncToExcel] File check ${fileCheck.status} for ${EXCEL_PATH}:`, body);
+    throw new Error(`Excel file not accessible: ${fileCheck.status} — ${EXCEL_PATH}`);
+  } else {
+    const fileMeta = await fileCheck.json();
+    console.log(`[syncToExcel] File found: ${fileMeta.name}, id: ${fileMeta.id}`);
+  }
 
   const row = buildExcelRow(data);
 
@@ -434,6 +448,9 @@ export async function syncToExcel(
       });
 
       if (!rowsRes.ok) {
+        const errBody = await rowsRes.text();
+        console.error(`[syncToExcel] rows fetch ${rowsRes.status}:`, errBody);
+        console.error(`[syncToExcel] URL was: ${tableBase}/rows`);
         throw new Error(`Excel rows fetch failed: ${rowsRes.status}`);
       }
 
