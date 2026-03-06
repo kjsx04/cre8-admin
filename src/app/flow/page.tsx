@@ -256,6 +256,18 @@ export default function FlowPage() {
     }
   };
 
+  // Permanently delete a deal
+  const handleDelete = async (id: string) => {
+    try {
+      const res = await fetch(`/api/flow/deals/${id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error("Failed to delete deal");
+      setSelectedDeal(null);
+      await fetchDeals();
+    } catch (e) {
+      console.error("Delete failed:", e);
+    }
+  };
+
   // Update a deal (from DealDetail — edit, close, cancel, notes)
   const handleUpdate = async (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     try {
@@ -634,6 +646,7 @@ export default function FlowPage() {
           brokerId={brokerId}
           allBrokers={allBrokers}
           onUpdate={handleUpdate}
+          onDelete={handleDelete}
           onClose={() => setSelectedDeal(null)}
         />
       )}

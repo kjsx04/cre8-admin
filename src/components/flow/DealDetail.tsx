@@ -16,6 +16,7 @@ interface DealDetailProps {
   brokerId?: string;
   allBrokers?: Pick<Broker, "id" | "name" | "email">[];
   onUpdate: (id: string, data: Partial<Deal> | DealFormData, dealDates?: DealDate[], pendingFile?: File) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -53,12 +54,13 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClose }: DealDetailProps) {
+export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDelete, onClose }: DealDetailProps) {
   const { instance, accounts } = useMsal();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [notes, setNotes] = useState(deal.notes || "");
   const [notesSaving, setNotesSaving] = useState(false);
 
@@ -94,6 +96,12 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
       cancel_reason: reason || null,
     } as Partial<Deal>);
     setShowCancelModal(false);
+  };
+
+  // Permanently delete deal
+  const handleDeleteDeal = async () => {
+    await onDelete(deal.id);
+    setShowDeleteModal(false);
   };
 
   // Auto-save notes on blur
@@ -182,7 +190,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
             </div>
 
             {/* Action buttons */}
-            {isActive && (
+            {isActive ? (
               <div className="flex gap-2 mt-3">
                 <button
                   onClick={() => setEditing(true)}
@@ -206,7 +214,19 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
                   Cancel Deal
                 </button>
               </div>
-            )}
+            ) : deal.status === "cancelled" ? (
+              /* Delete only available for cancelled deals — intentional 2-step process */
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setShowDeleteModal(true)}
+                  className="px-3 py-1.5 text-xs font-medium border border-red-400/50 text-red-400 rounded-btn
+                             hover:bg-red-400/10 transition-colors duration-200"
+                  title="Permanently delete this deal"
+                >
+                  Delete
+                </button>
+              </div>
+            ) : null}
           </div>
 
           {/* Body */}
@@ -427,6 +447,18 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onClo
           textInputLabel="Reason for cancellation"
           onConfirm={handleCancelDeal}
           onCancel={() => setShowCancelModal(false)}
+        />
+      )}
+
+      {/* Permanent delete confirmation */}
+      {showDeleteModal && (
+        <ConfirmModal
+          title="Delete Deal"
+          message={`Permanently delete "${deal.deal_name}"? This cannot be undone — the deal and all its data will be removed.`}
+          confirmLabel="Delete Forever"
+          confirmColor="red"
+          onConfirm={handleDeleteDeal}
+          onCancel={() => setShowDeleteModal(false)}
         />
       )}
     </>

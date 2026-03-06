@@ -18,11 +18,17 @@ import PackageUploader, { PackageAssets, GalleryImage } from "@/components/Packa
 import FileUploadZone from "@/components/FileUploadZone";
 import PhotoUploader from "@/components/PhotoUploader";
 import PublishModal from "@/components/PublishModal";
+import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 
-// Dynamic import — Mapbox uses window/document, can't render server-side
+// Dynamic imports — Mapbox uses window/document, can't render server-side
 const ListingMapPicker = dynamic(
   () => import("@/components/ListingMapPicker"),
   { ssr: false, loading: () => <div className="w-full h-[300px] rounded-btn border border-[#E5E5E5] bg-[#F5F5F5] animate-pulse" /> }
+);
+
+const ParcelPickerModal = dynamic(
+  () => import("@/components/ParcelPickerModal"),
+  { ssr: false }
 );
 
 /* ============================================================
@@ -198,6 +204,30 @@ const SECTIONS: SectionDef[] = [
    ============================================================ */
 const REQUIRED_KEYS = ["name", "slug", "full-address", "city-county", "listing-type-2", "property-type"];
 
+/** Compute the geographic centroid of selected parcels */
+function computeCentroid(parcels: SelectedParcel[]): [number, number] | null {
+  let sumLng = 0, sumLat = 0, count = 0;
+  for (const p of parcels) {
+    const geom = p.feature.geometry;
+    if (!geom) continue;
+    const coords: number[][][] =
+      geom.type === "MultiPolygon"
+        ? (geom as GeoJSON.MultiPolygon).coordinates.flat()
+        : geom.type === "Polygon"
+          ? (geom as GeoJSON.Polygon).coordinates
+          : [];
+    for (const ring of coords) {
+      for (const [lng, lat] of ring) {
+        sumLng += lng;
+        sumLat += lat;
+        count++;
+      }
+    }
+  }
+  if (count === 0) return null;
+  return [sumLng / count, sumLat / count];
+}
+
 /* ============================================================
    COMPONENT
    ============================================================ */
@@ -323,6 +353,10 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
 
   // ---- Publish modal state ----
   const [showPublishModal, setShowPublishModal] = useState(false);
+
+  // ---- Parcel picker state ----
+  const [showParcelPicker, setShowParcelPicker] = useState(false);
+  const [savedParcels, setSavedParcels] = useState<SelectedParcel[]>([]);
 
   // ---- Build CMS payload from form fields ----
   const buildPayload = useCallback((): ListingFieldData => {
@@ -553,6 +587,87 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     };
   }, []);
 
+  // ---- Handle parcel picker confirmation ----
+  const handleParcelConfirm = useCallback(
+    async (selection: ParcelSelection) => {
+      setShowParcelPicker(false);
+      setSavedParcels(selection.selectedParcels);
+
+      const firstParcel = selection.selectedParcels[0];
+      if (!firstParcel) return;
+
+      const props = firstParcel.feature?.properties || {};
+      const source = firstParcel.source;
+
+      // Compute centroid for lat/lng
+      const centroid = computeCentroid(selection.selectedParcels);
+
+      // Extract zoning (Maricopa CITY_ZONING field)
+      const zoning = source === "maricopa" ? (props.CITY_ZONING as string || "") : "";
+
+      // Determine county from parcel source
+      const countyName =
+        source === "maricopa" ? "Maricopa" :
+        source === "pinal" ? "Pinal" :
+        source === "gila" ? "Gila" : "";
+
+      // Get city name — Pinal has it in the data, otherwise reverse geocode
+      let cityName = "";
+      if (source === "pinal" && props.PSTLCITY) {
+        cityName = String(props.PSTLCITY);
+      }
+      if (!cityName && centroid && MAPBOX_TOKEN) {
+        try {
+          const res = await fetch(
+            `https://api.mapbox.com/geocoding/v5/mapbox.places/${centroid[0]},${centroid[1]}.json?access_token=${MAPBOX_TOKEN}&types=place`
+          );
+          const data = await res.json();
+          const placeFeature = data.features?.[0];
+          if (placeFeature?.text) {
+            cityName = placeFeature.text;
+          }
+        } catch {
+          // Non-fatal — user can fill city manually
+        }
+      }
+
+      const address = selection.property_address;
+
+      setFields((prev) => {
+        const next = { ...prev };
+
+        if (address) {
+          next.name = address;
+          if (!slugManualRef.current) next.slug = slugify(address);
+        }
+        if (address && cityName) {
+          next["full-address"] = `${address}, ${cityName}, AZ`;
+        } else if (address) {
+          next["full-address"] = address;
+        }
+        if (cityName || countyName) {
+          next["city-county"] = [cityName, countyName].filter(Boolean).join(", ");
+        }
+        if (selection.acreage) {
+          next["square-feet"] = selection.acreage;
+        }
+        if (centroid) {
+          next.latitude = centroid[1];
+          next.longitude = centroid[0];
+          next["google-maps-link"] = `https://www.google.com/maps?q=${centroid[1]},${centroid[0]}`;
+        }
+        if (zoning) {
+          next.zoning = zoning;
+        }
+
+        return next;
+      });
+
+      scheduleAutoSave();
+    },
+    [scheduleAutoSave]
+  );
+
   // ---- Check if a required field should show error ----
   const showError = (key: string) => {
     if (!REQUIRED_KEYS.includes(key)) return false;
@@ -636,16 +751,59 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           className="mb-6 border border-[#E5E5E5] rounded-card bg-white"
         >
           {/* Section header */}
-          <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
+          <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card flex items-center justify-between">
             <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
               {section.title}
             </h2>
+            {/* Pick from Map button — Property Info section only */}
+            {section.title === "Property Info" && (
+              <button
+                type="button"
+                onClick={() => setShowParcelPicker(true)}
+                className="flex items-center gap-1.5 text-xs font-semibold text-green hover:text-[#7AB800] transition-colors"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                Pick from Map
+              </button>
+            )}
           </div>
 
           {/* Section body */}
           <div className="px-5 py-4">
             {/* Render fields — wrap halfs in a flex row */}
             {renderFields(section.fields)}
+
+            {/* Location map — merged into Property Info section */}
+            {section.title === "Property Info" && (
+              <div className="mt-4 pt-4 border-t border-[#F0F0F0]">
+                <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-2">
+                  Pin Location
+                </label>
+                {MAPBOX_TOKEN ? (
+                  <ListingMapPicker
+                    mapboxToken={MAPBOX_TOKEN}
+                    latitude={fields.latitude as number | null}
+                    longitude={fields.longitude as number | null}
+                    onChange={(lat, lng) => {
+                      setFields((prev) => ({
+                        ...prev,
+                        latitude: lat,
+                        longitude: lng,
+                        "google-maps-link": `https://www.google.com/maps?q=${lat},${lng}`,
+                      }));
+                      scheduleAutoSave();
+                    }}
+                  />
+                ) : (
+                  <p className="text-sm text-[#777]">
+                    Mapbox token not configured — map unavailable.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         </div>
       ))}
@@ -678,37 +836,6 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             value={String(fields["spaces-available"] || "")}
             onChange={(html) => updateField("spaces-available", html)}
           />
-        </div>
-      </div>
-
-      {/* ---- Location Map ---- */}
-      <div className="mb-6 border border-[#E5E5E5] rounded-card bg-white">
-        <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
-          <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            Location
-          </h2>
-        </div>
-        <div className="px-5 py-4">
-          {MAPBOX_TOKEN ? (
-            <ListingMapPicker
-              mapboxToken={MAPBOX_TOKEN}
-              latitude={fields.latitude as number | null}
-              longitude={fields.longitude as number | null}
-              onChange={(lat, lng) => {
-                setFields((prev) => ({
-                  ...prev,
-                  latitude: lat,
-                  longitude: lng,
-                  "google-maps-link": `https://www.google.com/maps?q=${lat},${lng}`,
-                }));
-                scheduleAutoSave();
-              }}
-            />
-          ) : (
-            <p className="text-sm text-[#777]">
-              Mapbox token not configured — map unavailable.
-            </p>
-          )}
         </div>
       </div>
 
@@ -772,6 +899,17 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           />
         </div>
       </div>
+
+      {/* ---- Parcel Picker Modal ---- */}
+      {showParcelPicker && (
+        <ParcelPickerModal
+          onConfirm={handleParcelConfirm}
+          onClose={() => setShowParcelPicker(false)}
+          includeAcreage={true}
+          mapboxToken={MAPBOX_TOKEN}
+          initialParcels={savedParcels.length > 0 ? savedParcels : undefined}
+        />
+      )}
 
       {/* ---- Publish Modal ---- */}
       {showPublishModal && (
