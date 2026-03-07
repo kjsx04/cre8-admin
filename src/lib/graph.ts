@@ -422,35 +422,68 @@ export async function syncToExcel(
   retries = 3
 ): Promise<void> {
   const encodedPath = encodeURIComponent(EXCEL_PATH).replace(/%2F/g, "/");
-  const fileCheckUrl = `${GRAPH_BASE}/drives/${driveId}/root:/${encodedPath}`;
-  const tableBase = `${fileCheckUrl}:/workbook/tables/${EXCEL_TABLE}`;
-
-  // Verify the Excel file exists first (helps diagnose path vs permission issues)
-  const fileCheck = await fetch(fileCheckUrl, {
-    headers: { Authorization: `Bearer ${accessToken}` },
-  });
-  if (!fileCheck.ok) {
-    const body = await fileCheck.text();
-    console.error(`[syncToExcel] File check ${fileCheck.status} for ${EXCEL_PATH}:`, body);
-    throw new Error(`Excel file not accessible: ${fileCheck.status} — ${EXCEL_PATH}`);
-  } else {
-    const fileMeta = await fileCheck.json();
-    console.log(`[syncToExcel] File found: ${fileMeta.name}, id: ${fileMeta.id}`);
-  }
+  const workbookBase = `${GRAPH_BASE}/drives/${driveId}/root:/${encodedPath}:/workbook`;
+  const tableBase = `${workbookBase}/tables/${EXCEL_TABLE}`;
 
   const row = buildExcelRow(data);
+
+  // Create a workbook session — required when the file is synced via OneDrive
+  let sessionId = "";
+  try {
+    const sessionRes = await fetch(`${workbookBase}/createSession`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ persistChanges: true }),
+    });
+    if (sessionRes.ok) {
+      const sessionData = await sessionRes.json();
+      sessionId = sessionData.id;
+      console.log("[syncToExcel] Workbook session created");
+    } else {
+      const errBody = await sessionRes.text();
+      console.warn(`[syncToExcel] Session creation failed ${sessionRes.status}:`, errBody);
+      // Continue without session — might still work
+    }
+  } catch (err) {
+    console.warn("[syncToExcel] Session creation error:", err);
+  }
+
+  // Build headers — include session ID if we have one
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  if (sessionId) {
+    headers["workbook-session-id"] = sessionId;
+  }
+
+  // Helper to close session when done
+  const closeSession = async () => {
+    if (!sessionId) return;
+    try {
+      await fetch(`${workbookBase}/closeSession`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+          "workbook-session-id": sessionId,
+        },
+        body: "{}",
+      });
+    } catch { /* ignore close errors */ }
+  };
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       // Try to find existing row by Webflow ID (column Z, index 25)
-      const rowsRes = await fetch(`${tableBase}/rows`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+      const rowsRes = await fetch(`${tableBase}/rows`, { headers });
 
       if (!rowsRes.ok) {
         const errBody = await rowsRes.text();
         console.error(`[syncToExcel] rows fetch ${rowsRes.status}:`, errBody);
-        console.error(`[syncToExcel] URL was: ${tableBase}/rows`);
         throw new Error(`Excel rows fetch failed: ${rowsRes.status}`);
       }
 
@@ -473,10 +506,7 @@ export async function syncToExcel(
           `${tableBase}/rows/itemAt(index=${existingIdx})`,
           {
             method: "PATCH",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-              "Content-Type": "application/json",
-            },
+            headers,
             body: JSON.stringify({ values: [row] }),
           }
         );
@@ -492,10 +522,7 @@ export async function syncToExcel(
         // Create new row
         const postRes = await fetch(`${tableBase}/rows/add`, {
           method: "POST",
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            "Content-Type": "application/json",
-          },
+          headers,
           body: JSON.stringify({ values: [row] }),
         });
         if (!postRes.ok) {
@@ -508,10 +535,14 @@ export async function syncToExcel(
         }
       }
 
-      // Success — break out of retry loop
+      // Success — close session and return
+      await closeSession();
       return;
     } catch (err) {
-      if (attempt === retries - 1) throw err;
+      if (attempt === retries - 1) {
+        await closeSession();
+        throw err;
+      }
       // Wait before retry
       await new Promise((r) => setTimeout(r, 5000));
     }

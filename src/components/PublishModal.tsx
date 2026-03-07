@@ -402,7 +402,18 @@ export default function PublishModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemIds: [cmsItemId] }),
       });
-      if (!pubRes.ok) throw new Error(`Publish failed: ${pubRes.status}`);
+      if (!pubRes.ok) {
+        const pubText = await pubRes.text();
+        console.error("[PublishModal] Publish failed:", pubRes.status, pubText);
+        throw new Error(`Publish failed: ${pubRes.status}`);
+      }
+      // Check for partial failures in Webflow response
+      const pubData = await pubRes.json();
+      console.log("[PublishModal] Publish response:", JSON.stringify(pubData));
+      if (pubData.errors && pubData.errors.length > 0) {
+        console.error("[PublishModal] Publish errors:", pubData.errors);
+        throw new Error(`Publish partial failure: ${JSON.stringify(pubData.errors)}`);
+      }
       updateStep(7, "done");
 
       /* ---- STEP 8: SharePoint sync (non-blocking) ---- */

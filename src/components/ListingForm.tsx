@@ -144,6 +144,7 @@ const SECTIONS: SectionDef[] = [
         key: "list-price",
         label: "List Price",
         type: "text",
+        required: true,
         placeholder: "e.g. $2,500,000 or Call for Pricing",
         half: true,
       },
@@ -186,7 +187,7 @@ const SECTIONS: SectionDef[] = [
   },
   {
     title: "Listing Brokers",
-    fields: [{ key: "listing-brokers", label: "Brokers", type: "brokers" }],
+    fields: [{ key: "listing-brokers", label: "Brokers", type: "brokers", required: true }],
   },
   {
     title: "Status",
@@ -202,7 +203,10 @@ const SECTIONS: SectionDef[] = [
 /* ============================================================
    REQUIRED FIELD KEYS — used for validation
    ============================================================ */
-const REQUIRED_KEYS = ["name", "slug", "full-address", "city-county", "listing-type-2", "property-type"];
+const REQUIRED_KEYS = [
+  "name", "slug", "full-address", "city-county", "listing-type-2", "property-type",
+  "list-price", "listing-brokers", "property-overview", "latitude", "longitude",
+];
 
 /** Compute the geographic centroid of selected parcels */
 function computeCentroid(parcels: SelectedParcel[]): [number, number] | null {
@@ -275,7 +279,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       "square-feet": "",
       "building-sqft": "",
       "traffic-count": "",
-      "list-price": "",
+      "list-price": "Call for Pricing",
       "listing-type-2": "",
       "property-type": "",
       zoning: "",
@@ -409,13 +413,24 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   }, [fields]);
 
   // ---- Check required fields filled ----
-  const allRequiredFilled = useCallback((): boolean => {
-    for (const key of REQUIRED_KEYS) {
-      const v = String(fields[key] || "").trim();
-      if (!v) return false;
+  const isFieldFilled = useCallback((key: string): boolean => {
+    const val = fields[key];
+    // Arrays (brokers) — need at least one
+    if (Array.isArray(val)) return val.length > 0;
+    // Numbers (lat/lng) — must not be null
+    if (key === "latitude" || key === "longitude") return val != null;
+    // Rich text — strip HTML tags to check for actual content
+    if (key === "property-overview") {
+      const text = String(val || "").replace(/<[^>]*>/g, "").trim();
+      return text.length > 0;
     }
-    return true;
+    // Everything else — non-empty string
+    return String(val || "").trim().length > 0;
   }, [fields]);
+
+  const allRequiredFilled = useCallback((): boolean => {
+    return REQUIRED_KEYS.every((key) => isFieldFilled(key));
+  }, [isFieldFilled]);
 
   // ---- Check for duplicates ----
   const checkDuplicates = useCallback(
@@ -652,9 +667,12 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           next["square-feet"] = selection.acreage;
         }
         if (centroid) {
-          next.latitude = centroid[1];
-          next.longitude = centroid[0];
-          next["google-maps-link"] = `https://www.google.com/maps?q=${centroid[1]},${centroid[0]}`;
+          // Round to 6 decimals — Webflow number fields reject high precision
+          const lat6 = Math.round(centroid[1] * 1e6) / 1e6;
+          const lng6 = Math.round(centroid[0] * 1e6) / 1e6;
+          next.latitude = lat6;
+          next.longitude = lng6;
+          next["google-maps-link"] = `https://www.google.com/maps?q=${lat6},${lng6}`;
         }
         if (zoning) {
           next.zoning = zoning;
@@ -672,7 +690,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   const showError = (key: string) => {
     if (!REQUIRED_KEYS.includes(key)) return false;
     if (!touched.has(key)) return false;
-    return !String(fields[key] || "").trim();
+    return !isFieldFilled(key);
   };
 
   /* ============================================================
@@ -745,10 +763,15 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       </div>
 
       {/* ---- Sections ---- */}
-      {SECTIONS.map((section) => (
+      {SECTIONS.map((section) => {
+        // Check if any field in this section has a validation error
+        // Include lat/lng for Property Info since the map is rendered inside it
+        const sectionHasError = section.fields.some((f) => showError(f.key as string))
+          || (section.title === "Property Info" && (showError("latitude") || showError("longitude")));
+        return (
         <div
           key={section.title}
-          className="mb-6 border border-[#E5E5E5] rounded-card bg-white"
+          className={`mb-6 border rounded-card bg-white ${sectionHasError ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}
         >
           {/* Section header */}
           <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card flex items-center justify-between">
@@ -780,19 +803,25 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             {section.title === "Property Info" && (
               <div className="mt-4 pt-4 border-t border-[#F0F0F0]">
                 <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-2">
-                  Pin Location
+                  Pin Location<span className="text-[#CC3333] ml-0.5">*</span>
                 </label>
+                {(showError("latitude") || showError("longitude")) && (
+                  <p className="text-[10px] text-[#CC3333] mb-2">Click the map or pick a parcel to set the pin location</p>
+                )}
                 {MAPBOX_TOKEN ? (
                   <ListingMapPicker
                     mapboxToken={MAPBOX_TOKEN}
                     latitude={fields.latitude as number | null}
                     longitude={fields.longitude as number | null}
                     onChange={(lat, lng) => {
+                      // Round to 6 decimals — Webflow number fields reject high precision
+                      const lat6 = Math.round(lat * 1e6) / 1e6;
+                      const lng6 = Math.round(lng * 1e6) / 1e6;
                       setFields((prev) => ({
                         ...prev,
-                        latitude: lat,
-                        longitude: lng,
-                        "google-maps-link": `https://www.google.com/maps?q=${lat},${lng}`,
+                        latitude: lat6,
+                        longitude: lng6,
+                        "google-maps-link": `https://www.google.com/maps?q=${lat6},${lng6}`,
                       }));
                       scheduleAutoSave();
                     }}
@@ -806,13 +835,14 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             )}
           </div>
         </div>
-      ))}
+      );
+      })}
 
       {/* ---- Property Overview (rich text) ---- */}
-      <div className="mb-6 border border-[#E5E5E5] rounded-card bg-white">
+      <div className={`mb-6 border rounded-card bg-white ${showError("property-overview") ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}>
         <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
           <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            Property Overview
+            Property Overview<span className="text-[#CC3333] ml-0.5">*</span>
           </h2>
         </div>
         <div className="px-5 py-4">
@@ -821,6 +851,9 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             onChange={(html) => updateField("property-overview", html)}
             placeholder="Enter property overview..."
           />
+          {showError("property-overview") && (
+            <p className="text-[10px] text-[#CC3333] mt-1">Required</p>
+          )}
         </div>
       </div>
 
@@ -1064,6 +1097,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
 
   function renderBrokerField(f: FieldDef, idx: number) {
     const selected = (fields["listing-brokers"] as string[]) || [];
+    const hasError = showError("listing-brokers");
 
     return (
       <div key={`brokers-${idx}`} className="mb-2">
@@ -1103,6 +1137,9 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             );
           })}
         </div>
+        {hasError && (
+          <p className="text-[10px] text-[#CC3333] mt-1">Select at least one broker</p>
+        )}
       </div>
     );
   }
