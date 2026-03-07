@@ -314,6 +314,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   // Duplicate detection
   const [dupeNameWarn, setDupeNameWarn] = useState("");
   const [dupeSlugWarn, setDupeSlugWarn] = useState("");
+  const [dupeExistingId, setDupeExistingId] = useState<string | null>(null);
 
   // ---- Asset state (Phase 4) ----
   const [packageAssets, setPackageAssets] = useState<PackageAssets>(() => {
@@ -436,16 +437,22 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   const checkDuplicates = useCallback(
     (name: string, slug: string) => {
       const currentId = draftId || item?.id;
+      let foundDupeId: string | null = null;
 
       // Name check
       const nameVal = name.trim().toLowerCase();
       if (nameVal) {
-        const dupe = allItems.some(
+        const dupeItem = allItems.find(
           (li) =>
             li.id !== currentId &&
             (li.fieldData?.name || "").toLowerCase() === nameVal
         );
-        setDupeNameWarn(dupe ? "A listing with this name already exists" : "");
+        if (dupeItem) {
+          foundDupeId = dupeItem.id;
+          setDupeNameWarn("A listing with this name already exists");
+        } else {
+          setDupeNameWarn("");
+        }
       } else {
         setDupeNameWarn("");
       }
@@ -453,12 +460,13 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       // Slug check
       const slugVal = slug.trim().toLowerCase();
       if (slugVal) {
-        const dupe = allItems.some(
+        const dupeItem = allItems.find(
           (li) =>
             li.id !== currentId &&
             (li.fieldData?.slug || "").toLowerCase() === slugVal
         );
-        if (dupe) {
+        if (dupeItem) {
+          foundDupeId = dupeItem.id;
           // Suggest alternative
           const base = slugVal;
           let n = 2;
@@ -478,6 +486,8 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       } else {
         setDupeSlugWarn("");
       }
+
+      setDupeExistingId(foundDupeId);
     },
     [allItems, draftId, item?.id]
   );
@@ -502,7 +512,18 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fieldData: payload }),
         });
-        if (!res.ok) throw new Error(`Create failed: ${res.status}`);
+        if (!res.ok) {
+          // Server-side duplicate check caught it
+          if (res.status === 409) {
+            const errData = await res.json();
+            setDupeSlugWarn("This listing already exists in the CMS");
+            if (errData.existingId) setDupeExistingId(errData.existingId);
+            setSaveStatus("error");
+            isSaving.current = false;
+            return;
+          }
+          throw new Error(`Create failed: ${res.status}`);
+        }
         const data = await res.json();
         // Webflow returns the item directly (not wrapped)
         const newId = data.id;
@@ -754,13 +775,39 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
               if (dupeNameWarn || dupeSlugWarn) return;
               setShowPublishModal(true);
             }}
-            className="bg-green text-black uppercase tracking-wide font-semibold px-5 py-2 rounded-btn text-sm
-                       hover:bg-green/90 transition-colors"
+            disabled={!!(dupeNameWarn || dupeSlugWarn)}
+            className={`uppercase tracking-wide font-semibold px-5 py-2 rounded-btn text-sm transition-colors
+                       ${dupeNameWarn || dupeSlugWarn
+                         ? "bg-[#E0E0E0] text-[#999] cursor-not-allowed"
+                         : "bg-green text-black hover:bg-green/90"}`}
           >
             Publish
           </button>
         </div>
       </div>
+
+      {/* ---- Duplicate warning banner ---- */}
+      {(dupeNameWarn || dupeSlugWarn) && (
+        <div className="mb-4 px-4 py-3 bg-[#FFF5F5] border border-[#FFCCCC] rounded-card flex items-center justify-between">
+          <div>
+            <p className="text-sm font-semibold text-[#CC3333]">
+              Duplicate listing detected
+            </p>
+            <p className="text-xs text-[#CC3333] mt-0.5">
+              {dupeNameWarn || dupeSlugWarn}. Publishing is blocked to prevent duplicates in the CMS.
+            </p>
+          </div>
+          {dupeExistingId && (
+            <button
+              onClick={() => router.push(`/listings/${dupeExistingId}/edit`)}
+              className="ml-4 px-3 py-1.5 text-xs font-semibold text-[#CC3333] border border-[#CC3333] rounded-btn
+                         hover:bg-[#CC3333] hover:text-white transition-colors whitespace-nowrap"
+            >
+              Edit Existing Listing
+            </button>
+          )}
+        </div>
+      )}
 
       {/* ---- Sections ---- */}
       {SECTIONS.map((section) => {

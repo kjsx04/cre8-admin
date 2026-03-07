@@ -83,13 +83,6 @@ export default function ListingMapPicker({
           tileSize: 256,
           maxzoom: 19,
         },
-        "mapbox-streets": {
-          type: "raster",
-          tiles: [
-            `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${mapboxToken}`,
-          ],
-          tileSize: 256,
-        },
         // Vector source for road + city labels
         "mapbox-streets-v": {
           type: "vector",
@@ -103,16 +96,6 @@ export default function ListingMapPicker({
           source: "mapbox-satellite",
           paint: {
             "raster-opacity": 1,
-            "raster-saturation": -0.1,
-            "raster-brightness-max": 0.85,
-          },
-        },
-        {
-          id: "dark-overlay",
-          type: "raster",
-          source: "mapbox-streets",
-          paint: {
-            "raster-opacity": 0.4,
           },
         },
         // Road name labels
