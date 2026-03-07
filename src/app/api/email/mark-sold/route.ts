@@ -15,12 +15,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Missing listing_id" }, { status: 400 });
   }
 
-  // Find all active/scheduled campaigns for this listing
+  // Find all campaigns for this listing that should be stopped
   const { data: campaigns, error: fetchErr } = await supabase
     .from("email_campaigns")
     .select("*")
     .eq("listing_id", listing_id)
-    .in("status", ["scheduled", "active"]);
+    .in("status", ["scheduled", "active", "draft", "paused"]);
 
   if (fetchErr) {
     return NextResponse.json({ error: fetchErr.message }, { status: 500 });

@@ -395,7 +395,13 @@ export default function PublishModal({
 
       updateStep(6, "done");
 
-      if (abortRef.current || !cmsItemId) return;
+      if (abortRef.current || !cmsItemId) {
+        // Skip remaining steps so they don't stay "waiting"
+        if (!cmsItemId) {
+          updateStep(10, "skipped", "No CMS ID");
+        }
+        return;
+      }
 
       /* ---- STEP 7: Publish ---- */
       updateStep(7, "active");
@@ -583,12 +589,13 @@ export default function PublishModal({
           updateStep(10, "active", "Stopping campaigns");
 
           // Stop active email campaigns for this listing
+          const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
           try {
             await fetch("/api/email/mark-sold", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "x-user-email": "admin@cre8advisors.com",
+                "x-user-email": userEmail,
               },
               body: JSON.stringify({ listing_id: cmsItemId }),
             });

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useMsal } from "@azure/msal-react";
 import dynamic from "next/dynamic";
 import {
   ListingItem,
@@ -237,6 +238,7 @@ function computeCentroid(parcels: SelectedParcel[]): [number, number] | null {
    ============================================================ */
 export default function ListingForm({ item, allItems }: ListingFormProps) {
   const router = useRouter();
+  const { accounts } = useMsal();
   const isEditMode = !!item;
 
   // ---- Form state: flat object matching ListingFieldData keys ----
@@ -319,6 +321,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   // Delete confirmation
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   // ---- Asset state (Phase 4) ----
   const [packageAssets, setPackageAssets] = useState<PackageAssets>(() => {
@@ -624,15 +627,17 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   const handleDelete = useCallback(async () => {
     if (!draftId) return;
     setIsDeleting(true);
+    setDeleteError(null);
 
     try {
       // Stop any active email campaigns for this listing
+      const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
       try {
         await fetch("/api/email/mark-sold", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": "admin@cre8advisors.com",
+            "x-user-email": userEmail,
           },
           body: JSON.stringify({ listing_id: draftId }),
         });
@@ -647,15 +652,16 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         throw new Error(`Delete failed: ${res.status} — ${text}`);
       }
 
-      // Redirect to listings list
+      // Reset state and redirect to listings list
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
       router.push("/");
     } catch (err) {
       console.error("Failed to delete listing:", err);
       setIsDeleting(false);
-      setShowDeleteConfirm(false);
-      setSaveStatus("error");
+      setDeleteError(err instanceof Error ? err.message : "Delete failed");
     }
-  }, [draftId, router]);
+  }, [draftId, router, accounts]);
 
   // ---- Cleanup timer on unmount ----
   useEffect(() => {
@@ -1058,6 +1064,11 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
               <p className="text-sm text-[#666] leading-relaxed">
                 This will permanently remove it from the CMS and the live site. This cannot be undone.
               </p>
+              {deleteError && (
+                <p className="mt-3 text-xs text-[#CC3333] bg-[#FFF5F5] border border-[#FFCCCC] rounded-btn px-3 py-2">
+                  {deleteError}
+                </p>
+              )}
             </div>
             <div className="px-6 py-4 border-t border-[#F0F0F0] flex justify-end gap-3">
               <button
