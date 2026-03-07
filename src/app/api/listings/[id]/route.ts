@@ -67,8 +67,9 @@ export async function PATCH(
     if (!res.ok) {
       const text = await res.text();
       console.error("Worker PATCH failed:", res.status, text);
+      console.error("PATCH payload was:", JSON.stringify(body).slice(0, 500));
       return NextResponse.json(
-        { error: `Worker returned ${res.status}` },
+        { error: `Worker returned ${res.status}`, detail: text },
         { status: res.status }
       );
     }
@@ -79,6 +80,46 @@ export async function PATCH(
     console.error("Failed to update listing:", err);
     return NextResponse.json(
       { error: "Failed to update listing" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * DELETE /api/listings/[id]
+ *
+ * Deletes a listing from the Webflow CMS via the Cloudflare Worker proxy.
+ */
+export async function DELETE(
+  _req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  try {
+    const res = await fetch(`${API_BASE}/listings/${params.id}`, {
+      method: "DELETE",
+      headers: { "Content-Type": "application/json" },
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      console.error("Worker DELETE failed:", res.status, text);
+      return NextResponse.json(
+        { error: `Worker returned ${res.status}`, detail: text },
+        { status: res.status }
+      );
+    }
+
+    // Webflow DELETE returns 204 with no body
+    if (res.status === 204) {
+      return NextResponse.json({ success: true });
+    }
+
+    const data = await res.json();
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error("Failed to delete listing:", err);
+    return NextResponse.json(
+      { error: "Failed to delete listing" },
       { status: 500 }
     );
   }

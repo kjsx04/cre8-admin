@@ -16,6 +16,7 @@ import {
   getDriveId,
   uploadToSharePoint,
   createListingFolders,
+  moveListingFolder,
   syncToExcel,
   type ExcelListingData,
 } from "@/lib/graph";
@@ -165,6 +166,7 @@ export default function PublishModal({
     { label: "Publish to live site", status: "waiting" },
     { label: "SharePoint sync", status: "waiting" },
     { label: "Excel sync", status: "waiting" },
+    { label: "Sold workflow", status: "waiting" },
   ];
 
   const [steps, setSteps] = useState<StepState[]>(initialSteps);
@@ -573,6 +575,60 @@ export default function PublishModal({
           ? "File locked — close Excel"
           : "Failed — non-critical";
         updateStep(9, "warn", msg);
+      }
+
+      /* ---- STEP 10: Sold workflow (non-blocking) ---- */
+      if (fieldData.sold) {
+        try {
+          updateStep(10, "active", "Stopping campaigns");
+
+          // Stop active email campaigns for this listing
+          try {
+            await fetch("/api/email/mark-sold", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-user-email": "admin@cre8advisors.com",
+              },
+              body: JSON.stringify({ listing_id: cmsItemId }),
+            });
+          } catch {
+            // Non-critical
+          }
+
+          // Move SharePoint folder from Active to Sold
+          if (graphToken && driveId) {
+            updateStep(10, "active", "Moving folder");
+
+            // Build the same folder name used during SharePoint sync (step 8)
+            const directionPrefixes = ["NEC", "NWC", "SEC", "SWC", "NE", "NW", "SE", "SW"];
+            const trimmedName = listingName.trim();
+            let spFolderName = trimmedName;
+            const matchedPrefix = directionPrefixes.find((p) => trimmedName.startsWith(p + " "));
+            if (matchedPrefix) {
+              const crossStreets = trimmedName.slice(matchedPrefix.length).trim();
+              spFolderName = `${crossStreets} — ${matchedPrefix}`;
+            } else {
+              const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
+              if (cityShort) spFolderName = `${trimmedName} — ${cityShort}`;
+            }
+
+            await moveListingFolder(
+              graphToken,
+              driveId,
+              spFolderName,
+              "Listings/Active",
+              "Listings/Sold"
+            );
+          }
+
+          updateStep(10, "done");
+        } catch (soldErr) {
+          console.warn("[PublishModal] Sold workflow failed:", soldErr);
+          updateStep(10, "warn", "Failed — non-critical");
+        }
+      } else {
+        updateStep(10, "skipped", "Not sold");
       }
 
       setFinished(true);

@@ -338,6 +338,81 @@ export async function createListingFolders(
   }
 }
 
+/**
+ * Move a listing folder from one parent to another (e.g. Active → Sold).
+ * Uses Graph API PATCH to update the parent reference.
+ * Idempotent — returns silently if the source folder doesn't exist (404).
+ */
+export async function moveListingFolder(
+  accessToken: string,
+  driveId: string,
+  folderName: string,
+  fromParent: string,
+  toParent: string
+): Promise<void> {
+  const safeName = folderName.replace(/[<>:"/\\|?*]/g, "").trim();
+  const sourcePath = `${fromParent}/${safeName}`;
+  const encodedSource = encodeURIComponent(sourcePath).replace(/%2F/g, "/");
+
+  // Get the source folder's item ID
+  const getRes = await fetch(
+    `${GRAPH_BASE}/drives/${driveId}/root:/${encodedSource}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  // 404 = folder doesn't exist at source — nothing to move
+  if (getRes.status === 404) return;
+  if (!getRes.ok) {
+    throw new Error(`Failed to find folder: ${getRes.status}`);
+  }
+
+  const folderData = await getRes.json();
+  const folderId = folderData.id;
+
+  // Ensure destination parent exists
+  const toSegments = toParent.split("/");
+  let buildPath = "";
+  for (const segment of toSegments) {
+    const parent = buildPath || "";
+    await createFolder(accessToken, driveId, parent, segment);
+    buildPath = buildPath ? `${buildPath}/${segment}` : segment;
+  }
+
+  // Get the destination parent's item ID
+  const encodedDest = encodeURIComponent(toParent).replace(/%2F/g, "/");
+  const destRes = await fetch(
+    `${GRAPH_BASE}/drives/${driveId}/root:/${encodedDest}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+
+  if (!destRes.ok) {
+    throw new Error(`Failed to find destination folder: ${destRes.status}`);
+  }
+
+  const destData = await destRes.json();
+  const destId = destData.id;
+
+  // Move the folder by updating its parentReference
+  const moveRes = await fetch(
+    `${GRAPH_BASE}/drives/${driveId}/items/${folderId}`,
+    {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        parentReference: { id: destId },
+      }),
+    }
+  );
+
+  if (!moveRes.ok) {
+    const errText = await moveRes.text();
+    throw new Error(`Failed to move folder: ${moveRes.status} — ${errText}`);
+  }
+}
+
 /* ============================================================
    EXCEL SYNC — /Data/CRE8-Listings.xlsx table "Listings"
    ============================================================ */

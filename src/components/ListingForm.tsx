@@ -316,6 +316,10 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   const [dupeSlugWarn, setDupeSlugWarn] = useState("");
   const [dupeExistingId, setDupeExistingId] = useState<string | null>(null);
 
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // ---- Asset state (Phase 4) ----
   const [packageAssets, setPackageAssets] = useState<PackageAssets>(() => {
     // In edit mode, load existing gallery images
@@ -616,6 +620,43 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     await doAutoSave();
   }, [allRequiredFilled, doAutoSave, dupeNameWarn, dupeSlugWarn]);
 
+  // ---- Delete listing ----
+  const handleDelete = useCallback(async () => {
+    if (!draftId) return;
+    setIsDeleting(true);
+
+    try {
+      // Stop any active email campaigns for this listing
+      try {
+        await fetch("/api/email/mark-sold", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": "admin@cre8advisors.com",
+          },
+          body: JSON.stringify({ listing_id: draftId }),
+        });
+      } catch {
+        // Non-critical — continue with delete
+      }
+
+      // Delete from Webflow CMS
+      const res = await fetch(`/api/listings/${draftId}`, { method: "DELETE" });
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(`Delete failed: ${res.status} — ${text}`);
+      }
+
+      // Redirect to listings list
+      router.push("/");
+    } catch (err) {
+      console.error("Failed to delete listing:", err);
+      setIsDeleting(false);
+      setShowDeleteConfirm(false);
+      setSaveStatus("error");
+    }
+  }, [draftId, router]);
+
   // ---- Cleanup timer on unmount ----
   useEffect(() => {
     return () => {
@@ -756,6 +797,17 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Delete button — edit mode only */}
+          {isEditMode && (
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="text-[#CC3333] text-sm font-medium px-3 py-2 rounded-btn
+                         hover:bg-[#FFF5F5] transition-colors"
+            >
+              Delete
+            </button>
+          )}
+
           {/* Save Draft button */}
           <button
             onClick={handleSaveDraft}
@@ -989,6 +1041,44 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           mapboxToken={MAPBOX_TOKEN}
           initialParcels={savedParcels.length > 0 ? savedParcels : undefined}
         />
+      )}
+
+      {/* ---- Delete Confirmation Modal ---- */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => !isDeleting && setShowDeleteConfirm(false)}
+          />
+          <div className="relative w-full max-w-[420px] mx-4 bg-white rounded-card shadow-xl">
+            <div className="px-6 py-5">
+              <h3 className="text-base font-bold text-[#1a1a1a] mb-2">
+                Delete this listing?
+              </h3>
+              <p className="text-sm text-[#666] leading-relaxed">
+                This will permanently remove it from the CMS and the live site. This cannot be undone.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-[#F0F0F0] flex justify-end gap-3">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-semibold text-[#1A1A1A] bg-[#F0F0F0] border border-[#E0E0E0] rounded-btn
+                           hover:bg-[#E0E0E0] transition-colors disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                className="px-4 py-2 text-sm font-semibold text-white bg-[#CC3333] rounded-btn
+                           hover:bg-[#B02020] transition-colors disabled:opacity-50"
+              >
+                {isDeleting ? "Deleting..." : "Delete Permanently"}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* ---- Publish Modal ---- */}
