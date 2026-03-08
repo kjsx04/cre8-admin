@@ -200,7 +200,7 @@ export type KanbanColumn = "pre_escrow" | "due_diligence" | "closing";
 /** Column display config */
 export const KANBAN_COLUMNS: { key: KanbanColumn; label: string; description: string }[] = [
   { key: "pre_escrow", label: "Pre-Escrow", description: "No effective date set yet" },
-  { key: "due_diligence", label: "Due Diligence", description: "Effective date set, DD period active" },
+  { key: "due_diligence", label: "Escrow", description: "Escrow is opened, DD period active" },
   { key: "closing", label: "Closing", description: "Past due diligence, money is hard" },
 ];
 

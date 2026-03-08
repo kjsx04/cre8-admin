@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Deal, DealFormData, DealType, DealDate, CRE8Listing, ExtractedDealData, AdditionalSplit, BrokerDefaults, Broker } from "@/lib/flow/types";
 import {
   formatCurrency,
-  calcMemberTakeHome,
   addDays,
   toInputDate,
   daysBetween,
@@ -633,18 +632,22 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     }
   };
 
-  // Live preview of take-home (including additional splits + member split)
+  // Commission breakdown preview
   const previewPrice = parseFloat(form.price) || 0;
   const previewRate = (parseFloat(form.commission_rate) || 0) / 100;
-  const previewSplit = (parseFloat(form.broker_split) || 0) / 100;
-  // Figure out the logged-in broker's member split for the preview
+  const previewCommission = previewPrice * previewRate;
+  const previewHouseCut = previewCommission * 0.30;
+  const previewAfterHouse = previewCommission * 0.70;
+  // Logged-in broker's member split
   const myMember = brokerMembers.find((m) => m.broker_id === brokerId);
   const myMemberSplit = myMember
     ? (myMember.split_percent !== null ? myMember.split_percent : 1 / brokerMembers.length)
     : 1;
-  const previewTakeHome = calcMemberTakeHome(
-    previewPrice || null, previewRate, previewSplit, additionalSplits, myMemberSplit
-  );
+  const previewMyShare = previewAfterHouse * myMemberSplit;
+  const previewDeductions = additionalSplits
+    .filter((s) => s.label.trim() && s.percent > 0)
+    .reduce((sum, s) => sum + previewMyShare * s.percent, 0);
+  const previewTakeHome = previewMyShare - previewDeductions;
 
   // Urgency dot color for date rows
   const getUrgencyColor = (dateStr: string): string => {
@@ -952,7 +955,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
         {/* ── Commission ── */}
         <div className="border-t border-border-light pt-4 mb-6">
           <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Commission</h3>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className={labelCls}>Price ($)</label>
               <input
@@ -974,23 +977,80 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                 className={inputCls("commission_rate")}
               />
             </div>
-            <div>
-              <label className={labelCls}>Your Split (%)</label>
-              <input
-                type="number"
-                step="1"
-                value={form.broker_split}
-                onChange={(e) => update("broker_split", e.target.value)}
-                placeholder="50"
-                className={inputCls("broker_split")}
-              />
-            </div>
           </div>
 
-          {/* House split label */}
-          <p className="text-xs text-muted-gray mt-2">House Split: 70% (fixed)</p>
+          {/* Commission breakdown — shown when price is entered */}
+          {previewPrice > 0 && previewRate > 0 && (
+            <div className="mt-4 bg-light-gray rounded-btn p-4 space-y-2 text-sm">
+              {/* Total commission */}
+              <div className="flex justify-between">
+                <span className="text-medium-gray">Total Commission ({form.commission_rate}%)</span>
+                <span className="font-medium">{formatCurrency(previewCommission)}</span>
+              </div>
 
-          {/* Additional Splits */}
+              {/* House cut */}
+              <div className="flex justify-between">
+                <span className="text-medium-gray">House (30%)</span>
+                <span className="text-medium-gray">−{formatCurrency(previewHouseCut)}</span>
+              </div>
+
+              <div className="border-t border-border-light" />
+
+              {/* After house */}
+              <div className="flex justify-between">
+                <span className="text-medium-gray font-medium">After House</span>
+                <span className="font-medium">{formatCurrency(previewAfterHouse)}</span>
+              </div>
+
+              {/* Broker splits — show each broker's share */}
+              {brokerMembers.length > 1 && (
+                <>
+                  <div className="border-t border-border-light" />
+                  {brokerMembers.map((m) => {
+                    const split = m.split_percent !== null ? m.split_percent : 1 / brokerMembers.length;
+                    const share = previewAfterHouse * split;
+                    const brokerInfo = allBrokers?.find((b) => b.id === m.broker_id);
+                    const name = brokerInfo?.name || (m.broker_id === brokerId ? "You" : "Broker");
+                    const isYou = m.broker_id === brokerId;
+                    return (
+                      <div key={m.broker_id} className="flex justify-between">
+                        <span className={isYou ? "text-charcoal font-medium" : "text-medium-gray"}>
+                          {name} ({(split * 100).toFixed(0)}%)
+                        </span>
+                        <span className={isYou ? "font-medium" : "text-medium-gray"}>
+                          {formatCurrency(share)}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </>
+              )}
+
+              {/* Additional split deductions */}
+              {additionalSplits.filter((s) => s.label.trim() && s.percent > 0).length > 0 && (
+                <>
+                  <div className="border-t border-border-light" />
+                  {additionalSplits
+                    .filter((s) => s.label.trim() && s.percent > 0)
+                    .map((s, i) => (
+                      <div key={i} className="flex justify-between">
+                        <span className="text-medium-gray">{s.label} ({(s.percent * 100).toFixed(0)}%)</span>
+                        <span className="text-medium-gray">−{formatCurrency(previewMyShare * s.percent)}</span>
+                      </div>
+                    ))}
+                </>
+              )}
+
+              {/* Take-home */}
+              <div className="border-t border-border-light pt-1" />
+              <div className="flex justify-between items-center">
+                <span className="font-semibold text-charcoal">Your Take-Home</span>
+                <span className="font-bold text-green text-lg">{formatCurrency(previewTakeHome)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Additional Splits — editable */}
           <div className="mt-4">
             <label className="block text-xs font-medium text-medium-gray mb-2">Additional Splits</label>
             {additionalSplits.map((split, i) => (
@@ -1033,21 +1093,6 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
               + Add Split
             </button>
           </div>
-
-          {/* Live take-home preview */}
-          {previewPrice > 0 && (
-            <div className="mt-3 p-3 bg-light-gray rounded-btn flex items-center justify-between">
-              <span className="text-sm text-medium-gray">
-                {brokerMembers.length > 1 ? "Your Take-Home" : "Estimated Take-Home"}
-                {brokerMembers.length > 1 && myMemberSplit < 1 && (
-                  <span className="text-xs text-muted-gray ml-1">
-                    ({(myMemberSplit * 100).toFixed(0)}%)
-                  </span>
-                )}
-              </span>
-              <span className="text-lg font-bold text-green">{formatCurrency(previewTakeHome)}</span>
-            </div>
-          )}
 
           {/* Save as My Defaults button */}
           {userEmail && (

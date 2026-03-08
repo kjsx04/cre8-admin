@@ -10,7 +10,7 @@ import { Deal, DealFormData, DealStatus, BrokerDefaults, DealDate, Broker } from
 import {
   formatCurrency,
   formatDate,
-  calcMemberTakeHome,
+  calcTakeHome,
   getMemberSplit,
   getCriticalDates,
   getNextCriticalDate,
@@ -402,9 +402,10 @@ export default function FlowPage() {
   // Summary stats (active deals only) — uses member-specific take-home for logged-in broker
   const activeDeals = deals.filter((d) => ["active", "due_diligence", "closing"].includes(d.status));
   const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.price || 0), 0);
+  // Take-home per deal: price × rate × 70% × member split − additional splits
   const totalTakeHome = activeDeals.reduce((sum, d) => {
     const memberSplit = getMemberSplit(d.deal_members, brokerId);
-    return sum + calcMemberTakeHome(d.price, d.commission_rate, d.broker_split, d.additional_splits || [], memberSplit);
+    return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
   }, 0);
 
   // Get estimated close date for a deal — last (latest) critical date in the timeline
@@ -427,7 +428,7 @@ export default function FlowPage() {
       if (!closeDate) return sum; // no dates = skip
       if (closeDate > cutoff) return sum; // closing after the window
       const memberSplit = getMemberSplit(deal.deal_members, brokerId);
-      return sum + calcMemberTakeHome(deal.price, deal.commission_rate, deal.broker_split, deal.additional_splits || [], memberSplit);
+      return sum + calcTakeHome(deal.price, deal.commission_rate, memberSplit, deal.additional_splits || []);
     }, 0);
   };
 

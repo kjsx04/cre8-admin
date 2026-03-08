@@ -4,7 +4,8 @@ import { Deal } from "@/lib/flow/types";
 import {
   formatCurrency,
   calcTakeHome,
-  getNextCriticalDate,
+  getMemberSplit,
+  getCriticalDates,
   countdownText,
 } from "@/lib/flow/utils";
 
@@ -18,15 +19,18 @@ interface DealCardProps {
   onDragEnd?: (e: React.DragEvent) => void;
 }
 
-export default function DealCard({ deal, onClick, draggable, onDragStart, onDragEnd }: DealCardProps) {
-  // Pass additional_splits so take-home accounts for referral fees etc.
+export default function DealCard({ deal, brokerId, onClick, draggable, onDragStart, onDragEnd }: DealCardProps) {
+  // Take-home = price × rate × 70% after house × member split − additional splits
+  const memberSplit = getMemberSplit(deal.deal_members, brokerId || "");
   const takeHome = calcTakeHome(
     deal.price,
     deal.commission_rate,
-    deal.broker_split,
+    memberSplit,
     deal.additional_splits || []
   );
-  const nextDate = getNextCriticalDate(deal);
+  // All timeline dates for this deal
+  const allDates = getCriticalDates(deal);
+  const isActive = deal.status !== "closed" && deal.status !== "cancelled";
 
   return (
     <button
@@ -61,25 +65,34 @@ export default function DealCard({ deal, onClick, draggable, onDragStart, onDrag
           </div>
         </div>
 
-        {/* Bottom — next critical date countdown */}
-        {nextDate && deal.status !== "closed" && deal.status !== "cancelled" && (
-          <div className="flex items-center gap-2 pt-3 border-t border-border-light">
-            {/* Urgency dot */}
-            <div className={`w-2 h-2 rounded-full flex-shrink-0
-              ${nextDate.urgency === "red" ? "bg-red-500" :
-                nextDate.urgency === "yellow" ? "bg-amber-500" :
-                nextDate.urgency === "gray" ? "bg-border-medium" :
-                "bg-green"}`}
-            />
-            <span className="text-xs text-medium-gray">{nextDate.label}</span>
-            <span className={`text-xs font-medium ml-auto
-              ${nextDate.urgency === "red" ? "text-red-600" :
-                nextDate.urgency === "yellow" ? "text-amber-600" :
-                nextDate.urgency === "gray" ? "text-muted-gray" :
-                "text-green"}`}
-            >
-              {countdownText(nextDate.daysAway)}
-            </span>
+        {/* Bottom — all timeline dates with countdowns, or placeholder if none */}
+        {isActive && (
+          <div className="pt-3 border-t border-border-light">
+            {allDates.length > 0 ? (
+              <div className="space-y-1.5">
+                {allDates.map((d, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0
+                      ${d.urgency === "red" ? "bg-red-500" :
+                        d.urgency === "yellow" ? "bg-amber-500" :
+                        d.urgency === "gray" ? "bg-border-medium" :
+                        "bg-green"}`}
+                    />
+                    <span className="text-xs text-medium-gray truncate">{d.label}</span>
+                    <span className={`text-xs font-medium ml-auto flex-shrink-0
+                      ${d.urgency === "red" ? "text-red-600" :
+                        d.urgency === "yellow" ? "text-amber-600" :
+                        d.urgency === "gray" ? "text-muted-gray" :
+                        "text-green"}`}
+                    >
+                      {countdownText(d.daysAway)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-gray italic">No dates yet — enter when deal progresses</p>
+            )}
           </div>
         )}
       </div>

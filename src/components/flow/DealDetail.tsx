@@ -232,7 +232,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
           {/* Body */}
           <div className="px-6 py-4 space-y-4">
             {/* Commission breakdown */}
-            <CommissionCalc deal={deal} />
+            <CommissionCalc deal={deal} brokerId={brokerId} />
 
             {/* Timeline */}
             <TimelineBar deal={deal} />
