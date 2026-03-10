@@ -6,13 +6,12 @@ import AppShell from "@/components/AppShell";
 /**
  * /intel — Market Intel approval queue.
  * Morning workflow: review pending briefs, approve/edit/delete.
- * Tabs: Pending | Live | Deleted
+ * Tabs: Pending | Needs Text | Live | Deleted
  *
- * Card layout:
- *   Row 1: Title + category badge
- *   Row 2: Date · Source · link arrow to original article
- *   Body:  Summary (What Happened) + Impact (What This Means) — always visible
- *   Footer: Approve / Edit / Delete actions
+ * "Needs Text" tab: paywalled articles where GPT only saw the headline.
+ * Kevin pastes the article text → GPT generates the full brief → moves to Pending.
+ *
+ * Manual submit: paste any article at the top to create a brief from scratch.
  */
 
 /* ── Types ── */
@@ -27,7 +26,7 @@ interface Brief {
   source_name: string | null;
   source_url: string | null;
   source_date: string | null;
-  status: "pending" | "live" | "deleted";
+  status: "pending" | "live" | "deleted" | "needs_text";
   relevance_score: number;
   original_headline: string | null;
   original_summary: string | null;
@@ -41,6 +40,7 @@ interface Brief {
 /* ── Tab config ── */
 const TABS = [
   { label: "Pending", status: "pending" },
+  { label: "Needs Text", status: "needs_text" },
   { label: "Live", status: "live" },
   { label: "Deleted", status: "deleted" },
 ];
@@ -72,6 +72,35 @@ export default function IntelPage() {
   const [saving, setSaving] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<string>("all");
 
+  /* ── Manual submit state ── */
+  const [showManualForm, setShowManualForm] = useState(false);
+  const [manualHeadline, setManualHeadline] = useState("");
+  const [manualText, setManualText] = useState("");
+  const [manualSubmitting, setManualSubmitting] = useState(false);
+
+  /* ── Paste text state (for needs_text briefs) ── */
+  const [pasteTextId, setPasteTextId] = useState<string | null>(null);
+  const [pasteText, setPasteText] = useState("");
+  const [processing, setProcessing] = useState<string | null>(null);
+
+  /* ── Tab counts (fetched separately so badges always show) ── */
+  const [tabCounts, setTabCounts] = useState<Record<string, number>>({});
+
+  /* ── Fetch tab counts ── */
+  const fetchTabCounts = useCallback(async () => {
+    const counts: Record<string, number> = {};
+    for (const tab of TABS) {
+      try {
+        const res = await fetch(`/api/intel?status=${tab.status}&limit=200`);
+        const data = await res.json();
+        counts[tab.status] = Array.isArray(data) ? data.length : 0;
+      } catch {
+        counts[tab.status] = 0;
+      }
+    }
+    setTabCounts(counts);
+  }, []);
+
   /* ── Fetch briefs ── */
   const fetchBriefs = useCallback(async () => {
     setLoading(true);
@@ -89,7 +118,8 @@ export default function IntelPage() {
 
   useEffect(() => {
     fetchBriefs();
-  }, [fetchBriefs]);
+    fetchTabCounts();
+  }, [fetchBriefs, fetchTabCounts]);
 
   /* ── Approve a brief (pending → live) ── */
   const handleApprove = async (id: string) => {
@@ -101,6 +131,7 @@ export default function IntelPage() {
         body: JSON.stringify({ id, status: "live" }),
       });
       setBriefs((prev) => prev.filter((b) => b.id !== id));
+      fetchTabCounts();
     } finally {
       setSaving(null);
     }
@@ -116,6 +147,7 @@ export default function IntelPage() {
         body: JSON.stringify({ id, status: "deleted" }),
       });
       setBriefs((prev) => prev.filter((b) => b.id !== id));
+      fetchTabCounts();
     } finally {
       setSaving(null);
     }
@@ -131,6 +163,7 @@ export default function IntelPage() {
         body: JSON.stringify({ id, status: "pending" }),
       });
       setBriefs((prev) => prev.filter((b) => b.id !== id));
+      fetchTabCounts();
     } finally {
       setSaving(null);
     }
@@ -146,6 +179,7 @@ export default function IntelPage() {
         body: JSON.stringify({ id, status: "pending", published_at: null }),
       });
       setBriefs((prev) => prev.filter((b) => b.id !== id));
+      fetchTabCounts();
     } finally {
       setSaving(null);
     }
@@ -196,8 +230,57 @@ export default function IntelPage() {
       });
       setBriefs((prev) => prev.filter((b) => b.id !== id));
       setEditingId(null);
+      fetchTabCounts();
     } finally {
       setSaving(null);
+    }
+  };
+
+  /* ── Process pasted text for a needs_text brief ── */
+  const handleProcessText = async (id: string) => {
+    if (!pasteText.trim()) return;
+    setProcessing(id);
+    try {
+      const res = await fetch("/api/intel/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, text: pasteText }),
+      });
+      if (res.ok) {
+        /* Brief moved to pending — remove from needs_text list */
+        setBriefs((prev) => prev.filter((b) => b.id !== id));
+        setPasteTextId(null);
+        setPasteText("");
+        fetchTabCounts();
+      }
+    } finally {
+      setProcessing(null);
+    }
+  };
+
+  /* ── Manual article submission ── */
+  const handleManualSubmit = async () => {
+    if (!manualText.trim()) return;
+    setManualSubmitting(true);
+    try {
+      const res = await fetch("/api/intel/process", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          headline: manualHeadline || null,
+          text: manualText,
+        }),
+      });
+      if (res.ok) {
+        setManualHeadline("");
+        setManualText("");
+        setShowManualForm(false);
+        /* Refresh if on pending tab */
+        if (activeTab === 0) fetchBriefs();
+        fetchTabCounts();
+      }
+    } finally {
+      setManualSubmitting(false);
     }
   };
 
@@ -224,10 +307,43 @@ export default function IntelPage() {
               Review, edit, and approve news briefs before they go live.
             </p>
           </div>
-          <span className="font-dm text-sm text-medium-gray">
-            {filteredBriefs.length} brief{filteredBriefs.length !== 1 ? "s" : ""}
-          </span>
+          <button
+            onClick={() => setShowManualForm(!showManualForm)}
+            className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors"
+          >
+            {showManualForm ? "Cancel" : "+ Submit Article"}
+          </button>
         </div>
+
+        {/* Manual submit form — collapsible */}
+        {showManualForm && (
+          <div className="bg-white rounded-card border border-border-light p-5 mb-6">
+            <h3 className="font-dm text-sm font-semibold text-charcoal mb-3">
+              Paste an article to generate a brief
+            </h3>
+            <input
+              type="text"
+              value={manualHeadline}
+              onChange={(e) => setManualHeadline(e.target.value)}
+              placeholder="Article headline (optional)"
+              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn mb-3 focus:outline-none focus:border-green"
+            />
+            <textarea
+              value={manualText}
+              onChange={(e) => setManualText(e.target.value)}
+              placeholder="Paste the full article text here..."
+              rows={6}
+              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn mb-3 focus:outline-none focus:border-green resize-y"
+            />
+            <button
+              onClick={handleManualSubmit}
+              disabled={!manualText.trim() || manualSubmitting}
+              className="px-5 py-2.5 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
+            >
+              {manualSubmitting ? "Processing..." : "Generate Brief"}
+            </button>
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex items-center gap-1 mb-5 border-b border-border-light pb-0">
@@ -238,11 +354,25 @@ export default function IntelPage() {
                 setActiveTab(i);
                 setEditingId(null);
                 setCategoryFilter("all");
+                setPasteTextId(null);
               }}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors relative
+              className={`px-4 py-2.5 text-sm font-medium transition-colors relative flex items-center gap-2
                 ${activeTab === i ? "text-charcoal" : "text-medium-gray hover:text-charcoal"}`}
             >
               {tab.label}
+              {/* Show count badge for needs_text and pending */}
+              {(tab.status === "needs_text" || tab.status === "pending") &&
+                (tabCounts[tab.status] || 0) > 0 && (
+                  <span
+                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      tab.status === "needs_text"
+                        ? "bg-amber-100 text-amber-600"
+                        : "bg-green/10 text-green"
+                    }`}
+                  >
+                    {tabCounts[tab.status]}
+                  </span>
+                )}
               {activeTab === i && (
                 <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-green rounded-full" />
               )}
@@ -250,8 +380,8 @@ export default function IntelPage() {
           ))}
         </div>
 
-        {/* Category filter chips */}
-        {briefs.length > 0 && (
+        {/* Category filter chips (not shown on needs_text tab) */}
+        {briefs.length > 0 && TABS[activeTab].status !== "needs_text" && (
           <div className="flex items-center gap-2 mb-5 flex-wrap">
             <button
               onClick={() => setCategoryFilter("all")}
@@ -290,26 +420,33 @@ export default function IntelPage() {
         {!loading && filteredBriefs.length === 0 && (
           <div className="text-center py-20">
             <p className="font-dm text-medium-gray text-sm">
-              {activeTab === 0
+              {TABS[activeTab].status === "pending"
                 ? "No pending briefs. Check back tomorrow morning."
-                : activeTab === 1
-                  ? "No live briefs yet. Approve some from the Pending tab."
-                  : "No deleted briefs."}
+                : TABS[activeTab].status === "needs_text"
+                  ? "No articles waiting for text. All caught up."
+                  : TABS[activeTab].status === "live"
+                    ? "No live briefs yet. Approve some from the Pending tab."
+                    : "No deleted briefs."}
             </p>
           </div>
         )}
 
-        {/* Brief cards — full content always visible */}
+        {/* Brief cards */}
         {!loading && (
           <div className="space-y-4">
             {filteredBriefs.map((brief) => {
               const isEditing = editingId === brief.id;
               const isSaving = saving === brief.id;
+              const isNeedsText = brief.status === "needs_text";
+              const isPasting = pasteTextId === brief.id;
+              const isProcessing = processing === brief.id;
 
               return (
                 <div
                   key={brief.id}
-                  className="bg-white rounded-card border border-border-light overflow-hidden"
+                  className={`bg-white rounded-card border overflow-hidden ${
+                    isNeedsText ? "border-amber-300/50" : "border-border-light"
+                  }`}
                 >
                   <div className="px-5 py-5">
                     {/* Row 1: Title + category badge */}
@@ -328,6 +465,11 @@ export default function IntelPage() {
                       )}
                       {/* Category badge + relevance score */}
                       <div className="flex items-center gap-2 shrink-0">
+                        {isNeedsText && (
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border bg-amber-100 text-amber-600 border-amber-300/50">
+                            Needs Text
+                          </span>
+                        )}
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border ${
                             CATEGORY_COLORS[brief.category] || "bg-white/5 text-medium-gray border-border-light"
@@ -414,43 +556,90 @@ export default function IntelPage() {
                       )}
                     </div>
 
-                    {/* Summary — What Happened */}
-                    <div className="mb-4">
-                      <span className="text-[10px] font-bold text-medium-gray/50 uppercase tracking-wider block mb-1.5">
-                        What Happened
-                      </span>
-                      {isEditing ? (
-                        <textarea
-                          value={editForm.summary || ""}
-                          onChange={(e) => setEditForm((f) => ({ ...f, summary: e.target.value }))}
-                          rows={4}
-                          className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
-                        />
-                      ) : (
-                        <p className="font-dm text-[13px] text-charcoal/75 leading-relaxed">
-                          {brief.summary}
-                        </p>
-                      )}
-                    </div>
+                    {/* ── NEEDS TEXT: show paste area instead of summary/impact ── */}
+                    {isNeedsText ? (
+                      <div className="mb-4">
+                        {isPasting ? (
+                          <>
+                            <p className="font-dm text-[12px] text-medium-gray mb-3">
+                              Open the source article, copy the text, and paste it below. GPT will generate the full brief.
+                            </p>
+                            <textarea
+                              value={pasteText}
+                              onChange={(e) => setPasteText(e.target.value)}
+                              placeholder="Paste the full article text here..."
+                              rows={6}
+                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y mb-3"
+                              autoFocus
+                            />
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => handleProcessText(brief.id)}
+                                disabled={!pasteText.trim() || isProcessing}
+                                className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
+                              >
+                                {isProcessing ? "Processing..." : "Generate Brief"}
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setPasteTextId(null);
+                                  setPasteText("");
+                                }}
+                                className="px-4 py-2 text-medium-gray text-xs font-medium hover:text-charcoal transition-colors"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </>
+                        ) : (
+                          <div className="bg-amber-50 rounded-btn px-4 py-3 border border-amber-200/50">
+                            <p className="font-dm text-[13px] text-amber-700">
+                              Headline only — article text needed for full brief.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <>
+                        {/* Summary — What Happened */}
+                        <div className="mb-4">
+                          <span className="text-[10px] font-bold text-medium-gray/50 uppercase tracking-wider block mb-1.5">
+                            What Happened
+                          </span>
+                          {isEditing ? (
+                            <textarea
+                              value={editForm.summary || ""}
+                              onChange={(e) => setEditForm((f) => ({ ...f, summary: e.target.value }))}
+                              rows={4}
+                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                            />
+                          ) : (
+                            <p className="font-dm text-[13px] text-charcoal/75 leading-relaxed">
+                              {brief.summary}
+                            </p>
+                          )}
+                        </div>
 
-                    {/* Impact — What This Means */}
-                    <div className="mb-5 border-l-2 border-green/30 pl-4">
-                      <span className="text-[10px] font-bold text-green/60 uppercase tracking-wider block mb-1.5">
-                        What This Means
-                      </span>
-                      {isEditing ? (
-                        <textarea
-                          value={editForm.impact || ""}
-                          onChange={(e) => setEditForm((f) => ({ ...f, impact: e.target.value }))}
-                          rows={4}
-                          className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
-                        />
-                      ) : (
-                        <p className="font-dm text-[13px] text-charcoal/55 leading-relaxed">
-                          {brief.impact}
-                        </p>
-                      )}
-                    </div>
+                        {/* Impact — What This Means */}
+                        <div className="mb-5 border-l-2 border-green/30 pl-4">
+                          <span className="text-[10px] font-bold text-green/60 uppercase tracking-wider block mb-1.5">
+                            What This Means
+                          </span>
+                          {isEditing ? (
+                            <textarea
+                              value={editForm.impact || ""}
+                              onChange={(e) => setEditForm((f) => ({ ...f, impact: e.target.value }))}
+                              rows={4}
+                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                            />
+                          ) : (
+                            <p className="font-dm text-[13px] text-charcoal/55 leading-relaxed">
+                              {brief.impact}
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
 
                     {/* Actions */}
                     <div className="flex items-center gap-2 pt-1 border-t border-border-light/60 mt-1 pt-3">
@@ -479,7 +668,8 @@ export default function IntelPage() {
                         </>
                       ) : (
                         <>
-                          {activeTab === 0 && (
+                          {/* Pending tab actions */}
+                          {TABS[activeTab].status === "pending" && (
                             <>
                               <button
                                 onClick={() => handleApprove(brief.id)}
@@ -503,7 +693,46 @@ export default function IntelPage() {
                               </button>
                             </>
                           )}
-                          {activeTab === 1 && (
+
+                          {/* Needs Text tab actions */}
+                          {TABS[activeTab].status === "needs_text" && (
+                            <>
+                              {!isPasting && (
+                                <button
+                                  onClick={() => {
+                                    setPasteTextId(brief.id);
+                                    setPasteText("");
+                                  }}
+                                  className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors"
+                                >
+                                  Paste Article Text
+                                </button>
+                              )}
+                              {brief.source_url && (
+                                <a
+                                  href={brief.source_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-4 py-2 bg-white text-blue-500 text-xs font-medium rounded-btn border border-border-light hover:border-blue-300 transition-colors inline-flex items-center gap-1"
+                                >
+                                  Open Article
+                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                                  </svg>
+                                </a>
+                              )}
+                              <button
+                                onClick={() => handleDelete(brief.id)}
+                                disabled={isSaving}
+                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
+                              >
+                                Skip
+                              </button>
+                            </>
+                          )}
+
+                          {/* Live tab actions */}
+                          {TABS[activeTab].status === "live" && (
                             <>
                               <button
                                 onClick={() => startEditing(brief)}
@@ -527,7 +756,9 @@ export default function IntelPage() {
                               </button>
                             </>
                           )}
-                          {activeTab === 2 && (
+
+                          {/* Deleted tab actions */}
+                          {TABS[activeTab].status === "deleted" && (
                             <button
                               onClick={() => handleRestore(brief.id)}
                               disabled={isSaving}
