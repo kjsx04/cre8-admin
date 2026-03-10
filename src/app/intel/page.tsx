@@ -7,6 +7,12 @@ import AppShell from "@/components/AppShell";
  * /intel — Market Intel approval queue.
  * Morning workflow: review pending briefs, approve/edit/delete.
  * Tabs: Pending | Live | Deleted
+ *
+ * Card layout:
+ *   Row 1: Title + category badge
+ *   Row 2: Date · Source · link arrow to original article
+ *   Body:  Summary (What Happened) + Impact (What This Means) — always visible
+ *   Footer: Approve / Edit / Delete actions
  */
 
 /* ── Types ── */
@@ -19,10 +25,14 @@ interface Brief {
   category: string;
   tags: string[];
   source_name: string | null;
+  source_url: string | null;
   source_date: string | null;
   status: "pending" | "live" | "deleted";
   relevance_score: number;
   original_headline: string | null;
+  original_summary: string | null;
+  original_impact: string | null;
+  was_edited: boolean;
   created_at: string;
   updated_at: string;
   published_at: string | null;
@@ -37,38 +47,14 @@ const TABS = [
 
 /* ── Category colors for badges ── */
 const CATEGORY_COLORS: Record<string, string> = {
-  "data-center": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  "data-center": "bg-blue-500/15 text-blue-500 border-blue-500/30",
   retail: "bg-green/15 text-green border-green/30",
-  land: "bg-amber-500/15 text-amber-400 border-amber-500/30",
-  market: "bg-purple-500/15 text-purple-400 border-purple-500/30",
-  infrastructure: "bg-orange-500/15 text-orange-400 border-orange-500/30",
+  land: "bg-amber-500/15 text-amber-600 border-amber-500/30",
+  market: "bg-purple-500/15 text-purple-500 border-purple-500/30",
+  infrastructure: "bg-orange-500/15 text-orange-500 border-orange-500/30",
 };
-
-/* ── Tag colors ── */
-const TAG_COLORS: Record<string, string> = {
-  zoning: "bg-yellow-500/10 text-yellow-500",
-  power: "bg-orange-500/10 text-orange-400",
-  expansion: "bg-emerald-500/10 text-emerald-400",
-  operator: "bg-blue-500/10 text-blue-400",
-  infrastructure: "bg-purple-500/10 text-purple-400",
-  policy: "bg-pink-500/10 text-pink-400",
-};
-
-function getTagColor(tag: string): string {
-  return TAG_COLORS[tag.toLowerCase()] || "bg-white/5 text-medium-gray";
-}
 
 /* ── Format date ── */
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
 function formatShortDate(dateStr: string): string {
   return new Date(dateStr).toLocaleDateString("en-US", {
     month: "short",
@@ -81,7 +67,6 @@ export default function IntelPage() {
   const [briefs, setBriefs] = useState<Brief[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(0);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Brief>>({});
   const [saving, setSaving] = useState<string | null>(null);
@@ -195,6 +180,27 @@ export default function IntelPage() {
     }
   };
 
+  /* ── Save + approve in one action ── */
+  const saveAndApprove = async (id: string) => {
+    setSaving(id);
+    try {
+      await fetch("/api/intel", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id,
+          ...editForm,
+          status: "live",
+          published_at: new Date().toISOString(),
+        }),
+      });
+      setBriefs((prev) => prev.filter((b) => b.id !== id));
+      setEditingId(null);
+    } finally {
+      setSaving(null);
+    }
+  };
+
   /* ── Filtered briefs ── */
   const filteredBriefs =
     categoryFilter === "all"
@@ -209,7 +215,7 @@ export default function IntelPage() {
 
   return (
     <AppShell>
-      <div className="px-6 py-6 max-w-[1200px] mx-auto">
+      <div className="px-6 py-6 max-w-[1000px] mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -218,12 +224,9 @@ export default function IntelPage() {
               Review, edit, and approve news briefs before they go live.
             </p>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Brief count */}
-            <span className="font-dm text-sm text-medium-gray">
-              {filteredBriefs.length} brief{filteredBriefs.length !== 1 ? "s" : ""}
-            </span>
-          </div>
+          <span className="font-dm text-sm text-medium-gray">
+            {filteredBriefs.length} brief{filteredBriefs.length !== 1 ? "s" : ""}
+          </span>
         </div>
 
         {/* Tabs */}
@@ -233,16 +236,11 @@ export default function IntelPage() {
               key={tab.status}
               onClick={() => {
                 setActiveTab(i);
-                setExpandedId(null);
                 setEditingId(null);
                 setCategoryFilter("all");
               }}
               className={`px-4 py-2.5 text-sm font-medium transition-colors relative
-                ${
-                  activeTab === i
-                    ? "text-charcoal"
-                    : "text-medium-gray hover:text-charcoal"
-                }`}
+                ${activeTab === i ? "text-charcoal" : "text-medium-gray hover:text-charcoal"}`}
             >
               {tab.label}
               {activeTab === i && (
@@ -258,11 +256,9 @@ export default function IntelPage() {
             <button
               onClick={() => setCategoryFilter("all")}
               className={`px-3 py-1 rounded-btn text-xs font-medium transition-colors border
-                ${
-                  categoryFilter === "all"
-                    ? "bg-charcoal text-white border-charcoal"
-                    : "bg-white text-medium-gray border-border-light hover:border-border-medium"
-                }`}
+                ${categoryFilter === "all"
+                  ? "bg-charcoal text-white border-charcoal"
+                  : "bg-white text-medium-gray border-border-light hover:border-border-medium"}`}
             >
               All ({briefs.length})
             </button>
@@ -272,12 +268,10 @@ export default function IntelPage() {
                 <button
                   key={cat}
                   onClick={() => setCategoryFilter(cat === categoryFilter ? "all" : cat)}
-                  className={`px-3 py-1 rounded-btn text-xs font-medium transition-colors border
-                    ${
-                      categoryFilter === cat
-                        ? "bg-charcoal text-white border-charcoal"
-                        : "bg-white text-medium-gray border-border-light hover:border-border-medium"
-                    }`}
+                  className={`px-3 py-1 rounded-btn text-xs font-medium transition-colors border capitalize
+                    ${categoryFilter === cat
+                      ? "bg-charcoal text-white border-charcoal"
+                      : "bg-white text-medium-gray border-border-light hover:border-border-medium"}`}
                 >
                   {cat.replace("-", " ")} ({count})
                 </button>
@@ -305,371 +299,247 @@ export default function IntelPage() {
           </div>
         )}
 
-        {/* Brief cards */}
+        {/* Brief cards — full content always visible */}
         {!loading && (
-          <div className="space-y-3">
+          <div className="space-y-4">
             {filteredBriefs.map((brief) => {
-              const isExpanded = expandedId === brief.id;
               const isEditing = editingId === brief.id;
               const isSaving = saving === brief.id;
 
               return (
                 <div
                   key={brief.id}
-                  className="bg-white rounded-card border border-border-light overflow-hidden transition-shadow hover:shadow-sm"
+                  className="bg-white rounded-card border border-border-light overflow-hidden"
                 >
-                  {/* Collapsed row — always visible */}
-                  <div
-                    className="px-5 py-4 cursor-pointer"
-                    onClick={() => {
-                      if (!isEditing) {
-                        setExpandedId(isExpanded ? null : brief.id);
-                      }
-                    }}
-                  >
-                    <div className="flex items-start gap-4">
-                      {/* Relevance score indicator */}
-                      <div
-                        className={`w-10 h-10 rounded-btn flex items-center justify-center text-xs font-bold shrink-0 mt-0.5
-                          ${
-                            brief.relevance_score >= 70
-                              ? "bg-green/15 text-green"
-                              : brief.relevance_score >= 40
-                                ? "bg-amber-500/15 text-amber-500"
-                                : "bg-red-500/15 text-red-400"
-                          }`}
-                      >
-                        {brief.relevance_score}
-                      </div>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                          {/* Category badge */}
-                          <span
-                            className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border ${
-                              CATEGORY_COLORS[brief.category] ||
-                              "bg-white/5 text-medium-gray border-border-light"
-                            }`}
-                          >
-                            {brief.category.replace("-", " ")}
-                          </span>
-                          {/* Source + date */}
-                          {brief.source_name && (
-                            <span className="text-[11px] text-medium-gray">
-                              via {brief.source_name}
-                            </span>
-                          )}
-                          <span className="text-[11px] text-medium-gray/60">
-                            {formatShortDate(brief.created_at)}
-                          </span>
-                        </div>
-
-                        {/* Title */}
-                        <h3 className="font-dm text-sm font-semibold text-charcoal leading-snug">
+                  <div className="px-5 py-5">
+                    {/* Row 1: Title + category badge */}
+                    <div className="flex items-start gap-3 mb-2">
+                      {isEditing ? (
+                        <input
+                          type="text"
+                          value={editForm.title || ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
+                          className="flex-1 px-3 py-1.5 text-[15px] font-semibold border border-border-light rounded-btn focus:outline-none focus:border-green"
+                        />
+                      ) : (
+                        <h3 className="flex-1 font-dm text-[15px] font-semibold text-charcoal leading-snug">
                           {brief.title}
                         </h3>
-
-                        {/* Original headline — shown dimmed if different */}
-                        {brief.original_headline &&
-                          brief.original_headline !== brief.title && (
-                            <p className="font-dm text-[11px] text-medium-gray/50 mt-1 truncate">
-                              Original: {brief.original_headline}
-                            </p>
-                          )}
-                      </div>
-
-                      {/* Quick actions (non-expanded) */}
-                      {!isExpanded && activeTab === 0 && (
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleApprove(brief.id);
-                            }}
-                            disabled={isSaving}
-                            className="px-3 py-1.5 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                          >
-                            {isSaving ? "..." : "Approve"}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDelete(brief.id);
-                            }}
-                            disabled={isSaving}
-                            className="px-3 py-1.5 bg-white text-red-500 text-xs font-medium rounded-btn border border-red-200 hover:bg-red-50 transition-colors disabled:opacity-50"
-                          >
-                            Delete
-                          </button>
-                        </div>
                       )}
-
-                      {/* Expand indicator */}
-                      <svg
-                        className={`w-4 h-4 text-medium-gray/40 shrink-0 mt-1 transition-transform ${
-                          isExpanded ? "rotate-180" : ""
-                        }`}
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M19 9l-7 7-7-7"
-                        />
-                      </svg>
+                      {/* Category badge + relevance score */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border ${
+                            CATEGORY_COLORS[brief.category] || "bg-white/5 text-medium-gray border-border-light"
+                          }`}
+                        >
+                          {isEditing ? (
+                            <select
+                              value={editForm.category || ""}
+                              onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                              className="bg-transparent text-[10px] font-bold uppercase border-none focus:outline-none cursor-pointer"
+                            >
+                              <option value="data-center">Data Center</option>
+                              <option value="retail">Retail</option>
+                              <option value="land">Land</option>
+                              <option value="market">Market</option>
+                              <option value="infrastructure">Infrastructure</option>
+                            </select>
+                          ) : (
+                            brief.category.replace("-", " ")
+                          )}
+                        </span>
+                        <span
+                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-btn ${
+                            brief.relevance_score >= 70
+                              ? "bg-green/10 text-green"
+                              : brief.relevance_score >= 40
+                                ? "bg-amber-500/10 text-amber-500"
+                                : "bg-red-500/10 text-red-400"
+                          }`}
+                        >
+                          {brief.relevance_score}
+                        </span>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Expanded content */}
-                  {isExpanded && (
-                    <div className="px-5 pb-5 border-t border-border-light pt-4">
-                      {isEditing ? (
-                        /* ── Edit mode ── */
-                        <div className="space-y-4">
-                          {/* Title */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-medium-gray uppercase tracking-wider mb-1">
-                              Title
-                            </label>
+                    {/* Row 2: Date · Source · link to article */}
+                    <div className="flex items-center gap-2 mb-4 text-[12px] text-medium-gray">
+                      <span>{formatShortDate(brief.source_date || brief.created_at)}</span>
+                      {brief.source_name && (
+                        <>
+                          <span className="text-border-medium">·</span>
+                          <span>{brief.source_name}</span>
+                        </>
+                      )}
+                      {brief.source_url && (
+                        <>
+                          <span className="text-border-medium">·</span>
+                          <a
+                            href={brief.source_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors"
+                          >
+                            Source
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                            </svg>
+                          </a>
+                        </>
+                      )}
+                      {/* Tags inline */}
+                      {brief.tags.length > 0 && (
+                        <>
+                          <span className="text-border-medium">·</span>
+                          {isEditing ? (
                             <input
                               type="text"
-                              value={editForm.title || ""}
+                              value={(editForm.tags || []).join(", ")}
                               onChange={(e) =>
-                                setEditForm((f) => ({ ...f, title: e.target.value }))
+                                setEditForm((f) => ({
+                                  ...f,
+                                  tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean),
+                                }))
                               }
-                              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn focus:outline-none focus:border-green"
+                              className="flex-1 px-2 py-0.5 text-[12px] border border-border-light rounded-btn focus:outline-none focus:border-green"
+                              placeholder="Tags (comma-separated)"
                             />
-                          </div>
-
-                          {/* Summary */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-medium-gray uppercase tracking-wider mb-1">
-                              Summary (What Happened)
-                            </label>
-                            <textarea
-                              value={editForm.summary || ""}
-                              onChange={(e) =>
-                                setEditForm((f) => ({ ...f, summary: e.target.value }))
-                              }
-                              rows={4}
-                              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
-                            />
-                          </div>
-
-                          {/* Impact */}
-                          <div>
-                            <label className="block text-[11px] font-medium text-medium-gray uppercase tracking-wider mb-1">
-                              Impact (What This Means)
-                            </label>
-                            <textarea
-                              value={editForm.impact || ""}
-                              onChange={(e) =>
-                                setEditForm((f) => ({ ...f, impact: e.target.value }))
-                              }
-                              rows={4}
-                              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
-                            />
-                          </div>
-
-                          {/* Category + Tags row */}
-                          <div className="flex gap-4">
-                            <div className="w-48">
-                              <label className="block text-[11px] font-medium text-medium-gray uppercase tracking-wider mb-1">
-                                Category
-                              </label>
-                              <select
-                                value={editForm.category || ""}
-                                onChange={(e) =>
-                                  setEditForm((f) => ({ ...f, category: e.target.value }))
-                                }
-                                className="w-full px-3 py-2 text-sm border border-border-light rounded-btn focus:outline-none focus:border-green bg-white"
-                              >
-                                <option value="data-center">Data Center</option>
-                                <option value="retail">Retail</option>
-                                <option value="land">Land</option>
-                                <option value="market">Market</option>
-                                <option value="infrastructure">Infrastructure</option>
-                              </select>
-                            </div>
-                            <div className="flex-1">
-                              <label className="block text-[11px] font-medium text-medium-gray uppercase tracking-wider mb-1">
-                                Tags (comma-separated)
-                              </label>
-                              <input
-                                type="text"
-                                value={(editForm.tags || []).join(", ")}
-                                onChange={(e) =>
-                                  setEditForm((f) => ({
-                                    ...f,
-                                    tags: e.target.value
-                                      .split(",")
-                                      .map((t) => t.trim())
-                                      .filter(Boolean),
-                                  }))
-                                }
-                                className="w-full px-3 py-2 text-sm border border-border-light rounded-btn focus:outline-none focus:border-green"
-                              />
-                            </div>
-                          </div>
-
-                          {/* Edit actions */}
-                          <div className="flex items-center gap-2 pt-2">
-                            <button
-                              onClick={() => saveEdits(brief.id)}
-                              disabled={isSaving}
-                              className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                            >
-                              {isSaving ? "Saving..." : "Save Changes"}
-                            </button>
-                            <button
-                              onClick={() => {
-                                /* Save + approve in one action */
-                                setSaving(brief.id);
-                                fetch("/api/intel", {
-                                  method: "PATCH",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    id: brief.id,
-                                    ...editForm,
-                                    status: "live",
-                                    published_at: new Date().toISOString(),
-                                  }),
-                                }).then(() => {
-                                  setBriefs((prev) =>
-                                    prev.filter((b) => b.id !== brief.id)
-                                  );
-                                  setSaving(null);
-                                  setEditingId(null);
-                                });
-                              }}
-                              disabled={isSaving}
-                              className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors disabled:opacity-50"
-                            >
-                              Save &amp; Approve
-                            </button>
-                            <button
-                              onClick={() => setEditingId(null)}
-                              className="px-4 py-2 text-medium-gray text-xs font-medium hover:text-charcoal transition-colors"
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        /* ── Read mode ── */
-                        <div>
-                          {/* Tags */}
-                          {brief.tags.length > 0 && (
-                            <div className="flex flex-wrap gap-1.5 mb-4">
-                              {brief.tags.map((tag) => (
-                                <span
-                                  key={tag}
-                                  className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded-btn ${getTagColor(tag)}`}
-                                >
-                                  {tag}
-                                </span>
-                              ))}
-                            </div>
+                          ) : (
+                            <span className="text-medium-gray/60">
+                              {brief.tags.join(", ")}
+                            </span>
                           )}
-
-                          {/* Summary */}
-                          <div className="mb-4">
-                            <span className="text-[10px] font-bold text-medium-gray/50 uppercase tracking-wider block mb-1.5">
-                              What Happened
-                            </span>
-                            <p className="font-dm text-sm text-charcoal/80 leading-relaxed">
-                              {brief.summary}
-                            </p>
-                          </div>
-
-                          {/* Impact */}
-                          <div className="mb-5 border-l-2 border-green/30 pl-4">
-                            <span className="text-[10px] font-bold text-green/60 uppercase tracking-wider block mb-1.5">
-                              What This Means
-                            </span>
-                            <p className="font-dm text-sm text-charcoal/60 leading-relaxed">
-                              {brief.impact}
-                            </p>
-                          </div>
-
-                          {/* Meta info */}
-                          <div className="flex items-center gap-4 text-[11px] text-medium-gray/50 mb-4">
-                            <span>Score: {brief.relevance_score}</span>
-                            <span>Created: {formatDate(brief.created_at)}</span>
-                            {brief.published_at && (
-                              <span>Published: {formatDate(brief.published_at)}</span>
-                            )}
-                            <span>Slug: {brief.slug}</span>
-                          </div>
-
-                          {/* Actions */}
-                          <div className="flex items-center gap-2">
-                            {activeTab === 0 && (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(brief.id)}
-                                  disabled={isSaving}
-                                  className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                                >
-                                  {isSaving ? "..." : "Approve"}
-                                </button>
-                                <button
-                                  onClick={() => startEditing(brief)}
-                                  className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(brief.id)}
-                                  disabled={isSaving}
-                                  className="px-4 py-2 text-red-500 text-xs font-medium hover:text-red-700 transition-colors disabled:opacity-50"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                            {activeTab === 1 && (
-                              <>
-                                <button
-                                  onClick={() => startEditing(brief)}
-                                  className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  onClick={() => handleUnpublish(brief.id)}
-                                  disabled={isSaving}
-                                  className="px-4 py-2 text-amber-600 text-xs font-medium hover:text-amber-800 transition-colors disabled:opacity-50"
-                                >
-                                  Unpublish
-                                </button>
-                                <button
-                                  onClick={() => handleDelete(brief.id)}
-                                  disabled={isSaving}
-                                  className="px-4 py-2 text-red-500 text-xs font-medium hover:text-red-700 transition-colors disabled:opacity-50"
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                            {activeTab === 2 && (
-                              <button
-                                onClick={() => handleRestore(brief.id)}
-                                disabled={isSaving}
-                                className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors disabled:opacity-50"
-                              >
-                                Restore to Pending
-                              </button>
-                            )}
-                          </div>
-                        </div>
+                        </>
                       )}
                     </div>
-                  )}
+
+                    {/* Summary — What Happened */}
+                    <div className="mb-4">
+                      <span className="text-[10px] font-bold text-medium-gray/50 uppercase tracking-wider block mb-1.5">
+                        What Happened
+                      </span>
+                      {isEditing ? (
+                        <textarea
+                          value={editForm.summary || ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, summary: e.target.value }))}
+                          rows={4}
+                          className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                        />
+                      ) : (
+                        <p className="font-dm text-[13px] text-charcoal/75 leading-relaxed">
+                          {brief.summary}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Impact — What This Means */}
+                    <div className="mb-5 border-l-2 border-green/30 pl-4">
+                      <span className="text-[10px] font-bold text-green/60 uppercase tracking-wider block mb-1.5">
+                        What This Means
+                      </span>
+                      {isEditing ? (
+                        <textarea
+                          value={editForm.impact || ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, impact: e.target.value }))}
+                          rows={4}
+                          className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                        />
+                      ) : (
+                        <p className="font-dm text-[13px] text-charcoal/55 leading-relaxed">
+                          {brief.impact}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="flex items-center gap-2 pt-1 border-t border-border-light/60 mt-1 pt-3">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={() => saveAndApprove(brief.id)}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
+                          >
+                            {isSaving ? "..." : "Save & Approve"}
+                          </button>
+                          <button
+                            onClick={() => saveEdits(brief.id)}
+                            disabled={isSaving}
+                            className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors disabled:opacity-50"
+                          >
+                            Save Draft
+                          </button>
+                          <button
+                            onClick={() => setEditingId(null)}
+                            className="px-4 py-2 text-medium-gray text-xs font-medium hover:text-charcoal transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          {activeTab === 0 && (
+                            <>
+                              <button
+                                onClick={() => handleApprove(brief.id)}
+                                disabled={isSaving}
+                                className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
+                              >
+                                {isSaving ? "..." : "Approve"}
+                              </button>
+                              <button
+                                onClick={() => startEditing(brief)}
+                                className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleDelete(brief.id)}
+                                disabled={isSaving}
+                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                          {activeTab === 1 && (
+                            <>
+                              <button
+                                onClick={() => startEditing(brief)}
+                                className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
+                              >
+                                Edit
+                              </button>
+                              <button
+                                onClick={() => handleUnpublish(brief.id)}
+                                disabled={isSaving}
+                                className="px-4 py-2 text-amber-600 text-xs font-medium hover:text-amber-800 transition-colors disabled:opacity-50"
+                              >
+                                Unpublish
+                              </button>
+                              <button
+                                onClick={() => handleDelete(brief.id)}
+                                disabled={isSaving}
+                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
+                              >
+                                Delete
+                              </button>
+                            </>
+                          )}
+                          {activeTab === 2 && (
+                            <button
+                              onClick={() => handleRestore(brief.id)}
+                              disabled={isSaving}
+                              className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors disabled:opacity-50"
+                            >
+                              Restore to Pending
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               );
             })}
