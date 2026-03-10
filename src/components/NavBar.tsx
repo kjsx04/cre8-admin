@@ -10,6 +10,7 @@ const NAV_ITEMS = [
   { label: "Docs", href: "/docs" },
   { label: "Flow", href: "/flow" },
   { label: "Marketing", href: "/marketing" },
+  { label: "Intel", href: "/intel" },
 ];
 
 export default function NavBar() {
