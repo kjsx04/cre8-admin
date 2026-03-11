@@ -399,22 +399,37 @@ export default function FlowPage() {
     return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
   });
 
-  // Summary stats (active deals only) — uses member-specific take-home for logged-in broker
-  const activeDeals = deals.filter((d) => ["active", "due_diligence", "closing"].includes(d.status));
-  const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.price || 0), 0);
-  // Take-home per deal: price × rate × 70% × member split − additional splits
-  const totalTakeHome = activeDeals.reduce((sum, d) => {
-    const memberSplit = getMemberSplit(d.deal_members, brokerId);
-    return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
-  }, 0);
-
   // Get estimated close date for a deal — last (latest) critical date in the timeline
   const getEstimatedCloseDate = (deal: Deal): Date | null => {
     const dates = getCriticalDates(deal);
     if (dates.length === 0) return null;
-    // The last date in the sorted timeline is the close date
     return dates[dates.length - 1].date;
   };
+
+  // Summary stats (active deals only) — uses member-specific take-home for logged-in broker
+  const activeDeals = deals.filter((d) => ["active", "due_diligence", "closing"].includes(d.status));
+  const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.price || 0), 0);
+
+  // ── YTD take-home: deals closed in the current calendar year ──
+  const currentYear = new Date().getFullYear();
+  const ytdTakeHome = deals
+    .filter((d) => {
+      if (d.status !== "closed" || !d.actual_close_date) return false;
+      return new Date(d.actual_close_date).getFullYear() === currentYear;
+    })
+    .reduce((sum, d) => {
+      const memberSplit = getMemberSplit(d.deal_members, brokerId);
+      return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
+    }, 0);
+
+  // ── Projected: YTD + active deals with estimated close before Dec 31 ──
+  const yearEnd = new Date(currentYear, 11, 31); // Dec 31
+  const projectedTakeHome = ytdTakeHome + activeDeals.reduce((sum, deal) => {
+    const closeDate = getEstimatedCloseDate(deal);
+    if (!closeDate || closeDate > yearEnd) return sum;
+    const memberSplit = getMemberSplit(deal.deal_members, brokerId);
+    return sum + calcTakeHome(deal.price, deal.commission_rate, memberSplit, deal.additional_splits || []);
+  }, 0);
 
   // Calculate forecast take-home: sum take-home for deals closing within N days from today
   const calcForecastTakeHome = (days: number): number => {
@@ -450,7 +465,19 @@ export default function FlowPage() {
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
             <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
             <SummaryCard label="Pipeline Value" value={formatCurrency(totalPipeline)} />
-            <SummaryCard label="Total Take-Home" value={formatCurrency(totalTakeHome)} accent />
+            {/* YTD + Projected take-home card */}
+            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
+              <div className="flex">
+                <div className="flex-1 pr-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">YTD Take-Home</p>
+                  <p className="font-bebas text-2xl text-green">{formatCurrency(ytdTakeHome)}</p>
+                </div>
+                <div className="flex-1 border-l border-[#E0E0E0] pl-3">
+                  <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Projected {currentYear}</p>
+                  <p className="font-bebas text-2xl text-green">{formatCurrency(projectedTakeHome)}</p>
+                </div>
+              </div>
+            </div>
             {/* Forecast card — 3 sub-columns with editable day windows */}
             <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
               <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-2">Take-Home Forecast</p>

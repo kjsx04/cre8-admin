@@ -1,4 +1,4 @@
-import { Deal, CriticalDate, AdditionalSplit, DealMember, DealStatus, DealDate } from "./types";
+import { Deal, CriticalDate, AdditionalSplit, DealMember, DealStatus, DealDate, DealDiffItem, StageSuggestion, ExtractedDealData } from "./types";
 
 // ── Date helpers ──
 
@@ -312,6 +312,171 @@ export const STATUS_LABELS: Record<string, string> = {
   closed: "Closed",
   cancelled: "Cancelled",
 };
+
+// ── Deal update diff builder — compares AI extraction against current deal ──
+
+/** Field definitions for scalar comparison */
+const DIFF_FIELD_DEFS: { key: string; label: string; format?: (v: unknown) => string }[] = [
+  { key: "deal_name", label: "Deal Name" },
+  { key: "property_address", label: "Property Address" },
+  { key: "deal_type", label: "Deal Type" },
+  { key: "price", label: "Price", format: (v) => formatCurrency(Number(v)) },
+  { key: "commission_rate", label: "Commission Rate", format: (v) => `${v}%` },
+  { key: "effective_date", label: "Effective Date", format: (v) => formatDate(String(v)) },
+  { key: "escrow_open_date", label: "Escrow Open Date", format: (v) => formatDate(String(v)) },
+  { key: "notes", label: "Notes" },
+];
+
+/**
+ * Build a diff between the current deal and AI-extracted data.
+ * Returns an array of DealDiffItem for each changed or new field.
+ */
+export function buildDealDiff(deal: Deal, extracted: ExtractedDealData): DealDiffItem[] {
+  const items: DealDiffItem[] = [];
+
+  // ── Scalar fields ──
+  for (const def of DIFF_FIELD_DEFS) {
+    const extractedVal = (extracted as Record<string, unknown>)[def.key];
+    if (extractedVal === undefined || extractedVal === null || extractedVal === "") continue;
+
+    // Get current value from deal
+    const currentVal = (deal as unknown as Record<string, unknown>)[def.key];
+
+    // Normalize for comparison
+    let currentNorm = currentVal != null ? String(currentVal) : "";
+    let extractedNorm = String(extractedVal);
+
+    // Special handling: commission_rate stored as decimal (0.03) vs extracted as "3"
+    if (def.key === "commission_rate" && currentVal != null) {
+      currentNorm = String(Number(currentVal) * 100);
+    }
+
+    // Skip if values match
+    if (currentNorm === extractedNorm) continue;
+
+    // Format for display
+    const fmt = def.format || ((v: unknown) => String(v ?? "—"));
+    let currentDisplay = "—";
+    if (currentVal != null && currentVal !== "") {
+      if (def.key === "commission_rate") {
+        currentDisplay = `${Number(currentVal) * 100}%`;
+      } else {
+        currentDisplay = fmt(currentVal);
+      }
+    }
+    const proposedDisplay = fmt(extractedVal);
+
+    items.push({
+      field: def.key,
+      label: def.label,
+      currentValue: currentDisplay,
+      proposedValue: proposedDisplay,
+      rawCurrent: currentVal,
+      rawProposed: extractedVal,
+      accepted: true,
+      edited: false,
+      type: "scalar",
+    });
+  }
+
+  // ── Deal dates ──
+  if (extracted.deal_dates && extracted.deal_dates.length > 0) {
+    const existingDates = deal.deal_dates || [];
+
+    for (const ed of extracted.deal_dates) {
+      if (!ed.label) continue;
+
+      // Try to find a matching existing date by label (case-insensitive)
+      const match = existingDates.find(
+        (dd) => dd.label.toLowerCase() === ed.label.toLowerCase()
+      );
+
+      // Build the display value for the proposed date
+      let proposedDisplay = "";
+      if (ed.date) {
+        proposedDisplay = formatDate(ed.date);
+      }
+      if (ed.offset_days) {
+        const ref = ed.offset_reference || "escrow open";
+        proposedDisplay += proposedDisplay ? ` (${ed.offset_days}d after ${ref})` : `${ed.offset_days} days after ${ref}`;
+      }
+
+      if (match) {
+        // Existing date — check if changed
+        const currentDisplay = formatDate(match.date);
+        if (ed.date && ed.date === match.date) continue; // same date, skip
+        if (!ed.date && ed.offset_days === match.offset_days) continue; // same offset, skip
+
+        items.push({
+          field: `deal_date:${ed.label}`,
+          label: ed.label,
+          currentValue: currentDisplay,
+          proposedValue: proposedDisplay || "—",
+          rawCurrent: match,
+          rawProposed: ed,
+          accepted: true,
+          edited: false,
+          type: "date_changed",
+        });
+      } else {
+        // New date
+        items.push({
+          field: `deal_date:${ed.label}`,
+          label: `${ed.label} (new)`,
+          currentValue: "—",
+          proposedValue: proposedDisplay || "—",
+          rawCurrent: null,
+          rawProposed: ed,
+          accepted: true,
+          edited: false,
+          type: "date_new",
+        });
+      }
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Suggest a stage move based on the document type and extracted data.
+ * Returns null if no stage change is suggested.
+ */
+export function suggestStageMove(deal: Deal, extracted: ExtractedDealData): StageSuggestion | null {
+  // Active → Escrow: PSA with effective date
+  if (deal.status === "active") {
+    if (extracted.document_type === "psa" && extracted.effective_date) {
+      return {
+        message: "This PSA includes an effective date — move to Escrow?",
+        newStatus: "due_diligence",
+      };
+    }
+    if (extracted.effective_date) {
+      return {
+        message: "This document includes an effective date — move to Escrow?",
+        newStatus: "due_diligence",
+      };
+    }
+  }
+
+  // Due Diligence → Closing: if all DD dates have passed (rare from a document drop, but possible)
+  if (deal.status === "due_diligence" && deal.deal_dates && deal.deal_dates.length > 0) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const allPassed = deal.deal_dates
+      .filter((dd) => !isExtensionDate(dd.label))
+      .every((dd) => new Date(dd.date + "T00:00:00") <= today);
+
+    if (allPassed) {
+      return {
+        message: "All due diligence dates have passed — move to Closing?",
+        newStatus: "closing",
+      };
+    }
+  }
+
+  return null;
+}
 
 export const STATUS_COLORS: Record<string, string> = {
   active: "bg-green/10 text-green border-green/30",

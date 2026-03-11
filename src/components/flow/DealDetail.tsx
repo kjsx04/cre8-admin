@@ -2,14 +2,16 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useMsal } from "@azure/msal-react";
-import { Deal, DealFormData, DealDate, Broker } from "@/lib/flow/types";
-import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS } from "@/lib/flow/utils";
+import { Deal, DealFormData, DealDate, Broker, DealDiffItem, StageSuggestion, ExtractedDealData, DealStatus } from "@/lib/flow/types";
+import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS, buildDealDiff, suggestStageMove } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
 import { getSiteId, getDriveId, listFolderFiles, SharePointFile } from "@/lib/graph";
 import TimelineBar from "./TimelineBar";
 import CommissionCalc from "./CommissionCalc";
 import DealForm from "./DealForm";
 import ConfirmModal from "./ConfirmModal";
+import FileDropZone from "./FileDropZone";
+import DealUpdateReview from "./DealUpdateReview";
 
 interface DealDetailProps {
   deal: Deal;
@@ -61,8 +63,21 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [closeDate, setCloseDate] = useState("");
+  // Commission rate is stored as decimal (0.06) — display as percentage (6)
+  const [closeCommission, setCloseCommission] = useState(String((deal.commission_rate || 0) * 100));
+  const [commissionVerified, setCommissionVerified] = useState(false);
   const [notes, setNotes] = useState(deal.notes || "");
   const [notesSaving, setNotesSaving] = useState(false);
+
+  // ── Document update review state ──
+  const [showUpdateReview, setShowUpdateReview] = useState(false);
+  const [diffItems, setDiffItems] = useState<DealDiffItem[]>([]);
+  const [stageSuggestion, setStageSuggestion] = useState<StageSuggestion | null>(null);
+  const [updateFileName, setUpdateFileName] = useState("");
+  const [updateDocType, setUpdateDocType] = useState("");
+  const [updatePendingFile, setUpdatePendingFile] = useState<File | null>(null);
+  const [approving, setApproving] = useState(false);
 
   // Documents state
   const [files, setFiles] = useState<SharePointFile[]>([]);
@@ -80,12 +95,20 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     }
   };
 
-  // Close deal
-  const handleCloseDeal = async (closeDate?: string) => {
-    await onUpdate(deal.id, {
+  // Close deal — includes verified/edited commission rate
+  const handleCloseDeal = async () => {
+    const finalRatePct = parseFloat(closeCommission); // percentage value (e.g. 6)
+    const payload: Partial<Deal> = {
       status: "closed",
       actual_close_date: closeDate || new Date().toISOString().substring(0, 10),
-    } as Partial<Deal>);
+    };
+    // Include commission_rate if it changed (compare as percentages)
+    const currentPct = (deal.commission_rate || 0) * 100;
+    if (!isNaN(finalRatePct) && Math.abs(finalRatePct - currentPct) > 0.001) {
+      // API expects percentage — it divides by 100 on save
+      payload.commission_rate = finalRatePct as unknown as number;
+    }
+    await onUpdate(deal.id, payload);
     setShowCloseModal(false);
   };
 
@@ -126,9 +149,6 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
       const siteId = await getSiteId(accessToken);
       const driveId = await getDriveId(accessToken, siteId);
 
-      // Extract the folder path from the SharePoint URL
-      // URL format: https://cre8advisors.sharepoint.com/sites/CRE8Operations/Shared Documents/Deals/...
-      // We need the path after "Shared Documents/" or after the drive root
       const url = new URL(deal.sharepoint_folder_url);
       const pathMatch = url.pathname.match(/\/Shared%20Documents\/(.+)/i) || url.pathname.match(/\/Shared Documents\/(.+)/i);
       let folderPath = "";
@@ -151,6 +171,140 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
   useEffect(() => {
     fetchFiles();
   }, [fetchFiles]);
+
+  // ── Document update: handle extraction result from drop zone ──
+  const handleUpdateExtracted = useCallback((extracted: ExtractedDealData) => {
+    // Build diff between current deal and extracted data
+    const diff = buildDealDiff(deal, extracted);
+
+    if (diff.length === 0) {
+      // No changes detected — brief message, don't enter review mode
+      alert("No changes detected in this document.");
+      return;
+    }
+
+    // Check for stage move suggestion
+    const suggestion = suggestStageMove(deal, extracted);
+
+    setDiffItems(diff);
+    setStageSuggestion(suggestion);
+    setUpdateDocType(extracted.document_type || "other");
+    setShowUpdateReview(true);
+  }, [deal]);
+
+  // ── Document update: approve selected changes ──
+  const handleApproveUpdate = useCallback(async (items: DealDiffItem[], newStatus?: DealStatus) => {
+    setApproving(true);
+    try {
+      // Build PATCH payload from accepted items
+      const payload: Record<string, unknown> = {};
+
+      // Collect date changes separately — we need to merge with existing dates
+      const dateChanges: { label: string; date?: string; offset_days?: number; offset_reference?: string }[] = [];
+      const changedDateLabels = new Set<string>();
+
+      for (const item of items) {
+        if (!item.accepted) continue;
+
+        // Use edited value if the user modified it, otherwise use raw proposed
+        const value = item.edited && item.editedValue !== undefined ? item.editedValue : item.rawProposed;
+
+        if (item.type === "date_new" || item.type === "date_changed") {
+          // Collect date items for merge
+          const dateData = item.rawProposed as { label: string; date?: string; offset_days?: number; offset_reference?: string };
+
+          // If user edited, try to use edited value as the date
+          if (item.edited && item.editedValue) {
+            dateChanges.push({ ...dateData, date: item.editedValue });
+          } else {
+            dateChanges.push(dateData);
+          }
+          changedDateLabels.add(dateData.label.toLowerCase());
+        } else {
+          // Scalar field
+          payload[item.field] = value;
+        }
+      }
+
+      // If there are date changes, merge with existing deal_dates
+      if (dateChanges.length > 0) {
+        const existingDates = (deal.deal_dates || []).map((dd) => ({
+          label: dd.label,
+          date: dd.date,
+          offset_days: dd.offset_days ?? undefined,
+          offset_from: dd.offset_from ?? undefined,
+          sort_order: dd.sort_order,
+        }));
+
+        // Keep unchanged existing dates, replace changed ones, add new ones
+        const merged = existingDates
+          .filter((dd) => !changedDateLabels.has(dd.label.toLowerCase()))
+          .map((dd) => ({
+            label: dd.label,
+            date: dd.date,
+            offset_days: dd.offset_days ?? null,
+            offset_from: dd.offset_from ?? null,
+            sort_order: dd.sort_order,
+          }));
+
+        // Add changed/new dates
+        let nextOrder = merged.length > 0 ? Math.max(...merged.map((d) => d.sort_order)) + 1 : 1;
+        for (const dc of dateChanges) {
+          // Find existing sort_order if this was a changed date
+          const existing = existingDates.find((dd) => dd.label.toLowerCase() === dc.label.toLowerCase());
+          merged.push({
+            label: dc.label,
+            date: dc.date || "",
+            offset_days: dc.offset_days ?? null,
+            offset_from: dc.offset_reference ?? null,
+            sort_order: existing?.sort_order ?? nextOrder++,
+          });
+        }
+
+        payload.deal_dates = merged;
+      }
+
+      // Add status change if stage move was approved
+      if (newStatus) {
+        payload.status = newStatus;
+      }
+
+      // PATCH the deal
+      await onUpdate(
+        deal.id,
+        payload as Partial<Deal>,
+        payload.deal_dates as DealDate[] | undefined,
+        updatePendingFile || undefined
+      );
+
+      // Clean up review state
+      setShowUpdateReview(false);
+      setDiffItems([]);
+      setStageSuggestion(null);
+      setUpdateFileName("");
+      setUpdateDocType("");
+      setUpdatePendingFile(null);
+
+      // Re-fetch files if a file was uploaded
+      if (updatePendingFile && deal.sharepoint_folder_url) {
+        setTimeout(() => fetchFiles(), 3000);
+      }
+    } catch (err) {
+      console.error("[DealDetail] Approve update failed:", err);
+    } finally {
+      setApproving(false);
+    }
+  }, [deal, onUpdate, updatePendingFile, fetchFiles]);
+
+  // Cancel the update review — reset state
+  const handleCancelUpdate = useCallback(() => {
+    setShowUpdateReview(false);
+    setDiffItems([]);
+    setStageSuggestion(null);
+    setUpdateFileName("");
+    setUpdateDocType("");
+    setUpdatePendingFile(null);
+  }, []);
 
   const isActive = deal.status !== "closed" && deal.status !== "cancelled";
 
@@ -200,7 +354,13 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                   Edit
                 </button>
                 <button
-                  onClick={() => setShowCloseModal(true)}
+                  onClick={() => {
+                    // Reset close modal state each time it opens
+                    setCloseDate("");
+                    setCloseCommission(String((deal.commission_rate || 0) * 100));
+                    setCommissionVerified(false);
+                    setShowCloseModal(true);
+                  }}
                   className="px-3 py-1.5 text-xs font-medium bg-green text-black uppercase tracking-wide rounded-btn
                              hover:bg-green/90 transition-colors duration-200"
                 >
@@ -212,6 +372,16 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                              hover:bg-red-400/10 transition-colors duration-200"
                 >
                   Cancel Deal
+                </button>
+              </div>
+            ) : deal.status === "closed" ? (
+              <div className="flex gap-2 mt-3">
+                <button
+                  onClick={() => setEditing(true)}
+                  className="px-3 py-1.5 text-xs font-medium border border-[#E0E0E0] text-[#1A1A1A] rounded-btn
+                             hover:border-[#999] transition-colors duration-200"
+                >
+                  Edit
                 </button>
               </div>
             ) : deal.status === "cancelled" ? (
@@ -231,6 +401,31 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
 
           {/* Body */}
           <div className="px-6 py-4 space-y-4">
+            {/* Document drop zone — only for active deals, hidden during review */}
+            {isActive && !showUpdateReview && (
+              <FileDropZone
+                compact
+                onExtracted={handleUpdateExtracted}
+                onFileReady={(file) => {
+                  setUpdatePendingFile(file);
+                  setUpdateFileName(file.name);
+                }}
+              />
+            )}
+
+            {/* Document update review mode — replaces normal body content */}
+            {showUpdateReview ? (
+              <DealUpdateReview
+                diffItems={diffItems}
+                stageSuggestion={stageSuggestion}
+                fileName={updateFileName}
+                documentType={updateDocType}
+                approving={approving}
+                onApprove={handleApproveUpdate}
+                onCancel={handleCancelUpdate}
+              />
+            ) : (
+            <>
             {/* Commission breakdown */}
             <CommissionCalc deal={deal} brokerId={brokerId} />
 
@@ -406,6 +601,8 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                 placeholder="Add notes about this deal..."
               />
             </div>
+            </>
+            )}
           </div>
         </div>
       </div>
@@ -423,17 +620,80 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
         />
       )}
 
-      {/* Close deal confirmation */}
+      {/* Close deal confirmation — with commission verification */}
       {showCloseModal && (
-        <ConfirmModal
-          title="Close Deal"
-          message={`Mark "${deal.deal_name}" as closed?`}
-          confirmLabel="Close Deal"
-          confirmColor="green"
-          showDateInput
-          onConfirm={handleCloseDeal}
-          onCancel={() => setShowCloseModal(false)}
-        />
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => setShowCloseModal(false)} />
+          <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
+            <h3 className="font-dm font-semibold text-lg text-charcoal mb-2">Close Deal</h3>
+            <p className="text-sm text-medium-gray mb-4">Mark &ldquo;{deal.deal_name}&rdquo; as closed?</p>
+
+            {/* Close date */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-charcoal mb-1">Close Date</label>
+              <input
+                type="date"
+                value={closeDate}
+                onChange={(e) => setCloseDate(e.target.value)}
+                className="w-full border border-border-light rounded-btn px-3 py-2 text-sm"
+              />
+            </div>
+
+            {/* Commission verification */}
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-charcoal mb-1">Commission Rate (%)</label>
+              <div className="flex items-center gap-3">
+                <input
+                  type="number"
+                  step="0.1"
+                  value={closeCommission}
+                  onChange={(e) => {
+                    setCloseCommission(e.target.value);
+                    // Uncheck if they edit the value
+                    setCommissionVerified(false);
+                  }}
+                  className="flex-1 border border-border-light rounded-btn px-3 py-2 text-sm"
+                />
+                {/* Verify checkmark */}
+                <button
+                  onClick={() => setCommissionVerified(!commissionVerified)}
+                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-btn border transition-colors duration-200
+                    ${commissionVerified
+                      ? "bg-green/10 border-green text-green"
+                      : "border-border-light text-medium-gray hover:border-[#999]"
+                    }`}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  {commissionVerified ? "Verified" : "Verify"}
+                </button>
+              </div>
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 justify-end">
+              <button
+                onClick={() => setShowCloseModal(false)}
+                className="px-4 py-2 text-sm font-medium text-medium-gray border border-border-light rounded-btn
+                           hover:border-border-medium transition-colors duration-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCloseDeal}
+                disabled={!commissionVerified}
+                className={`px-4 py-2 text-sm font-medium rounded-btn transition-colors duration-200
+                  ${commissionVerified
+                    ? "bg-green hover:bg-green/90 text-black uppercase tracking-wide"
+                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                  }`}
+              >
+                Close Deal
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Cancel deal confirmation */}

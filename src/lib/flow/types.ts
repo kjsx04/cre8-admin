@@ -110,6 +110,28 @@ export interface ExtractedDealData {
   deal_dates?: { label: string; date?: string; offset_days?: number; offset_reference?: string }[];
 }
 
+// ── Deal update diff — a single field change from document extraction ──
+
+export interface DealDiffItem {
+  field: string;           // field key: "price", "effective_date", "deal_date:Feasibility Ends", etc.
+  label: string;           // human-readable: "Price", "Effective Date", etc.
+  currentValue: string;    // display-formatted current value (or "—" if empty)
+  proposedValue: string;   // display-formatted proposed value
+  rawCurrent: unknown;     // raw value for comparison
+  rawProposed: unknown;    // raw value for PATCH payload
+  accepted: boolean;       // default true — user toggles off to reject
+  edited: boolean;         // true if user manually edited the proposed value
+  editedValue?: string;    // user-edited override (raw string)
+  type: "scalar" | "date_new" | "date_changed";  // helps build PATCH payload
+}
+
+// ── Stage move suggestion after document update ──
+
+export interface StageSuggestion {
+  message: string;         // e.g. "This PSA includes an effective date — move to Escrow?"
+  newStatus: DealStatus;
+}
+
 // ── Broker — matches the Supabase `brokers` table ──
 
 export interface Broker {
