@@ -344,7 +344,7 @@ export function buildDealDiff(deal: Deal, extracted: ExtractedDealData): DealDif
 
     // Normalize for comparison
     let currentNorm = currentVal != null ? String(currentVal) : "";
-    let extractedNorm = String(extractedVal);
+    const extractedNorm = String(extractedVal);
 
     // Special handling: commission_rate stored as decimal (0.03) vs extracted as "3"
     if (def.key === "commission_rate" && currentVal != null) {
