@@ -409,8 +409,11 @@ export default function FlowPage() {
   // Summary stats (active deals only) — uses member-specific take-home for logged-in broker
   const activeDeals = deals.filter((d) => ["active", "due_diligence", "closing"].includes(d.status));
   const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.price || 0), 0);
-  // Gross commission across all active deals (price × rate)
-  const pipelineCommission = activeDeals.reduce((sum, d) => sum + ((d.price || 0) * (d.commission_rate || 0)), 0);
+  // User's take-home across all active deals (price × rate × 70% × member split − additional splits)
+  const pipelineCommission = activeDeals.reduce((sum, d) => {
+    const memberSplit = getMemberSplit(d.deal_members, brokerId);
+    return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
+  }, 0);
 
   // ── YTD take-home: deals closed in the current calendar year ──
   const currentYear = new Date().getFullYear();
