@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
   // Fetch deals where this broker is a member (via deal_members join), newest first
   const { data: deals, error: dealsErr } = await supabase
     .from("deals")
-    .select("*, deal_dates(*), deal_members!inner(id, deal_id, broker_id, split_percent)")
+    .select("*, deal_dates(*), deal_members!inner(id, deal_id, broker_id, split_percent), lease_payments(*)")
     .eq("deal_members.broker_id", broker.id)
     .order("created_at", { ascending: false });
 
@@ -66,6 +66,7 @@ export async function GET(request: NextRequest) {
     additional_splits: d.additional_splits || [],
     deal_dates: d.deal_dates || [],
     deal_members: allMembers[d.id] || [],
+    lease_payments: d.lease_payments || [],
   }));
 
   // Fetch all brokers (for the broker picker in DealForm)
@@ -147,6 +148,25 @@ export async function POST(request: NextRequest) {
     const { error: datesErr } = await supabase.from("deal_dates").insert(dateRows);
     if (datesErr) {
       console.error("[POST deals] Failed to insert deal_dates:", datesErr.message);
+    }
+  }
+
+  // Insert lease_payments rows if provided (for lease deals)
+  if (body.lease_payments && Array.isArray(body.lease_payments) && body.lease_payments.length > 0) {
+    const paymentRows = body.lease_payments.map((lp: Record<string, unknown>, i: number) => ({
+      deal_id: deal.id,
+      sort_order: lp.sort_order ?? i,
+      percent: lp.percent,
+      payment_date: lp.payment_date || null,
+      offset_days: lp.offset_days || null,
+      offset_from: lp.offset_from || null,
+      received: lp.received || false,
+      received_date: lp.received_date || null,
+    }));
+
+    const { error: paymentsErr } = await supabase.from("lease_payments").insert(paymentRows);
+    if (paymentsErr) {
+      console.error("[POST deals] Failed to insert lease_payments:", paymentsErr.message);
     }
   }
 

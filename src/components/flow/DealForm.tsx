@@ -46,6 +46,16 @@ interface FormMember {
   split_percent: number | null;  // null = even split
 }
 
+// ── Lease payment schedule row in the form ──
+interface FormPayment {
+  tempId: string;
+  percent: string;                // string for input — e.g. "50"
+  mode: "absolute" | "relative"; // absolute = calendar date, relative = X days after close/previous
+  payment_date: string;           // YYYY-MM-DD
+  offset_days: string;            // string for input — e.g. "60"
+  offset_from: string;            // "close_date" or "previous"
+}
+
 interface DealFormProps {
   deal?: Deal;                // if editing, pre-fill from existing deal
   onSave: (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => void;
@@ -240,6 +250,9 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
   const [brokerSearch, setBrokerSearch] = useState("");
   const brokerDropdownRef = useRef<HTMLDivElement>(null);
 
+  // ── Lease payment schedule state ──
+  const [leasePayments, setLeasePayments] = useState<FormPayment[]>([]);
+
   // ── Parcel picker state ──
   const [showParcelPicker, setShowParcelPicker] = useState(false);
   // Store selected parcels so re-opening the picker zooms back to them
@@ -315,6 +328,28 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
               editing: false,
             }))
         );
+      }
+
+      // Populate lease payment schedule from deal.lease_payments
+      if (deal.lease_payments && deal.lease_payments.length > 0) {
+        setLeasePayments(
+          deal.lease_payments
+            .sort((a, b) => a.sort_order - b.sort_order)
+            .map((lp) => ({
+              tempId: lp.id,
+              percent: String(lp.percent),
+              mode: lp.offset_days ? "relative" : "absolute",
+              payment_date: lp.payment_date || "",
+              offset_days: lp.offset_days ? String(lp.offset_days) : "",
+              offset_from: lp.offset_from || "close_date",
+            }))
+        );
+      } else if (deal.deal_type === "lease") {
+        // Lease deal with no payments — default 50/50
+        setLeasePayments([
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date" },
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous" },
+        ]);
       }
     } else if (brokerDefaults) {
       // New deal — pre-fill from broker defaults
@@ -596,6 +631,11 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     brokerMembers.reduce((sum, m) => sum + (m.split_percent ?? 0) * 100, 0) - 100
   ) < 0.01;
 
+  // Validate lease payments sum to 100% (only for lease deals with payments defined)
+  const leasePaymentsValid = form.deal_type !== "lease" || leasePayments.length === 0 || Math.abs(
+    leasePayments.reduce((sum, lp) => sum + (parseFloat(lp.percent) || 0), 0) - 100
+  ) < 0.01;
+
   // Available brokers for the picker (exclude those already added)
   const availableBrokers = (allBrokers || []).filter(
     (b) => !brokerMembers.some((m) => m.broker_id === b.id)
@@ -716,6 +756,21 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
         sort_order: i,
       }));
 
+    // Convert lease payments to API shape (only for lease deals)
+    // First payment is always offset from close_date, regardless of what the form says
+    const apiLeasePayments = form.deal_type === "lease" ? leasePayments.map((lp, i) => ({
+      sort_order: i,
+      percent: parseFloat(lp.percent) || 0,
+      payment_date: lp.mode === "absolute" ? lp.payment_date || null : null,
+      offset_days: lp.mode === "relative" ? parseInt(lp.offset_days) || 0 : null,
+      offset_from: lp.mode === "relative" ? (i === 0 ? "close_date" : lp.offset_from) : null,
+      received: false,
+      received_date: null,
+    })) : [];
+
+    // Attach lease_payments to formData so it flows through to the API
+    (formData as unknown as Record<string, unknown>).lease_payments = apiLeasePayments;
+
     onSave(formData, apiDates as DealDate[], pendingFile || undefined);
   };
 
@@ -816,7 +871,19 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
             <label className={labelCls}>Deal Type</label>
             <select
               value={form.deal_type}
-              onChange={(e) => update("deal_type", e.target.value as DealType)}
+              onChange={(e) => {
+                const newType = e.target.value as DealType;
+                update("deal_type", newType);
+                // Auto-populate/clear lease payment schedule on type switch
+                if (newType === "lease" && leasePayments.length === 0) {
+                  setLeasePayments([
+                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date" },
+                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous" },
+                  ]);
+                } else if (newType === "sale") {
+                  setLeasePayments([]);
+                }
+              }}
               className={inputCls("deal_type")}
             >
               <option value="sale">Sale</option>
@@ -1109,6 +1176,152 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           )}
         </div>
 
+        {/* ── Lease Payment Schedule — only for lease deals ── */}
+        {form.deal_type === "lease" && (
+          <div className="border-t border-border-light pt-4 mb-6">
+            <h3 className="font-dm font-semibold text-sm text-charcoal mb-1">Payment Schedule</h3>
+            <p className="text-xs text-muted-gray mb-3">
+              Split commission into scheduled payments. Percentages must total 100%.
+            </p>
+
+            {/* Validation banner */}
+            {(() => {
+              const total = leasePayments.reduce((s, lp) => s + (parseFloat(lp.percent) || 0), 0);
+              const isValid = Math.abs(total - 100) < 0.01;
+              return !isValid && leasePayments.length > 0 ? (
+                <div className={`text-xs px-3 py-1.5 rounded-btn mb-3 border ${
+                  total > 100
+                    ? "bg-red-50 border-red-200 text-red-600"
+                    : "bg-amber-50 border-amber-200 text-amber-700"
+                }`}>
+                  Total: {total.toFixed(0)}% — must equal 100%
+                </div>
+              ) : null;
+            })()}
+
+            {/* Payment rows */}
+            <div className="space-y-2">
+              {leasePayments.map((lp, i) => (
+                <div key={lp.tempId} className="border border-border-light rounded-btn p-3">
+                  <div className="flex items-center gap-3">
+                    {/* Payment label */}
+                    <span className="text-xs font-medium text-medium-gray whitespace-nowrap">
+                      Payment {i + 1}
+                    </span>
+
+                    {/* Percent input */}
+                    <div className="flex items-center gap-1">
+                      <input
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="100"
+                        value={lp.percent}
+                        onChange={(e) => {
+                          const updated = [...leasePayments];
+                          updated[i] = { ...updated[i], percent: e.target.value };
+                          setLeasePayments(updated);
+                        }}
+                        className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
+                      />
+                      <span className="text-xs text-muted-gray">%</span>
+                    </div>
+
+                    {/* Mode toggle */}
+                    <select
+                      value={lp.mode}
+                      onChange={(e) => {
+                        const updated = [...leasePayments];
+                        updated[i] = { ...updated[i], mode: e.target.value as "absolute" | "relative" };
+                        setLeasePayments(updated);
+                      }}
+                      className="border border-border-light rounded-btn px-2 py-1.5 text-xs text-charcoal"
+                    >
+                      <option value="relative">Days after...</option>
+                      <option value="absolute">Specific date</option>
+                    </select>
+
+                    {/* Date/offset input based on mode */}
+                    {lp.mode === "relative" ? (
+                      <div className="flex items-center gap-1.5 flex-1">
+                        <input
+                          type="number"
+                          min="0"
+                          value={lp.offset_days}
+                          onChange={(e) => {
+                            const updated = [...leasePayments];
+                            updated[i] = { ...updated[i], offset_days: e.target.value };
+                            setLeasePayments(updated);
+                          }}
+                          placeholder="0"
+                          className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
+                        />
+                        <span className="text-xs text-muted-gray whitespace-nowrap">
+                          days after {i === 0 ? "close" : (
+                            <select
+                              value={lp.offset_from}
+                              onChange={(e) => {
+                                const updated = [...leasePayments];
+                                updated[i] = { ...updated[i], offset_from: e.target.value };
+                                setLeasePayments(updated);
+                              }}
+                              className="border border-border-light rounded-btn px-1 py-0.5 text-xs text-charcoal ml-0.5"
+                            >
+                              <option value="close_date">close</option>
+                              <option value="previous">previous payment</option>
+                            </select>
+                          )}
+                        </span>
+                      </div>
+                    ) : (
+                      <input
+                        type="date"
+                        value={lp.payment_date}
+                        onChange={(e) => {
+                          const updated = [...leasePayments];
+                          updated[i] = { ...updated[i], payment_date: e.target.value };
+                          setLeasePayments(updated);
+                        }}
+                        className="flex-1 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal"
+                      />
+                    )}
+
+                    {/* Remove button (only if more than 1 row) */}
+                    {leasePayments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => setLeasePayments(leasePayments.filter((_, j) => j !== i))}
+                        className="text-muted-gray hover:text-red-500 transition-colors p-1"
+                        title="Remove payment"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Add Payment button */}
+            <button
+              type="button"
+              onClick={() => setLeasePayments([...leasePayments, {
+                tempId: tempId(),
+                percent: "",
+                mode: "relative",
+                payment_date: "",
+                offset_days: "",
+                offset_from: leasePayments.length === 0 ? "close_date" : "previous",
+              }])}
+              className="text-xs text-green hover:text-green/80 transition-colors font-medium mt-2"
+            >
+              + Add Payment
+            </button>
+          </div>
+        )}
+
         {/* ── Critical Dates ── */}
         <div className={`border-t border-border-light pt-4 mb-6 rounded-btn transition-all duration-300 ${
           amberFields.has("deal_dates_section") ? "ring-1 ring-amber-300/50 bg-amber-50/50 p-4 -mx-2" : ""
@@ -1333,7 +1546,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           </button>
           <button
             type="submit"
-            disabled={saving || !form.deal_name.trim() || (hasExplicitSplits && !splitsValid)}
+            disabled={saving || !form.deal_name.trim() || (hasExplicitSplits && !splitsValid) || !leasePaymentsValid}
             className="px-6 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
                        hover:bg-green/90 transition-colors duration-200 disabled:opacity-50"
           >

@@ -56,6 +56,97 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
+// ── Lease Payment Schedule (received toggles for closed deals, read-only for active) ──
+function LeasePaymentSchedule({
+  deal,
+  onToggleReceived,
+}: {
+  deal: Deal;
+  onToggleReceived?: (paymentId: string, received: boolean) => void;
+}) {
+  // Calculate member's take-home for display
+  const totalCommission = (deal.price || 0) * (deal.commission_rate || 0);
+
+  return (
+    <div className="bg-white border border-border-light rounded-card p-4">
+      <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Payment Schedule</h3>
+      <div className="space-y-2">
+        {(deal.lease_payments || [])
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((lp, i) => {
+            const amount = totalCommission * (lp.percent / 100);
+            return (
+              <div
+                key={lp.id}
+                className={`flex items-center justify-between py-2 px-3 rounded-btn border transition-colors ${
+                  lp.received
+                    ? "border-green/30 bg-green/5"
+                    : "border-border-light"
+                }`}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <span className="text-xs font-medium text-medium-gray">#{i + 1}</span>
+                  <div className="min-w-0">
+                    <p className="text-sm text-charcoal font-medium">
+                      {lp.percent}% — {formatCurrency(amount)}
+                    </p>
+                    <p className="text-xs text-muted-gray">
+                      {lp.payment_date ? formatDate(lp.payment_date) : (
+                        lp.offset_days !== null ? (
+                          lp.offset_days === 0
+                            ? "At close"
+                            : `${lp.offset_days} days after ${lp.offset_from === "previous" ? "previous" : "close"}`
+                        ) : "Date TBD"
+                      )}
+                      {lp.received && lp.received_date && (
+                        <span className="ml-1 text-green">· Received {formatDate(lp.received_date)}</span>
+                      )}
+                    </p>
+                  </div>
+                </div>
+
+                {/* Received toggle button — only for closed deals */}
+                {onToggleReceived ? (
+                  <button
+                    onClick={() => onToggleReceived(lp.id, !lp.received)}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
+                      lp.received
+                        ? "bg-green/10 border-green text-green"
+                        : "border-border-light text-medium-gray hover:border-green hover:text-green"
+                    }`}
+                  >
+                    {lp.received ? (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                        Received
+                      </>
+                    ) : (
+                      <>
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                          <circle cx="12" cy="12" r="10" />
+                        </svg>
+                        Pending
+                      </>
+                    )}
+                  </button>
+                ) : (
+                  /* Read-only label for active deals */
+                  <span className="text-xs text-muted-gray italic">
+                    {lp.offset_days !== null ? (
+                      lp.offset_days === 0 ? "At close" : `${lp.offset_days}d after ${lp.offset_from === "previous" ? "prev" : "close"}`
+                    ) : "Scheduled"}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
 export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDelete, onClose }: DealDetailProps) {
   const { instance, accounts } = useMsal();
   const [editing, setEditing] = useState(false);
@@ -95,20 +186,58 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     }
   };
 
-  // Close deal — includes verified/edited commission rate
+  // Close deal — includes verified/edited commission rate + resolved lease payment dates
   const handleCloseDeal = async () => {
     const finalRatePct = parseFloat(closeCommission); // percentage value (e.g. 6)
-    const payload: Partial<Deal> = {
+    const actualClose = closeDate || new Date().toISOString().substring(0, 10);
+    const payload: Record<string, unknown> = {
       status: "closed",
-      actual_close_date: closeDate || new Date().toISOString().substring(0, 10),
+      actual_close_date: actualClose,
     };
     // Include commission_rate if it changed (compare as percentages)
     const currentPct = (deal.commission_rate || 0) * 100;
     if (!isNaN(finalRatePct) && Math.abs(finalRatePct - currentPct) > 0.001) {
       // API expects percentage — it divides by 100 on save
-      payload.commission_rate = finalRatePct as unknown as number;
+      payload.commission_rate = finalRatePct;
     }
-    await onUpdate(deal.id, payload);
+
+    // For lease deals: resolve offset-based payment dates to absolute dates using the close date
+    if (deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0) {
+      const closeDateObj = new Date(actualClose + "T00:00:00");
+      const resolvedPayments: Record<string, unknown>[] = [];
+      let previousDate = closeDateObj;
+
+      const sorted = [...deal.lease_payments].sort((a, b) => a.sort_order - b.sort_order);
+      for (const lp of sorted) {
+        let resolvedDate = lp.payment_date;
+
+        if (!resolvedDate && lp.offset_days !== null) {
+          // Resolve offset to an absolute date
+          const baseDate = lp.offset_from === "previous" ? previousDate : closeDateObj;
+          const resolved = new Date(baseDate);
+          resolved.setDate(resolved.getDate() + (lp.offset_days || 0));
+          resolvedDate = resolved.toISOString().substring(0, 10);
+        }
+
+        resolvedPayments.push({
+          sort_order: lp.sort_order,
+          percent: lp.percent,
+          payment_date: resolvedDate,
+          offset_days: lp.offset_days,
+          offset_from: lp.offset_from,
+          received: lp.received || false,
+          received_date: lp.received_date || null,
+        });
+
+        if (resolvedDate) {
+          previousDate = new Date(resolvedDate + "T00:00:00");
+        }
+      }
+
+      payload.lease_payments = resolvedPayments;
+    }
+
+    await onUpdate(deal.id, payload as Partial<Deal>);
     setShowCloseModal(false);
   };
 
@@ -134,6 +263,13 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
       await onUpdate(deal.id, { notes } as Partial<Deal>);
       setNotesSaving(false);
     }
+  };
+
+  // ── Toggle a lease payment as received/unreceived ──
+  const handleToggleReceived = async (paymentId: string, received: boolean) => {
+    await onUpdate(deal.id, {
+      received_payments: [{ id: paymentId, received }],
+    } as unknown as Partial<Deal>);
   };
 
   // ── Fetch files from the deal's SharePoint folder ──
@@ -429,6 +565,14 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
             {/* Commission breakdown */}
             <CommissionCalc deal={deal} brokerId={brokerId} />
 
+            {/* Lease Payment Schedule — shows for lease deals with payments */}
+            {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
+              <LeasePaymentSchedule
+                deal={deal}
+                onToggleReceived={deal.status === "closed" ? handleToggleReceived : undefined}
+              />
+            )}
+
             {/* Timeline */}
             <TimelineBar deal={deal} />
 
@@ -670,6 +814,49 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                 </button>
               </div>
             </div>
+
+            {/* Lease payment schedule preview — shows resolved dates based on entered close date */}
+            {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
+              <div className="mb-4 p-3 bg-light-gray rounded-btn border border-border-light">
+                <p className="text-xs font-medium text-medium-gray mb-2">Payment Schedule</p>
+                <div className="space-y-1.5">
+                  {(() => {
+                    const cDate = closeDate || new Date().toISOString().substring(0, 10);
+                    const closeDateObj = new Date(cDate + "T00:00:00");
+                    const totalComm = (deal.price || 0) * (deal.commission_rate || 0);
+                    let previousDate = closeDateObj;
+
+                    return [...deal.lease_payments]
+                      .sort((a, b) => a.sort_order - b.sort_order)
+                      .map((lp, i) => {
+                        // Resolve the payment date
+                        let resolvedDate = lp.payment_date;
+                        if (!resolvedDate && lp.offset_days !== null) {
+                          const baseDate = lp.offset_from === "previous" ? previousDate : closeDateObj;
+                          const resolved = new Date(baseDate);
+                          resolved.setDate(resolved.getDate() + (lp.offset_days || 0));
+                          resolvedDate = resolved.toISOString().substring(0, 10);
+                        }
+                        if (resolvedDate) {
+                          previousDate = new Date(resolvedDate + "T00:00:00");
+                        }
+
+                        const amount = totalComm * (lp.percent / 100);
+                        return (
+                          <div key={lp.id} className="flex items-center justify-between text-xs">
+                            <span className="text-charcoal">
+                              #{i + 1} — {lp.percent}% ({formatCurrency(amount)})
+                            </span>
+                            <span className="text-medium-gray">
+                              {resolvedDate ? formatDate(resolvedDate) : "TBD"}
+                            </span>
+                          </div>
+                        );
+                      });
+                  })()}
+                </div>
+              </div>
+            )}
 
             {/* Buttons */}
             <div className="flex gap-3 justify-end">

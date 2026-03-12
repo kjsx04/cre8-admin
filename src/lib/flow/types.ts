@@ -33,6 +33,20 @@ export interface AdditionalSplit {
   percent: number;                 // decimal: 0.25 = 25%
 }
 
+// ── Lease payment schedule row (stored in lease_payments table) ──
+
+export interface LeasePayment {
+  id: string;
+  deal_id: string;
+  sort_order: number;
+  percent: number;             // e.g. 50 = 50% of total commission
+  payment_date: string | null; // YYYY-MM-DD (resolved absolute date)
+  offset_days: number | null;  // e.g. 60 — nullable if absolute date
+  offset_from: string | null;  // "close_date" or "previous"
+  received: boolean;
+  received_date: string | null;
+}
+
 // ── Deal — matches the Supabase `deals` table ──
 
 export interface Deal {
@@ -61,6 +75,7 @@ export interface Deal {
   deal_dates?: DealDate[];         // dynamic critical dates (joined from deal_dates table)
   deal_members?: DealMember[];     // brokers assigned to this deal (joined from deal_members table)
   sharepoint_folder_url?: string | null;  // URL to deal's SharePoint folder
+  lease_payments?: LeasePayment[];       // payment schedule for lease deals (joined from lease_payments table)
   created_at: string;
   updated_at: string;
 }

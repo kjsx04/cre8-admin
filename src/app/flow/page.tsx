@@ -415,21 +415,49 @@ export default function FlowPage() {
     return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
   }, 0);
 
+  // ── Helper: calculate take-home for a single payment percentage of a deal ──
+  const calcPaymentTakeHome = (deal: Deal, percent: number): number => {
+    const memberSplit = getMemberSplit(deal.deal_members, brokerId);
+    const fullTakeHome = calcTakeHome(deal.price, deal.commission_rate, memberSplit, deal.additional_splits || []);
+    return fullTakeHome * (percent / 100);
+  };
+
   // ── YTD take-home: deals closed in the current calendar year ──
+  // For lease deals with payments: sum only received payments where received_date is in current year
+  // For sales (or leases without payments): full take-home if closed this year
   const currentYear = new Date().getFullYear();
   const ytdTakeHome = deals
-    .filter((d) => {
-      if (d.status !== "closed" || !d.actual_close_date) return false;
-      return new Date(d.actual_close_date).getFullYear() === currentYear;
-    })
+    .filter((d) => d.status === "closed" && d.actual_close_date)
     .reduce((sum, d) => {
-      const memberSplit = getMemberSplit(d.deal_members, brokerId);
-      return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
+      const hasLeasePayments = d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0;
+
+      if (hasLeasePayments) {
+        // Sum received payments where received_date is in the current year
+        return sum + (d.lease_payments || [])
+          .filter((lp) => lp.received && lp.received_date && new Date(lp.received_date).getFullYear() === currentYear)
+          .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
+      } else {
+        // Sale deal or lease without payment schedule — full take-home if closed this year
+        if (new Date(d.actual_close_date!).getFullYear() !== currentYear) return sum;
+        const memberSplit = getMemberSplit(d.deal_members, brokerId);
+        return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
+      }
     }, 0);
 
-  // ── Projected: YTD + active deals with estimated close before Dec 31 ──
+  // ── Projected: YTD + unreceived lease payments before Dec 31 + active deals closing before year end ──
   const yearEnd = new Date(currentYear, 11, 31); // Dec 31
-  const projectedTakeHome = ytdTakeHome + activeDeals.reduce((sum, deal) => {
+
+  // Add unreceived lease payments from closed deals with payment_date before Dec 31
+  const unrecevedLeasePaymentsThisYear = deals
+    .filter((d) => d.status === "closed" && d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0)
+    .reduce((sum, d) => {
+      return sum + (d.lease_payments || [])
+        .filter((lp) => !lp.received && lp.payment_date && new Date(lp.payment_date + "T00:00:00") <= yearEnd
+          && new Date(lp.payment_date + "T00:00:00").getFullYear() === currentYear)
+        .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
+    }, 0);
+
+  const projectedTakeHome = ytdTakeHome + unrecevedLeasePaymentsThisYear + activeDeals.reduce((sum, deal) => {
     const closeDate = getEstimatedCloseDate(deal);
     if (!closeDate || closeDate > yearEnd) return sum;
     const memberSplit = getMemberSplit(deal.deal_members, brokerId);
@@ -437,19 +465,35 @@ export default function FlowPage() {
   }, 0);
 
   // Calculate forecast take-home: sum take-home for deals closing within N days from today
+  // Also includes unreceived lease payments from closed deals within the window
   const calcForecastTakeHome = (days: number): number => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const cutoff = new Date(today);
     cutoff.setDate(cutoff.getDate() + days);
 
-    return activeDeals.reduce((sum, deal) => {
+    // Active deals closing within the window
+    const activeForecast = activeDeals.reduce((sum, deal) => {
       const closeDate = getEstimatedCloseDate(deal);
-      if (!closeDate) return sum; // no dates = skip
-      if (closeDate > cutoff) return sum; // closing after the window
+      if (!closeDate) return sum;
+      if (closeDate > cutoff) return sum;
       const memberSplit = getMemberSplit(deal.deal_members, brokerId);
       return sum + calcTakeHome(deal.price, deal.commission_rate, memberSplit, deal.additional_splits || []);
     }, 0);
+
+    // Unreceived lease payments from closed deals within the window
+    const leaseForecast = deals
+      .filter((d) => d.status === "closed" && d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0)
+      .reduce((sum, d) => {
+        return sum + (d.lease_payments || [])
+          .filter((lp) => !lp.received && lp.payment_date && (() => {
+            const payDate = new Date(lp.payment_date + "T00:00:00");
+            return payDate >= today && payDate <= cutoff;
+          })())
+          .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
+      }, 0);
+
+    return activeForecast + leaseForecast;
   };
 
   // Next urgent date across all active deals

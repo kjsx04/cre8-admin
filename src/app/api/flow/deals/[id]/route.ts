@@ -8,7 +8,7 @@ export async function GET(
 ) {
   const { data: deal, error } = await supabase
     .from("deals")
-    .select("*, deal_dates(*)")
+    .select("*, deal_dates(*), lease_payments(*)")
     .eq("id", params.id)
     .single();
 
@@ -39,6 +39,7 @@ export async function GET(
     additional_splits: deal.additional_splits || [],
     deal_dates: deal.deal_dates || [],
     deal_members: members,
+    lease_payments: deal.lease_payments || [],
   });
 }
 
@@ -74,7 +75,7 @@ export async function PATCH(
     .from("deals")
     .update(updates)
     .eq("id", params.id)
-    .select("*, deal_dates(*)")
+    .select("*, deal_dates(*), lease_payments(*)")
     .single();
 
   if (error) {
@@ -113,6 +114,57 @@ export async function PATCH(
     needsRefresh = true;
   }
 
+  // Replace lease_payments if provided (full schedule replacement — used when editing the schedule)
+  if (body.lease_payments !== undefined && Array.isArray(body.lease_payments)) {
+    // Delete existing lease_payments
+    const { error: delPayErr } = await supabase
+      .from("lease_payments")
+      .delete()
+      .eq("deal_id", params.id);
+
+    if (delPayErr) {
+      console.error("[PATCH deal] Failed to delete old lease_payments:", delPayErr.message);
+    }
+
+    // Insert new lease_payments
+    if (body.lease_payments.length > 0) {
+      const paymentRows = body.lease_payments.map((lp: Record<string, unknown>, i: number) => ({
+        deal_id: params.id,
+        sort_order: lp.sort_order ?? i,
+        percent: lp.percent,
+        payment_date: lp.payment_date || null,
+        offset_days: lp.offset_days || null,
+        offset_from: lp.offset_from || null,
+        received: lp.received || false,
+        received_date: lp.received_date || null,
+      }));
+
+      const { error: insPayErr } = await supabase.from("lease_payments").insert(paymentRows);
+      if (insPayErr) {
+        console.error("[PATCH deal] Failed to insert lease_payments:", insPayErr.message);
+      }
+    }
+    needsRefresh = true;
+  }
+
+  // Lightweight received toggle — update individual payment rows without replacing the full schedule
+  if (body.received_payments && Array.isArray(body.received_payments)) {
+    for (const rp of body.received_payments as { id: string; received: boolean }[]) {
+      const { error: rpErr } = await supabase
+        .from("lease_payments")
+        .update({
+          received: rp.received,
+          received_date: rp.received ? new Date().toISOString().substring(0, 10) : null,
+        })
+        .eq("id", rp.id);
+
+      if (rpErr) {
+        console.error("[PATCH deal] Failed to update lease_payment received:", rpErr.message);
+      }
+    }
+    needsRefresh = true;
+  }
+
   // Replace deal_members if provided (delete all, re-insert)
   if (body.broker_members !== undefined && Array.isArray(body.broker_members)) {
     // Delete existing members
@@ -145,7 +197,7 @@ export async function PATCH(
   if (needsRefresh) {
     const { data: refreshed } = await supabase
       .from("deals")
-      .select("*, deal_dates(*)")
+      .select("*, deal_dates(*), lease_payments(*)")
       .eq("id", params.id)
       .single();
 
@@ -173,6 +225,7 @@ export async function PATCH(
         additional_splits: refreshed.additional_splits || [],
         deal_dates: refreshed.deal_dates || [],
         deal_members: members,
+        lease_payments: refreshed.lease_payments || [],
       });
     }
   }
@@ -181,6 +234,7 @@ export async function PATCH(
     ...deal,
     additional_splits: deal.additional_splits || [],
     deal_dates: deal.deal_dates || [],
+    lease_payments: deal.lease_payments || [],
   });
 }
 
