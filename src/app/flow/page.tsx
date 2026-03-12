@@ -409,6 +409,8 @@ export default function FlowPage() {
   // Summary stats (active deals only) — uses member-specific take-home for logged-in broker
   const activeDeals = deals.filter((d) => ["active", "due_diligence", "closing"].includes(d.status));
   const totalPipeline = activeDeals.reduce((sum, d) => sum + (d.price || 0), 0);
+  // Gross commission across all active deals (price × rate)
+  const pipelineCommission = activeDeals.reduce((sum, d) => sum + ((d.price || 0) * (d.commission_rate || 0)), 0);
 
   // ── YTD take-home: deals closed in the current calendar year ──
   const currentYear = new Date().getFullYear();
@@ -464,7 +466,11 @@ export default function FlowPage() {
           {/* Summary bar */}
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
             <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
-            <SummaryCard label="Pipeline Value" value={formatCurrency(totalPipeline)} />
+            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
+              <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Pipeline Value</p>
+              <p className="font-bebas text-2xl text-[#1A1A1A]">{formatCurrency(totalPipeline)}</p>
+              <p className="text-xs text-[rgba(0,0,0,0.40)] mt-1">{formatCurrency(pipelineCommission)} commission</p>
+            </div>
             {/* YTD + Projected take-home card */}
             <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
               <div className="flex">
