@@ -20,7 +20,7 @@ import {
   KanbanColumn,
 } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
-import { getSiteId, getDriveId, createDealFolder, uploadDealFile as uploadDealFileToSP } from "@/lib/graph";
+import { getSiteId, getDriveId, createDealFolder, uploadDealFile as uploadDealFileToSP, uploadToFolder } from "@/lib/graph";
 
 // Tab options for filtering deals
 const TABS: { label: string; statuses: DealStatus[] }[] = [
@@ -117,7 +117,8 @@ export default function FlowPage() {
   }, [fetchDeals]);
 
   // ── SharePoint deal file upload (fire-and-forget after deal save) ──
-  const uploadFileToSharePoint = useCallback(async (dealId: string, dealName: string, brokerName: string, file: File) => {
+  // If the deal has a user-linked folder, upload there. Otherwise, auto-create /Deals/{Broker}/{Deal}/Documents/.
+  const uploadFileToSharePoint = useCallback(async (dealId: string, dealName: string, brokerName: string, file: File, existingFolderUrl?: string) => {
     try {
       const account = accounts[0];
       if (!account) return;
@@ -126,12 +127,28 @@ export default function FlowPage() {
 
       const siteId = await getSiteId(accessToken);
       const driveId = await getDriveId(accessToken, siteId);
+      const buffer = await file.arrayBuffer();
 
-      // Create deal folder (idempotent)
+      if (existingFolderUrl) {
+        // User-linked folder — upload directly to it
+        try {
+          const url = new URL(existingFolderUrl);
+          const pathMatch = url.pathname.match(/\/Shared%20Documents\/(.+)/i) || url.pathname.match(/\/Shared Documents\/(.+)/i);
+          if (pathMatch) {
+            const folderPath = decodeURIComponent(pathMatch[1]).replace(/\/+$/, "");
+            await uploadToFolder(accessToken, driveId, folderPath, file.name, buffer, file.type || "application/octet-stream");
+            console.log(`[Flow] File "${file.name}" uploaded to linked folder for deal "${dealName}"`);
+            return;
+          }
+        } catch (parseErr) {
+          console.warn("[Flow] Failed to parse linked folder URL, falling back to auto-create:", parseErr);
+        }
+      }
+
+      // No linked folder — auto-create deal folder structure
       const folderUrl = await createDealFolder(accessToken, driveId, brokerName, dealName);
 
       // Upload the file
-      const buffer = await file.arrayBuffer();
       await uploadDealFileToSP(accessToken, driveId, brokerName, dealName, file.name, buffer, file.type || "application/octet-stream");
 
       // Save the SharePoint folder URL on the deal (if we got one)
@@ -245,7 +262,9 @@ export default function FlowPage() {
 
       // Fire-and-forget SharePoint upload if a file was dropped
       if (pendingFile && createdDeal.id) {
-        uploadFileToSharePoint(createdDeal.id, data.deal_name, getBrokerName(), pendingFile);
+        // Use user-linked folder if set, otherwise auto-create
+        const linkedFolder = (data as unknown as Record<string, unknown>).sharepoint_folder_url as string | undefined;
+        uploadFileToSharePoint(createdDeal.id, data.deal_name, getBrokerName(), pendingFile, linkedFolder || createdDeal.sharepoint_folder_url);
       }
 
       await fetchDeals();
@@ -285,7 +304,10 @@ export default function FlowPage() {
       // Fire-and-forget SharePoint upload if a file was dropped
       const dealName = (data as DealFormData).deal_name || selectedDeal?.deal_name || "Deal";
       if (pendingFile) {
-        uploadFileToSharePoint(id, dealName, getBrokerName(), pendingFile);
+        // Use existing folder URL from the deal or from the update payload
+        const folderUrl = (data as Record<string, unknown>).sharepoint_folder_url as string | undefined
+          || selectedDeal?.sharepoint_folder_url;
+        uploadFileToSharePoint(id, dealName, getBrokerName(), pendingFile, folderUrl || undefined);
       }
 
       await fetchDeals();
@@ -332,7 +354,9 @@ export default function FlowPage() {
 
       // Fire-and-forget SharePoint upload if a file was dropped
       if (pendingFile) {
-        uploadFileToSharePoint(dropEditDeal.id, data.deal_name, getBrokerName(), pendingFile);
+        const folderUrl = (data as unknown as Record<string, unknown>).sharepoint_folder_url as string | undefined
+          || dropEditDeal.sharepoint_folder_url;
+        uploadFileToSharePoint(dropEditDeal.id, data.deal_name, getBrokerName(), pendingFile, folderUrl || undefined);
       }
 
       setDropEditDeal(null);

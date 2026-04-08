@@ -252,6 +252,21 @@ export interface SharePointFile {
   downloadUrl: string;
 }
 
+/** Item in a folder listing — can be a file or a subfolder */
+export interface SharePointItem {
+  id: string;
+  name: string;
+  webUrl: string;
+  isFolder: boolean;
+  // File-only fields (null for folders)
+  size: number;
+  lastModified: string;
+  mimeType: string;
+  downloadUrl: string;
+  // Folder-only fields
+  childCount: number;
+}
+
 /**
  * List files in a SharePoint folder.
  * Returns files sorted by last modified (newest first).
@@ -292,6 +307,101 @@ export async function listFolderFiles(
       downloadUrl: (item["@microsoft.graph.downloadUrl"] as string) || "",
     };
   });
+}
+
+/**
+ * List ALL children (folders + files) of a SharePoint folder.
+ * Folders sort first alphabetically, then files by last modified (newest first).
+ */
+export async function listFolderContents(
+  accessToken: string,
+  driveId: string,
+  folderPath: string
+): Promise<SharePointItem[]> {
+  const cleanPath = folderPath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const endpoint = cleanPath
+    ? `${GRAPH_BASE}/drives/${driveId}/root:/${encodeURIComponent(cleanPath).replace(/%2F/g, "/")}:/children`
+    : `${GRAPH_BASE}/drives/${driveId}/root/children`;
+
+  const url = `${endpoint}?$select=id,name,webUrl,size,lastModifiedDateTime,file,folder,@microsoft.graph.downloadUrl&$top=200`;
+
+  const response = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+  });
+
+  if (!response.ok) {
+    if (response.status === 404) return [];
+    throw new Error(`Failed to list folder contents: ${response.status} ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  const items: SharePointItem[] = (data.value || []).map((item: Record<string, unknown>) => {
+    const fileInfo = item.file as Record<string, unknown> | null;
+    const folderInfo = item.folder as Record<string, unknown> | null;
+    return {
+      id: item.id as string,
+      name: item.name as string,
+      webUrl: item.webUrl as string,
+      isFolder: !!folderInfo,
+      size: (item.size as number) || 0,
+      lastModified: (item.lastModifiedDateTime as string) || "",
+      mimeType: (fileInfo?.mimeType as string) || "",
+      downloadUrl: (item["@microsoft.graph.downloadUrl"] as string) || "",
+      childCount: (folderInfo?.childCount as number) || 0,
+    };
+  });
+
+  // Sort: folders first (alphabetical), then files (newest first)
+  items.sort((a, b) => {
+    if (a.isFolder && !b.isFolder) return -1;
+    if (!a.isFolder && b.isFolder) return 1;
+    if (a.isFolder && b.isFolder) return a.name.localeCompare(b.name);
+    return new Date(b.lastModified).getTime() - new Date(a.lastModified).getTime();
+  });
+
+  return items;
+}
+
+/**
+ * Upload a file to a specific SharePoint folder path (for user-linked folders).
+ * Uses the folder path directly — no deal folder structure assumed.
+ */
+export async function uploadToFolder(
+  accessToken: string,
+  driveId: string,
+  folderPath: string,
+  fileName: string,
+  fileContent: ArrayBuffer,
+  contentType = "application/octet-stream"
+): Promise<string> {
+  if (fileContent.byteLength > 4 * 1024 * 1024) {
+    console.warn("[uploadToFolder] File exceeds 4MB — skipping.");
+    return "";
+  }
+
+  const cleanPath = folderPath.replace(/^\/+/, "").replace(/\/+$/, "");
+  const fullPath = `${cleanPath}/${fileName}`;
+  const encodedPath = encodeURIComponent(fullPath).replace(/%2F/g, "/");
+
+  const response = await fetch(
+    `${GRAPH_BASE}/drives/${driveId}/root:/${encodedPath}:/content`,
+    {
+      method: "PUT",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": contentType,
+      },
+      body: fileContent,
+    }
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`SharePoint upload failed: ${response.status} — ${errorText}`);
+  }
+
+  const result = await response.json();
+  return result.webUrl;
 }
 
 /* ============================================================

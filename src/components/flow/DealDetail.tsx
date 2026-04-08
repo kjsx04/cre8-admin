@@ -5,13 +5,17 @@ import { useMsal } from "@azure/msal-react";
 import { Deal, DealFormData, DealDate, Broker, DealDiffItem, StageSuggestion, ExtractedDealData, DealStatus } from "@/lib/flow/types";
 import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS, buildDealDiff, suggestStageMove } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
-import { getSiteId, getDriveId, listFolderFiles, SharePointFile } from "@/lib/graph";
+import { getSiteId, getDriveId, listFolderContents, uploadToFolder, SharePointItem } from "@/lib/graph";
 import TimelineBar from "./TimelineBar";
 import CommissionCalc from "./CommissionCalc";
 import DealForm from "./DealForm";
 import ConfirmModal from "./ConfirmModal";
 import FileDropZone from "./FileDropZone";
 import DealUpdateReview from "./DealUpdateReview";
+import dynamic from "next/dynamic";
+
+// Dynamic import to avoid SSR issues with MSAL hooks in the modal
+const FolderPickerModal = dynamic(() => import("./FolderPickerModal"), { ssr: false });
 
 interface DealDetailProps {
   deal: Deal;
@@ -171,8 +175,12 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
   const [approving, setApproving] = useState(false);
 
   // Documents state
-  const [files, setFiles] = useState<SharePointFile[]>([]);
+  const [folderContents, setFolderContents] = useState<SharePointItem[]>([]);
   const [filesLoading, setFilesLoading] = useState(false);
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [browsingSubpath, setBrowsingSubpath] = useState("");  // relative subpath within the linked folder
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
 
   // Save edited deal (with deal_dates + optional file for SharePoint upload)
   const handleSave = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
@@ -180,9 +188,9 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     await onUpdate(deal.id, data, dealDates, pendingFile);
     setSaving(false);
     setEditing(false);
-    // Re-fetch files after editing (a new file may have been uploaded)
+    // Re-fetch folder contents after editing (a new file may have been uploaded)
     if (pendingFile && deal.sharepoint_folder_url) {
-      setTimeout(() => fetchFiles(), 3000); // slight delay for SharePoint to process
+      setTimeout(() => fetchFolderContents(), 3000); // slight delay for SharePoint to process
     }
   };
 
@@ -272,8 +280,20 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     } as unknown as Partial<Deal>);
   };
 
-  // ── Fetch files from the deal's SharePoint folder ──
-  const fetchFiles = useCallback(async () => {
+  // ── Extract the base folder path from a SharePoint URL ──
+  const getFolderPathFromUrl = useCallback((spUrl: string): string => {
+    try {
+      const url = new URL(spUrl);
+      const pathMatch = url.pathname.match(/\/Shared%20Documents\/(.+)/i) || url.pathname.match(/\/Shared Documents\/(.+)/i);
+      if (pathMatch) {
+        return decodeURIComponent(pathMatch[1]).replace(/\/+$/, "");
+      }
+    } catch { /* ignore parse errors */ }
+    return "";
+  }, []);
+
+  // ── Fetch folder contents (folders + files) from the deal's SharePoint folder ──
+  const fetchFolderContents = useCallback(async () => {
     if (!deal.sharepoint_folder_url) return;
     const account = accounts[0];
     if (!account) return;
@@ -285,28 +305,75 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
       const siteId = await getSiteId(accessToken);
       const driveId = await getDriveId(accessToken, siteId);
 
-      const url = new URL(deal.sharepoint_folder_url);
-      const pathMatch = url.pathname.match(/\/Shared%20Documents\/(.+)/i) || url.pathname.match(/\/Shared Documents\/(.+)/i);
-      let folderPath = "";
-      if (pathMatch) {
-        folderPath = decodeURIComponent(pathMatch[1]).replace(/\/+$/, "") + "/Documents";
-      }
+      const basePath = getFolderPathFromUrl(deal.sharepoint_folder_url);
+      if (!basePath) return;
 
-      if (folderPath) {
-        const result = await listFolderFiles(accessToken, driveId, folderPath);
-        setFiles(result);
-      }
+      // Build full path including any subpath the user navigated to
+      const fullPath = browsingSubpath ? `${basePath}/${browsingSubpath}` : basePath;
+      const result = await listFolderContents(accessToken, driveId, fullPath);
+      setFolderContents(result);
     } catch (err) {
-      console.error("[DealDetail] Failed to fetch files:", err);
+      console.error("[DealDetail] Failed to fetch folder contents:", err);
     } finally {
       setFilesLoading(false);
     }
-  }, [deal.sharepoint_folder_url, accounts, instance]);
+  }, [deal.sharepoint_folder_url, browsingSubpath, accounts, instance, getFolderPathFromUrl]);
 
-  // Fetch files on mount if deal has a SharePoint folder
+  // Fetch folder contents on mount and when path changes
   useEffect(() => {
-    fetchFiles();
-  }, [fetchFiles]);
+    fetchFolderContents();
+  }, [fetchFolderContents]);
+
+  // ── Handle inline file upload (drop files directly into the Documents section) ──
+  const handleDirectUpload = useCallback(async (uploadFiles: FileList) => {
+    if (!deal.sharepoint_folder_url) return;
+    const account = accounts[0];
+    if (!account) return;
+
+    setUploading(true);
+    try {
+      const tokenResponse = await instance.acquireTokenSilent({ ...graphScopes, account });
+      const accessToken = tokenResponse.accessToken;
+      const siteId = await getSiteId(accessToken);
+      const driveId = await getDriveId(accessToken, siteId);
+
+      const basePath = getFolderPathFromUrl(deal.sharepoint_folder_url);
+      if (!basePath) return;
+
+      // Upload to whichever subfolder the user is currently viewing
+      const targetPath = browsingSubpath ? `${basePath}/${browsingSubpath}` : basePath;
+
+      for (let i = 0; i < uploadFiles.length; i++) {
+        const file = uploadFiles[i];
+        if (file.size > 4 * 1024 * 1024) {
+          console.warn(`[DealDetail] Skipping "${file.name}" — exceeds 4MB`);
+          continue;
+        }
+        const buffer = await file.arrayBuffer();
+        await uploadToFolder(accessToken, driveId, targetPath, file.name, buffer, file.type || "application/octet-stream");
+      }
+
+      // Refresh folder contents
+      setTimeout(() => fetchFolderContents(), 1500);
+    } catch (err) {
+      console.error("[DealDetail] Direct upload failed:", err);
+    } finally {
+      setUploading(false);
+    }
+  }, [deal.sharepoint_folder_url, browsingSubpath, accounts, instance, getFolderPathFromUrl, fetchFolderContents]);
+
+  // ── Handle folder picker selection ──
+  const handleFolderSelected = useCallback(async (folderUrl: string, folderPath: string) => {
+    setShowFolderPicker(false);
+    // Save the folder URL to the deal — we need to resolve a proper webUrl
+    // If folderUrl is empty (user clicked "Use this folder"), build it from path
+    const finalUrl = folderUrl || `https://cre8advisors.sharepoint.com/sites/CRE8Operations/Shared%20Documents/${encodeURIComponent(folderPath).replace(/%2F/g, "/")}`;
+    setBrowsingSubpath("");  // reset subpath when changing folders
+    await onUpdate(deal.id, { sharepoint_folder_url: finalUrl } as Partial<Deal>);
+  }, [deal.id, onUpdate]);
+
+  // Alias for backward-compat (extraction file re-fetch uses this name)
+  const fetchFiles = fetchFolderContents;
 
   // ── Document update: handle extraction result from drop zone ──
   const handleUpdateExtracted = useCallback((extracted: ExtractedDealData) => {
@@ -421,9 +488,9 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
       setUpdateDocType("");
       setUpdatePendingFile(null);
 
-      // Re-fetch files if a file was uploaded
+      // Re-fetch folder contents if a file was uploaded
       if (updatePendingFile && deal.sharepoint_folder_url) {
-        setTimeout(() => fetchFiles(), 3000);
+        setTimeout(() => fetchFolderContents(), 3000);
       }
     } catch (err) {
       console.error("[DealDetail] Approve update failed:", err);
@@ -653,82 +720,251 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
               </div>
             </div>
 
-            {/* Documents — only show if deal has a SharePoint folder */}
-            {deal.sharepoint_folder_url && (
-              <div className="bg-white border border-border-light rounded-card p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-dm font-semibold text-sm text-charcoal">Documents</h3>
-                  <a
-                    href={deal.sharepoint_folder_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-green hover:underline"
-                  >
-                    Open in SharePoint
-                  </a>
-                </div>
-
-                {filesLoading ? (
-                  <div className="flex items-center gap-2 py-3">
-                    <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
-                    <span className="text-xs text-muted-gray">Loading files...</span>
+            {/* Documents — always shown */}
+            <div className="bg-white border border-border-light rounded-card p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-dm font-semibold text-sm text-charcoal">Documents</h3>
+                {deal.sharepoint_folder_url ? (
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => setShowFolderPicker(true)}
+                      className="text-xs text-muted-gray hover:text-charcoal transition-colors"
+                      title="Change linked folder"
+                    >
+                      Change Folder
+                    </button>
+                    <a
+                      href={deal.sharepoint_folder_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-green hover:underline"
+                    >
+                      Open in SharePoint
+                    </a>
                   </div>
-                ) : files.length === 0 ? (
-                  <p className="text-xs text-muted-gray py-2">
-                    No documents yet — drop a file in the edit form to get started
-                  </p>
                 ) : (
-                  <div className="space-y-1">
-                    {files.map((file) => (
-                      <div
-                        key={file.id}
-                        className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-light-gray transition-colors"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <FileIcon name={file.name} />
-                          <div className="min-w-0">
-                            <p className="text-sm text-charcoal truncate">{file.name}</p>
-                            <p className="text-xs text-muted-gray">
-                              {formatFileSize(file.size)} · {new Date(file.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                            </p>
-                          </div>
-                        </div>
-                        {/* Download button */}
-                        {file.downloadUrl ? (
-                          <a
-                            href={file.downloadUrl}
-                            download={file.name}
-                            className="p-1 text-muted-gray hover:text-charcoal transition-colors flex-shrink-0"
-                            title="Download"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                              <polyline points="7 10 12 15 17 10" />
-                              <line x1="12" y1="15" x2="12" y2="3" />
-                            </svg>
-                          </a>
-                        ) : (
-                          <a
-                            href={file.webUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="p-1 text-muted-gray hover:text-charcoal transition-colors flex-shrink-0"
-                            title="Open in SharePoint"
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                              <polyline points="15 3 21 3 21 9" />
-                              <line x1="10" y1="14" x2="21" y2="3" />
-                            </svg>
-                          </a>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <button
+                    onClick={() => setShowFolderPicker(true)}
+                    className="text-xs text-green font-medium hover:underline"
+                  >
+                    Link Folder
+                  </button>
                 )}
               </div>
-            )}
+
+              {!deal.sharepoint_folder_url ? (
+                /* No folder linked — prompt to link one */
+                <div className="text-center py-6">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5" className="mx-auto mb-2">
+                    <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                  </svg>
+                  <p className="text-sm text-muted-gray mb-2">No folder linked to this deal</p>
+                  <button
+                    onClick={() => setShowFolderPicker(true)}
+                    className="text-sm text-green font-medium hover:underline"
+                  >
+                    Browse SharePoint to link a folder
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/* Breadcrumb for subfolder navigation */}
+                  {browsingSubpath && (
+                    <div className="flex items-center gap-1 mb-2 text-xs flex-wrap">
+                      <button
+                        onClick={() => setBrowsingSubpath("")}
+                        className="text-medium-gray hover:text-green transition-colors"
+                      >
+                        Root
+                      </button>
+                      {browsingSubpath.split("/").map((segment, i, arr) => {
+                        const subpath = arr.slice(0, i + 1).join("/");
+                        return (
+                          <span key={subpath} className="flex items-center gap-1">
+                            <span className="text-muted-gray">/</span>
+                            <button
+                              onClick={() => setBrowsingSubpath(subpath)}
+                              className={`transition-colors ${
+                                i === arr.length - 1
+                                  ? "text-charcoal font-medium"
+                                  : "text-medium-gray hover:text-green"
+                              }`}
+                            >
+                              {segment}
+                            </button>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* File drop zone for direct upload */}
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                    onDragLeave={() => setDragOver(false)}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      setDragOver(false);
+                      if (e.dataTransfer.files.length > 0) {
+                        handleDirectUpload(e.dataTransfer.files);
+                      }
+                    }}
+                    className={`border border-dashed rounded-btn px-3 py-2 mb-3 text-center transition-colors cursor-pointer ${
+                      dragOver
+                        ? "border-green bg-green/5"
+                        : "border-border-light hover:border-[#999]"
+                    }`}
+                    onClick={() => {
+                      // Click to browse files
+                      const input = document.createElement("input");
+                      input.type = "file";
+                      input.multiple = true;
+                      input.onchange = () => {
+                        if (input.files && input.files.length > 0) {
+                          handleDirectUpload(input.files);
+                        }
+                      };
+                      input.click();
+                    }}
+                  >
+                    {uploading ? (
+                      <div className="flex items-center justify-center gap-2 py-1">
+                        <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
+                        <span className="text-xs text-muted-gray">Uploading...</span>
+                      </div>
+                    ) : (
+                      <p className="text-xs text-muted-gray py-1">
+                        Drop files here to upload{browsingSubpath ? ` to ${browsingSubpath.split("/").pop()}` : ""}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Folder contents list */}
+                  {filesLoading ? (
+                    <div className="flex items-center gap-2 py-3">
+                      <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
+                      <span className="text-xs text-muted-gray">Loading...</span>
+                    </div>
+                  ) : folderContents.length === 0 ? (
+                    <p className="text-xs text-muted-gray py-2">
+                      This folder is empty
+                    </p>
+                  ) : (
+                    <div className="space-y-0.5">
+                      {/* Back button when in a subfolder */}
+                      {browsingSubpath && (
+                        <button
+                          onClick={() => {
+                            const parts = browsingSubpath.split("/");
+                            parts.pop();
+                            setBrowsingSubpath(parts.join("/"));
+                          }}
+                          className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-light-gray transition-colors w-full text-left"
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
+                            <polyline points="15 18 9 12 15 6" />
+                          </svg>
+                          <span className="text-xs text-medium-gray">..</span>
+                        </button>
+                      )}
+                      {folderContents.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-light-gray transition-colors group"
+                        >
+                          {item.isFolder ? (
+                            /* Folder row — click to drill in */
+                            <button
+                              onClick={() => {
+                                setBrowsingSubpath(
+                                  browsingSubpath ? `${browsingSubpath}/${item.name}` : item.name
+                                );
+                              }}
+                              className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                            >
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B" stroke="#D97706" strokeWidth="1" className="flex-shrink-0">
+                                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                              </svg>
+                              <div className="min-w-0">
+                                <p className="text-sm text-charcoal truncate">{item.name}</p>
+                                {item.childCount > 0 && (
+                                  <p className="text-xs text-muted-gray">{item.childCount} items</p>
+                                )}
+                              </div>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" className="flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                            </button>
+                          ) : (
+                            /* File row */
+                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                              <FileIcon name={item.name} />
+                              <div className="min-w-0">
+                                <p className="text-sm text-charcoal truncate">{item.name}</p>
+                                <p className="text-xs text-muted-gray">
+                                  {formatFileSize(item.size)}
+                                  {item.lastModified && (
+                                    <> · {new Date(item.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>
+                                  )}
+                                </p>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Action buttons */}
+                          <div className="flex items-center gap-1 flex-shrink-0">
+                            {!item.isFolder && item.downloadUrl ? (
+                              <a
+                                href={item.downloadUrl}
+                                download={item.name}
+                                className="p-1 text-muted-gray hover:text-charcoal transition-colors"
+                                title="Download"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                                  <polyline points="7 10 12 15 17 10" />
+                                  <line x1="12" y1="15" x2="12" y2="3" />
+                                </svg>
+                              </a>
+                            ) : !item.isFolder ? (
+                              <a
+                                href={item.webUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-muted-gray hover:text-charcoal transition-colors"
+                                title="Open in SharePoint"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                  <polyline points="15 3 21 3 21 9" />
+                                  <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                              </a>
+                            ) : (
+                              /* Folder — open in SharePoint */
+                              <a
+                                href={item.webUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="p-1 text-muted-gray hover:text-charcoal transition-colors opacity-0 group-hover:opacity-100"
+                                title="Open in SharePoint"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
+                                  <polyline points="15 3 21 3 21 9" />
+                                  <line x1="10" y1="14" x2="21" y2="3" />
+                                </svg>
+                              </a>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
 
             {/* Notes */}
             <div className="bg-white border border-border-light rounded-card p-4">
@@ -906,6 +1142,15 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
           confirmColor="red"
           onConfirm={handleDeleteDeal}
           onCancel={() => setShowDeleteModal(false)}
+        />
+      )}
+
+      {/* SharePoint folder picker modal */}
+      {showFolderPicker && (
+        <FolderPickerModal
+          onSelect={handleFolderSelected}
+          onCancel={() => setShowFolderPicker(false)}
+          initialPath="Deals"
         />
       )}
     </>

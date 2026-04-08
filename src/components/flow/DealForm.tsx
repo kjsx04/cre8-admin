@@ -12,8 +12,11 @@ import FileDropZone from "./FileDropZone";
 import dynamic from "next/dynamic";
 import type { SelectedParcel } from "./ParcelPickerModal";
 
-// Dynamic import for ParcelPickerModal to avoid SSR issues with mapbox-gl
+// Dynamic imports to avoid SSR issues with mapbox-gl / MSAL hooks
 const ParcelPickerModal = dynamic(() => import("./ParcelPickerModal"), {
+  ssr: false,
+});
+const FolderPickerModal = dynamic(() => import("./FolderPickerModal"), {
   ssr: false,
 });
 
@@ -260,6 +263,11 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
 
   // ── Pending file for SharePoint upload after save ──
   const [pendingFile, setPendingFile] = useState<File | null>(null);
+
+  // ── SharePoint folder picker state ──
+  const [showFolderPicker, setShowFolderPicker] = useState(false);
+  const [linkedFolderUrl, setLinkedFolderUrl] = useState(deal?.sharepoint_folder_url || "");
+  const [linkedFolderPath, setLinkedFolderPath] = useState("");
 
   // ── Save defaults feedback ──
   const [defaultsSaving, setDefaultsSaving] = useState(false);
@@ -771,6 +779,11 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     // Attach lease_payments to formData so it flows through to the API
     (formData as unknown as Record<string, unknown>).lease_payments = apiLeasePayments;
 
+    // Attach linked SharePoint folder URL if set
+    if (linkedFolderUrl) {
+      (formData as unknown as Record<string, unknown>).sharepoint_folder_url = linkedFolderUrl;
+    }
+
     onSave(formData, apiDates as DealDate[], pendingFile || undefined);
   };
 
@@ -826,6 +839,55 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           labelCls={labelCls}
           highlighted={highlightedFields.has("listing_id")}
         />
+
+        {/* ── SharePoint Folder Link ── */}
+        <div className="mb-6">
+          <label className={labelCls}>SharePoint Folder</label>
+          {linkedFolderUrl ? (
+            <div className="flex items-center justify-between border border-border-light rounded-btn px-3 py-2 text-sm bg-white">
+              <div className="flex items-center gap-2 min-w-0">
+                {/* Folder icon */}
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B" stroke="#D97706" strokeWidth="1" className="flex-shrink-0">
+                  <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+                </svg>
+                <span className="text-charcoal truncate">
+                  {linkedFolderPath || linkedFolderUrl.split("/").filter(Boolean).pop() || "Linked folder"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                <button
+                  type="button"
+                  onClick={() => setShowFolderPicker(true)}
+                  className="text-xs text-medium-gray hover:text-charcoal transition-colors"
+                >
+                  Change
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setLinkedFolderUrl(""); setLinkedFolderPath(""); }}
+                  className="text-muted-gray hover:text-charcoal transition-colors"
+                  title="Remove link"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowFolderPicker(true)}
+              className="w-full border border-dashed border-border-light rounded-btn px-3 py-2 text-sm text-muted-gray
+                         hover:border-green hover:text-green transition-colors text-left flex items-center gap-2"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
+              </svg>
+              Link a SharePoint folder...
+            </button>
+          )}
+        </div>
 
         {/* ── Identity ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
@@ -1562,6 +1624,20 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           onConfirm={handleParcelConfirm}
           onClose={() => setShowParcelPicker(false)}
           initialParcels={storedParcels.length > 0 ? storedParcels : undefined}
+        />
+      )}
+
+      {/* ── SharePoint Folder Picker Modal ── */}
+      {showFolderPicker && (
+        <FolderPickerModal
+          onSelect={(folderUrl, folderPath) => {
+            const finalUrl = folderUrl || `https://cre8advisors.sharepoint.com/sites/CRE8Operations/Shared%20Documents/${encodeURIComponent(folderPath).replace(/%2F/g, "/")}`;
+            setLinkedFolderUrl(finalUrl);
+            setLinkedFolderPath(folderPath);
+            setShowFolderPicker(false);
+          }}
+          onCancel={() => setShowFolderPicker(false)}
+          initialPath="Deals"
         />
       )}
     </div>
