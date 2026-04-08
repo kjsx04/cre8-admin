@@ -87,6 +87,8 @@ const emptyForm: DealFormData = {
   notes: "",
   listing_id: "",
   parcel_number: "",
+  escrow_number: "",
+  escrow_company: "",
   additional_splits: [],
   broker_members: [],
 };
@@ -297,6 +299,8 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
         notes: deal.notes || "",
         listing_id: deal.listing_id || "",
         parcel_number: deal.parcel_number || "",
+        escrow_number: deal.escrow_number || "",
+        escrow_company: deal.escrow_company || "",
         additional_splits: deal.additional_splits || [],
         broker_members: (deal.deal_members || []).map((m) => ({
           broker_id: m.broker_id,
@@ -438,7 +442,8 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
       // Map simple fields — overwrite any field the AI extracted (source of truth)
       const simpleFields: (keyof ExtractedDealData)[] = [
         "deal_name", "property_address", "deal_type", "price",
-        "commission_rate", "effective_date", "escrow_open_date", "notes",
+        "commission_rate", "effective_date", "escrow_open_date",
+        "escrow_number", "escrow_company", "notes",
       ];
       for (const key of simpleFields) {
         const value = data[key];
@@ -1408,6 +1413,26 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                 value={form.escrow_open_date}
                 onChange={(e) => update("escrow_open_date", e.target.value)}
                 className={inputCls("escrow_open_date")}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Escrow Company</label>
+              <input
+                type="text"
+                value={form.escrow_company}
+                onChange={(e) => update("escrow_company", e.target.value)}
+                placeholder="e.g. Fidelity National Title"
+                className={inputCls("escrow_company")}
+              />
+            </div>
+            <div>
+              <label className={labelCls}>Escrow Number</label>
+              <input
+                type="text"
+                value={form.escrow_number}
+                onChange={(e) => update("escrow_number", e.target.value)}
+                placeholder="e.g. FM55250953"
+                className={inputCls("escrow_number")}
               />
             </div>
           </div>

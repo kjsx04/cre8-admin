@@ -324,6 +324,8 @@ const DIFF_FIELD_DEFS: { key: string; label: string; format?: (v: unknown) => st
   { key: "commission_rate", label: "Commission Rate", format: (v) => `${v}%` },
   { key: "effective_date", label: "Effective Date", format: (v) => formatDate(String(v)) },
   { key: "escrow_open_date", label: "Escrow Open Date", format: (v) => formatDate(String(v)) },
+  { key: "escrow_number", label: "Escrow Number" },
+  { key: "escrow_company", label: "Escrow Company" },
   { key: "notes", label: "Notes" },
 ];
 

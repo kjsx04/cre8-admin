@@ -67,6 +67,8 @@ export async function PATCH(
   if (body.notes !== undefined) updates.notes = body.notes || null;
   if (body.listing_id !== undefined) updates.listing_id = body.listing_id || null;
   if (body.parcel_number !== undefined) updates.parcel_number = body.parcel_number || null;
+  if (body.escrow_number !== undefined) updates.escrow_number = body.escrow_number || null;
+  if (body.escrow_company !== undefined) updates.escrow_company = body.escrow_company || null;
   if (body.additional_splits !== undefined) updates.additional_splits = body.additional_splits;
   if (body.sharepoint_folder_url !== undefined) updates.sharepoint_folder_url = body.sharepoint_folder_url;
 

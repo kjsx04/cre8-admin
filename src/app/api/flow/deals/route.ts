@@ -124,6 +124,8 @@ export async function POST(request: NextRequest) {
       notes: body.notes || null,
       listing_id: body.listing_id || null,
       parcel_number: body.parcel_number || null,
+      escrow_number: body.escrow_number || null,
+      escrow_company: body.escrow_company || null,
       additional_splits: body.additional_splits || [],
       sharepoint_folder_url: body.sharepoint_folder_url || null,
     })

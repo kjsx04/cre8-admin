@@ -657,6 +657,18 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                   <span className="text-medium-gray">Escrow Open</span>
                   <span className="font-medium">{formatDate(deal.escrow_open_date)}</span>
                 </div>
+                {deal.escrow_company && (
+                  <div className="flex justify-between">
+                    <span className="text-medium-gray">Escrow Company</span>
+                    <span className="font-medium">{deal.escrow_company}</span>
+                  </div>
+                )}
+                {deal.escrow_number && (
+                  <div className="flex justify-between">
+                    <span className="text-medium-gray">Escrow Number</span>
+                    <span className="font-medium">{deal.escrow_number}</span>
+                  </div>
+                )}
 
                 {/* Dynamic dates from deal_dates */}
                 {deal.deal_dates && deal.deal_dates.length > 0 ? (

@@ -71,6 +71,8 @@ export interface Deal {
   notes: string | null;
   listing_id: string | null;        // Webflow CMS item ID (if tied to a CRE8 listing)
   parcel_number: string | null;     // APN from parcel picker
+  escrow_number: string | null;     // Escrow file number
+  escrow_company: string | null;    // Escrow/title company name
   additional_splits: AdditionalSplit[];  // extra commission deductions
   deal_dates?: DealDate[];         // dynamic critical dates (joined from deal_dates table)
   deal_members?: DealMember[];     // brokers assigned to this deal (joined from deal_members table)
@@ -94,6 +96,8 @@ export interface DealFormData {
   notes: string;
   listing_id: string;        // Webflow CMS item ID (empty = not linked)
   parcel_number: string;     // APN from parcel picker
+  escrow_number: string;     // Escrow file number
+  escrow_company: string;    // Escrow/title company name
   additional_splits: AdditionalSplit[];  // extra commission deductions
   broker_members: { broker_id: string; split_percent: number | null }[];  // brokers on this deal
   // deal_dates managed separately — sent as a parallel array on save
@@ -119,6 +123,8 @@ export interface ExtractedDealData {
   commission_rate?: string;
   effective_date?: string;
   escrow_open_date?: string;
+  escrow_number?: string;
+  escrow_company?: string;
   notes?: string;
   document_type?: "loi" | "psa" | "other";  // AI-detected doc type
   // AI now extracts dates as milestone objects instead of day-count fields

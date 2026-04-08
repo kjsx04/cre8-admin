@@ -15,6 +15,8 @@ Available fields:
 - commission_rate (string) — percentage as a number (e.g. "3" for 3%)
 - effective_date (string) — YYYY-MM-DD format. IMPORTANT: Only extract this for PSAs, NOT for LOIs.
 - escrow_open_date (string) — YYYY-MM-DD format
+- escrow_number (string) — escrow file number (e.g. "FM55250953")
+- escrow_company (string) — escrow or title company name (e.g. "Fidelity National Title")
 - notes (string) — any important details not captured by other fields
 - deal_dates (array) — milestone dates extracted from the document
 
