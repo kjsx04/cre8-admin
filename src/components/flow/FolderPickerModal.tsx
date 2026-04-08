@@ -37,15 +37,32 @@ export default function FolderPickerModal({ onSelect, onCancel, initialPath }: F
     }
   }
 
+  // Helper: get a Graph API access token (silent first, popup fallback)
+  const getAccessToken = useCallback(async (): Promise<string> => {
+    const account = accounts[0];
+    if (!account) throw new Error("No MSAL account");
+    try {
+      const res = await instance.acquireTokenSilent({ ...graphScopes, account });
+      return res.accessToken;
+    } catch {
+      // Silent failed (expired/interaction required) — try popup
+      const res = await instance.acquireTokenPopup({ ...graphScopes, account });
+      return res.accessToken;
+    }
+  }, [instance, accounts]);
+
   // Get drive ID on mount
   useEffect(() => {
     async function init() {
-      const account = accounts[0];
-      if (!account) return;
+      if (!accounts[0]) {
+        setError("Not signed in — please sign in first");
+        setLoading(false);
+        return;
+      }
       try {
-        const tokenResponse = await instance.acquireTokenSilent({ ...graphScopes, account });
-        const siteId = await getSiteId(tokenResponse.accessToken);
-        const id = await getDriveId(tokenResponse.accessToken, siteId);
+        const accessToken = await getAccessToken();
+        const siteId = await getSiteId(accessToken);
+        const id = await getDriveId(accessToken, siteId);
         setDriveId(id);
       } catch (err) {
         console.error("[FolderPicker] Init error:", err);
@@ -54,19 +71,17 @@ export default function FolderPickerModal({ onSelect, onCancel, initialPath }: F
       }
     }
     init();
-  }, [instance, accounts]);
+  }, [accounts, getAccessToken]);
 
   // Load folder contents whenever path or driveId changes
   const loadFolders = useCallback(async () => {
     if (!driveId) return;
-    const account = accounts[0];
-    if (!account) return;
 
     setLoading(true);
     setError("");
     try {
-      const tokenResponse = await instance.acquireTokenSilent({ ...graphScopes, account });
-      const items = await listFolderChildren(tokenResponse.accessToken, driveId, currentPath);
+      const accessToken = await getAccessToken();
+      const items = await listFolderChildren(accessToken, driveId, currentPath);
       setFolders(items);
     } catch (err) {
       console.error("[FolderPicker] Load error:", err);
@@ -74,7 +89,7 @@ export default function FolderPickerModal({ onSelect, onCancel, initialPath }: F
     } finally {
       setLoading(false);
     }
-  }, [driveId, currentPath, instance, accounts]);
+  }, [driveId, currentPath, getAccessToken]);
 
   useEffect(() => {
     loadFolders();

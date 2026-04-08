@@ -119,24 +119,30 @@ export async function listFolderChildren(
     ? `${GRAPH_BASE}/drives/${driveId}/root:/${encodeURIComponent(cleanPath).replace(/%2F/g, "/")}:/children`
     : `${GRAPH_BASE}/drives/${driveId}/root/children`;
 
-  // Filter to only folders, sort alphabetically
-  const url = `${endpoint}?$filter=folder ne null&$orderby=name&$top=100`;
+  // Fetch all children — $filter on folder facet isn't reliably supported by SharePoint
+  const url = `${endpoint}?$select=id,name,webUrl,folder&$top=200`;
 
   const response = await fetch(url, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
   if (!response.ok) {
+    // 404 = folder doesn't exist
+    if (response.status === 404) return [];
     throw new Error(`Failed to list folders: ${response.status} ${response.statusText}`);
   }
 
   const data = await response.json();
-  return (data.value || []).map((item: Record<string, unknown>) => ({
-    id: item.id as string,
-    name: item.name as string,
-    isFolder: true,
-    webUrl: item.webUrl as string,
-  }));
+  // Filter to folders only client-side, sort alphabetically
+  return (data.value || [])
+    .filter((item: Record<string, unknown>) => item.folder != null)
+    .map((item: Record<string, unknown>) => ({
+      id: item.id as string,
+      name: item.name as string,
+      isFolder: true,
+      webUrl: item.webUrl as string,
+    }))
+    .sort((a: FolderItem, b: FolderItem) => a.name.localeCompare(b.name));
 }
 
 /**
