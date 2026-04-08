@@ -1637,7 +1637,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
             setShowFolderPicker(false);
           }}
           onCancel={() => setShowFolderPicker(false)}
-          initialPath="Deals"
+          initialPath=""
         />
       )}
     </div>

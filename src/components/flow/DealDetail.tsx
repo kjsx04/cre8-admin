@@ -1148,7 +1148,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
         <FolderPickerModal
           onSelect={handleFolderSelected}
           onCancel={() => setShowFolderPicker(false)}
-          initialPath="Deals"
+          initialPath=""
         />
       )}
     </>
