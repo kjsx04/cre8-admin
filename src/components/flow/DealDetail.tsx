@@ -372,8 +372,6 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     await onUpdate(deal.id, { sharepoint_folder_url: finalUrl } as Partial<Deal>);
   }, [deal.id, onUpdate]);
 
-  // Alias for backward-compat (extraction file re-fetch uses this name)
-  const fetchFiles = fetchFolderContents;
 
   // ── Document update: handle extraction result from drop zone ──
   const handleUpdateExtracted = useCallback((extracted: ExtractedDealData) => {
@@ -497,7 +495,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     } finally {
       setApproving(false);
     }
-  }, [deal, onUpdate, updatePendingFile, fetchFiles]);
+  }, [deal, onUpdate, updatePendingFile, fetchFolderContents]);
 
   // Cancel the update review — reset state
   const handleCancelUpdate = useCallback(() => {

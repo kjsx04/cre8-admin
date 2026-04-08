@@ -92,11 +92,6 @@ export default function FolderPickerModal({ onSelect, onCancel, initialPath }: F
 
   // Select current folder
   const handleSelect = () => {
-    // Build a SharePoint-style URL from the selected folder
-    // The actual webUrl will be set by the parent after confirming
-    const selectedFolder = folders.length >= 0 ? currentPath : "";
-    // We need the webUrl — get it from the parent folder's context
-    // For now, pass the path — the parent will resolve it
     onSelect("", currentPath);
   };
 
