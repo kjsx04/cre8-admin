@@ -277,7 +277,8 @@ export default function PublishModal({
 
           if (img.blob) {
             updateStep(2, "active", `${urls.gallery.length + 1} / ${packageAssets.galleryImages.length}`);
-            const result = await uploadAsset(img.blob, img.name, folderId);
+            // Use slug-based filename — Webflow rejects names with spaces/special chars
+            const result = await uploadAsset(img.blob, `${slug}-${i + 1}.jpg`, folderId);
             urls.gallery.push(result.hostedUrl);
             if (i === packageAssets.marketingIdx) {
               urls.marketing = result.hostedUrl;
