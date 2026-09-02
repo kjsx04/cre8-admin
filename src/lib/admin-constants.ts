@@ -97,6 +97,18 @@ export const BROKER_CONTACTS: Record<
   },
 };
 
+// ---- Helper: find the broker ID for a signed-in user's email ----
+// Matches the MSAL account email against BROKER_CONTACTS (case-insensitive).
+// Returns null when the user isn't one of the 5 brokers (e.g. admin account).
+export function brokerIdForEmail(email?: string | null): string | null {
+  if (!email) return null;
+  const lower = email.trim().toLowerCase();
+  for (const [id, contact] of Object.entries(BROKER_CONTACTS)) {
+    if (contact.email.toLowerCase() === lower) return id;
+  }
+  return null;
+}
+
 // ---- TypeScript types for Webflow CMS listing items ----
 export interface ListingFieldData {
   name?: string;

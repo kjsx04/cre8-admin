@@ -4,12 +4,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import SparkMD5 from "spark-md5";
 import type { PackageAssets } from "@/components/PackageUploader";
-import {
-  LISTING_TYPES,
-  PROPERTY_TYPES,
-  BROKERS,
-  type ListingFieldData,
-} from "@/lib/admin-constants";
+import { type ListingFieldData } from "@/lib/admin-constants";
 import { graphScopes } from "@/lib/msal-config";
 import {
   getSiteId,
@@ -17,9 +12,8 @@ import {
   uploadToSharePoint,
   createListingFolders,
   moveListingFolder,
-  syncToExcel,
-  type ExcelListingData,
 } from "@/lib/graph";
+import { buildSpFolderName } from "@/lib/listing-utils";
 
 /* ============================================================
    TYPES
@@ -47,6 +41,9 @@ interface PublishModalProps {
     floorplan?: string;
     gallery?: string[];
   };
+  /** True when the listing is tagged New — auto-checks the checklist's
+      "Published to Website" item after a successful publish */
+  checklistIsNew?: boolean;
   /** Called when publish completes successfully */
   onComplete: (newItemId: string) => void;
   /** Called when modal is closed */
@@ -124,14 +121,6 @@ async function uploadAsset(
   return { id: meta.id, hostedUrl: meta.hostedUrl };
 }
 
-/** Strip HTML tags and truncate to maxLen characters */
-function stripHtml(html: string, maxLen = 500): string {
-  const div = document.createElement("div");
-  div.innerHTML = html;
-  const text = div.textContent || div.innerText || "";
-  return text.length > maxLen ? text.slice(0, maxLen) : text;
-}
-
 /** Convert a Blob to ArrayBuffer */
 function blobToArrayBuffer(blob: Blob): Promise<ArrayBuffer> {
   return blob.arrayBuffer();
@@ -149,6 +138,7 @@ export default function PublishModal({
   slug,
   listingName,
   existingUrls,
+  checklistIsNew,
   onComplete,
   onClose,
 }: PublishModalProps) {
@@ -165,7 +155,6 @@ export default function PublishModal({
     { label: "Save listing to CMS", status: "waiting" },
     { label: "Publish to live site", status: "waiting" },
     { label: "SharePoint sync", status: "waiting" },
-    { label: "Excel sync", status: "waiting" },
     { label: "Sold workflow", status: "waiting" },
   ];
 
@@ -399,7 +388,7 @@ export default function PublishModal({
       if (abortRef.current || !cmsItemId) {
         // Skip remaining steps so they don't stay "waiting"
         if (!cmsItemId) {
-          updateStep(10, "skipped", "No CMS ID");
+          updateStep(9, "skipped", "No CMS ID");
         }
         return;
       }
@@ -425,6 +414,28 @@ export default function PublishModal({
       }
       updateStep(7, "done");
 
+      /* ---- Auto-check "Published to Website" on the new-listing checklist
+              (non-blocking). POST upsert because this flow can create the
+              CMS item itself before a checklist row ever existed. ---- */
+      if (checklistIsNew) {
+        try {
+          await fetch("/api/listings/checklists", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
+            },
+            body: JSON.stringify({
+              listing_id: cmsItemId,
+              listing_name: listingName,
+              items: { published: true },
+            }),
+          });
+        } catch (clErr) {
+          console.warn("[PublishModal] Checklist update failed:", clErr);
+        }
+      }
+
       /* ---- STEP 8: SharePoint sync (non-blocking) ---- */
       let graphToken: string | null = null;
       let driveId = "";
@@ -442,19 +453,10 @@ export default function PublishModal({
           // Build SharePoint folder name matching existing convention:
           // Physical address → "{Address} — {City}" (e.g. "458 S Gilbert — Mesa")
           // Cross streets   → "{Streets} — {Direction}" (e.g. "Cornman & Curry — NEC")
-          const directionPrefixes = ["NEC", "NWC", "SEC", "SWC", "NE", "NW", "SE", "SW"];
-          const trimmedName = listingName.trim();
-          let spFolderName = trimmedName;
-          const matchedPrefix = directionPrefixes.find((p) => trimmedName.startsWith(p + " "));
-          if (matchedPrefix) {
-            // Cross-street listing — move direction to after em dash
-            const crossStreets = trimmedName.slice(matchedPrefix.length).trim();
-            spFolderName = `${crossStreets} — ${matchedPrefix}`;
-          } else {
-            // Physical address — append city
-            const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
-            if (cityShort) spFolderName = `${trimmedName} — ${cityShort}`;
-          }
+          const spFolderName = buildSpFolderName(
+            listingName,
+            String(fieldData["city-county"] || "")
+          );
 
           // Create folder structure
           updateStep(8, "active", "Creating folders");
@@ -515,79 +517,10 @@ export default function PublishModal({
         updateStep(8, "warn", "Failed — non-critical");
       }
 
-      /* ---- STEP 9: Excel sync (non-blocking) ---- */
-      try {
-        if (!graphToken || !driveId) {
-          updateStep(9, "warn", "No Graph token");
-        } else {
-          updateStep(9, "active");
-
-          // Map broker IDs to names
-          const brokerIds = (fieldData["listing-brokers"] || []) as string[];
-          const brokerNames = brokerIds.map((id) => BROKERS[id] || "").filter(Boolean);
-
-          // Map listing type ID to display name
-          const listingTypeId = (fieldData["listing-type-2"] || "") as string;
-          const listingTypeName = LISTING_TYPES[listingTypeId] || "";
-
-          // Map property type ID to display name
-          const propertyTypeId = (fieldData["property-type"] || "") as string;
-          const propertyTypeName = PROPERTY_TYPES[propertyTypeId] || "";
-
-          // Determine status
-          const status = fieldData.sold ? "Sold" : "Live";
-
-          // Strip HTML from property overview
-          const overview = stripHtml(String(fieldData["property-overview"] || ""));
-
-          // Strip HTML from spaces table
-          const spaces = stripHtml(String(fieldData["spaces-available"] || ""));
-
-          const excelData: ExcelListingData = {
-            name: String(fieldData.name || ""),
-            slug: String(fieldData.slug || ""),
-            address: String(fieldData["full-address"] || ""),
-            cityCounty: String(fieldData["city-county"] || ""),
-            acres: fieldData["square-feet"] != null ? Number(fieldData["square-feet"]) : null,
-            listPrice: String(fieldData["list-price"] || ""),
-            listingType: listingTypeName,
-            propertyType: propertyTypeName,
-            zoning: String(fieldData.zoning || ""),
-            zoningMunicipality: String(fieldData["zoning-municipality"] || ""),
-            propertyOverview: overview,
-            brokerNames,
-            latitude: fieldData.latitude ?? null,
-            longitude: fieldData.longitude ?? null,
-            googleMapsLink: String(fieldData["google-maps-link"] || ""),
-            available: fieldData.available !== false,
-            sold: fieldData.sold === true,
-            featured: fieldData.featured === true,
-            packageUrl: urls.packagePdf || "",
-            status,
-            webflowId: cmsItemId!,
-            buildingSqft: fieldData["building-sqft"] != null
-              ? Number(fieldData["building-sqft"])
-              : null,
-            spacesAvailable: spaces,
-            crossStreets: String(fieldData["cross-streets"] || ""),
-            trafficCount: String(fieldData["traffic-count"] || ""),
-          };
-
-          await syncToExcel(graphToken, driveId, excelData);
-          updateStep(9, "done");
-        }
-      } catch (xlErr) {
-        console.warn("[PublishModal] Excel sync failed:", xlErr);
-        const msg = xlErr instanceof Error && xlErr.message.includes("Lock")
-          ? "File locked — close Excel"
-          : "Failed — non-critical";
-        updateStep(9, "warn", msg);
-      }
-
-      /* ---- STEP 10: Sold workflow (non-blocking) ---- */
+      /* ---- STEP 9: Sold workflow (non-blocking) ---- */
       if (fieldData.sold) {
         try {
-          updateStep(10, "active", "Stopping campaigns");
+          updateStep(9, "active", "Stopping campaigns");
 
           // Stop active email campaigns for this listing
           const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
@@ -606,20 +539,13 @@ export default function PublishModal({
 
           // Move SharePoint folder from Active to Sold
           if (graphToken && driveId) {
-            updateStep(10, "active", "Moving folder");
+            updateStep(9, "active", "Moving folder");
 
-            // Build the same folder name used during SharePoint sync (step 8)
-            const directionPrefixes = ["NEC", "NWC", "SEC", "SWC", "NE", "NW", "SE", "SW"];
-            const trimmedName = listingName.trim();
-            let spFolderName = trimmedName;
-            const matchedPrefix = directionPrefixes.find((p) => trimmedName.startsWith(p + " "));
-            if (matchedPrefix) {
-              const crossStreets = trimmedName.slice(matchedPrefix.length).trim();
-              spFolderName = `${crossStreets} — ${matchedPrefix}`;
-            } else {
-              const cityShort = String(fieldData["city-county"] || "").split(",")[0].trim();
-              if (cityShort) spFolderName = `${trimmedName} — ${cityShort}`;
-            }
+            // Same folder name used during SharePoint sync (step 8)
+            const spFolderName = buildSpFolderName(
+              listingName,
+              String(fieldData["city-county"] || "")
+            );
 
             await moveListingFolder(
               graphToken,
@@ -630,13 +556,13 @@ export default function PublishModal({
             );
           }
 
-          updateStep(10, "done");
+          updateStep(9, "done");
         } catch (soldErr) {
           console.warn("[PublishModal] Sold workflow failed:", soldErr);
-          updateStep(10, "warn", "Failed — non-critical");
+          updateStep(9, "warn", "Failed — non-critical");
         }
       } else {
-        updateStep(10, "skipped", "Not sold");
+        updateStep(9, "skipped", "Not sold");
       }
 
       setFinished(true);
@@ -655,7 +581,8 @@ export default function PublishModal({
     }
   }, [
     fieldData, itemId, packageAssets, altaFile, sitePlanFile,
-    slug, listingName, existingUrls, updateStep, onComplete, getGraphToken,
+    slug, listingName, existingUrls, checklistIsNew, accounts,
+    updateStep, onComplete, getGraphToken,
   ]);
 
   // Auto-start on mount

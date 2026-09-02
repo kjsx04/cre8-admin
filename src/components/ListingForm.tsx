@@ -12,6 +12,7 @@ import {
   BROKERS,
   MAPBOX_TOKEN,
   slugify,
+  brokerIdForEmail,
 } from "@/lib/admin-constants";
 import RichTextEditor from "@/components/RichTextEditor";
 import SpacesTable from "@/components/SpacesTable";
@@ -19,7 +20,18 @@ import PackageUploader, { PackageAssets, GalleryImage } from "@/components/Packa
 import FileUploadZone from "@/components/FileUploadZone";
 import PhotoUploader from "@/components/PhotoUploader";
 import PublishModal from "@/components/PublishModal";
+import ChecklistCard from "@/components/checklist/ChecklistCard";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
+import { EMPTY_ITEMS } from "@/lib/checklist/constants";
+import type { ListingChecklist } from "@/lib/checklist/types";
+import { buildSpFolderName } from "@/lib/listing-utils";
+import { useGraphToken } from "@/lib/useGraphToken";
+import {
+  getSiteId,
+  getDriveId,
+  uploadToSharePoint,
+  createListingFolders,
+} from "@/lib/graph";
 
 // Dynamic imports — Mapbox uses window/document, can't render server-side
 const ListingMapPicker = dynamic(
@@ -271,7 +283,9 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         "drone-hero": fd["drone-hero"] || false,
       };
     }
-    // New listing defaults
+    // New listing defaults — the signed-in broker starts checked
+    // (they can uncheck themselves)
+    const myBrokerId = brokerIdForEmail(accounts[0]?.username);
     return {
       name: "",
       slug: "",
@@ -286,7 +300,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       "property-type": "",
       zoning: "",
       "zoning-municipality": "",
-      "listing-brokers": [],
+      "listing-brokers": myBrokerId ? [myBrokerId] : [],
       latitude: null,
       longitude: null,
       "google-maps-link": "",
@@ -370,6 +384,220 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   const [showParcelPicker, setShowParcelPicker] = useState(false);
   const [savedParcels, setSavedParcels] = useState<SelectedParcel[]>([]);
 
+  /* ============================================================
+     NEW LISTING CHECKLIST
+     Checklist state lives in Supabase (listing_checklists), keyed
+     by the Webflow item id. In new mode we hold a local stub
+     (id="") until the CMS item is created at first save.
+     ============================================================ */
+  const [checklist, setChecklist] = useState<ListingChecklist | null>(() => {
+    if (isEditMode) return null; // fetched on mount below
+    // New listing — local stub, persisted after first auto-save
+    return {
+      id: "",
+      listing_id: "",
+      listing_name: null,
+      is_new: true,
+      items: { ...EMPTY_ITEMS },
+      listing_agreement_url: null,
+      created_at: "",
+      updated_at: "",
+    };
+  });
+  const [laFile, setLaFile] = useState<File | null>(null);
+  const [laUploadState, setLaUploadState] = useState<"idle" | "uploading" | "error">("idle");
+  const getGraphToken = useGraphToken();
+
+  // Email header value for checklist API writes
+  const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
+
+  // Keep latest checklist in a ref so async callbacks don't go stale
+  const checklistRef = useRef(checklist);
+  useEffect(() => {
+    checklistRef.current = checklist;
+  }, [checklist]);
+
+  // ---- Fetch checklist row on mount (edit mode) ----
+  useEffect(() => {
+    if (!isEditMode || !item?.id) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/listings/checklists/${item.id}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.checklist) {
+          setChecklist(data.checklist);
+          // Backfill flyer auto-check: a package already exists in the CMS
+          // (uploaded before this feature or in another session)
+          if (
+            data.checklist.is_new &&
+            !data.checklist.items.flyer &&
+            item.fieldData?.["package-2"]
+          ) {
+            patchChecklistOnServer(item.id, { items: { flyer: true } });
+          }
+        }
+      } catch {
+        // Non-critical — checklist UI just won't show
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isEditMode, item?.id]);
+
+  // ---- Low-level server patch (returns updated row or null) ----
+  const patchChecklistOnServer = useCallback(
+    async (
+      listingId: string,
+      patch: {
+        items?: Record<string, boolean>;
+        is_new?: boolean;
+        listing_name?: string;
+        listing_agreement_url?: string;
+      }
+    ): Promise<ListingChecklist | null> => {
+      try {
+        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": userEmail,
+          },
+          body: JSON.stringify(patch),
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        if (data.checklist) setChecklist(data.checklist);
+        return data.checklist || null;
+      } catch {
+        return null;
+      }
+    },
+    [userEmail]
+  );
+
+  // ---- Optimistic patch used by the checklist card ----
+  const patchChecklist = useCallback(
+    (patch: {
+      items?: Record<string, boolean>;
+      listing_agreement_url?: string;
+    }) => {
+      const current = checklistRef.current;
+      if (!current) return;
+      const prev = current;
+
+      // Optimistic local merge
+      setChecklist({
+        ...current,
+        items: { ...current.items, ...(patch.items || {}) },
+        listing_agreement_url:
+          patch.listing_agreement_url ?? current.listing_agreement_url,
+      });
+
+      // Not persisted yet (new mode before first save) — local only;
+      // the accumulated items are sent when the row is created.
+      if (!current.listing_id) return;
+
+      // Persist — server response replaces local state (may flip is_new)
+      patchChecklistOnServer(current.listing_id, patch).then((updated) => {
+        if (!updated) setChecklist(prev); // revert on failure
+      });
+    },
+    [patchChecklistOnServer]
+  );
+
+  // ---- Create the checklist row (first save / toggle-on) ----
+  const createChecklistRow = useCallback(
+    async (listingId: string, isNewFlag: boolean) => {
+      const current = checklistRef.current;
+      try {
+        const res = await fetch("/api/listings/checklists", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": userEmail,
+          },
+          body: JSON.stringify({
+            listing_id: listingId,
+            listing_name: String(fields.name || "") || undefined,
+            is_new: isNewFlag,
+            // Carry over any items checked locally before the row existed
+            items: current?.items || undefined,
+          }),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.checklist) setChecklist(data.checklist);
+      } catch {
+        // Non-critical
+      }
+    },
+    [userEmail, fields.name]
+  );
+
+  // ---- "New Listing" toggle handler ----
+  const handleNewToggle = useCallback(() => {
+    const current = checklistRef.current;
+
+    if (current?.listing_id) {
+      // Row exists — flip is_new
+      const next = !current.is_new;
+      setChecklist({ ...current, is_new: next });
+      patchChecklistOnServer(current.listing_id, { is_new: next }).then(
+        (updated) => {
+          if (!updated) setChecklist(current); // revert
+        }
+      );
+      return;
+    }
+
+    // Edit mode, no row yet — toggling on creates one
+    if (draftId) {
+      createChecklistRow(draftId, true);
+    }
+  }, [draftId, patchChecklistOnServer, createChecklistRow]);
+
+  // ---- Executed listing agreement upload (immediate) ----
+  const handleLaFileSelect = useCallback(
+    async (file: File) => {
+      setLaFile(file);
+      setLaUploadState("uploading");
+      try {
+        const token = await getGraphToken();
+        if (!token) throw new Error("Could not get Microsoft access token");
+
+        const siteId = await getSiteId(token);
+        const driveId = await getDriveId(token, siteId);
+
+        // Same folder convention as the publish flow
+        const spFolderName = buildSpFolderName(
+          String(fields.name || ""),
+          String(fields["city-county"] || "")
+        );
+        await createListingFolders(token, driveId, spFolderName);
+
+        const webUrl = await uploadToSharePoint(
+          token,
+          siteId,
+          driveId,
+          `Listings/Active/${spFolderName}/Documents/`,
+          `${String(fields.slug || "listing")}-listing-agreement.pdf`,
+          await file.arrayBuffer(),
+          "application/pdf"
+        );
+
+        setLaUploadState("idle");
+        patchChecklist({
+          listing_agreement_url: webUrl,
+          items: { la_executed: true },
+        });
+      } catch (err) {
+        console.error("[ListingForm] LA upload failed:", err);
+        setLaUploadState("error");
+      }
+    },
+    [getGraphToken, fields, patchChecklist]
+  );
+
   // ---- Build CMS payload from form fields ----
   const buildPayload = useCallback((): ListingFieldData => {
     const fd: Record<string, unknown> = {};
@@ -440,6 +668,15 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     return REQUIRED_KEYS.every((key) => isFieldFilled(key));
   }, [isFieldFilled]);
 
+  // Saving a draft only needs a name (slug auto-generates from it).
+  // Full REQUIRED_KEYS validation applies to Publish only.
+  const canSave = useCallback((): boolean => {
+    return (
+      String(fields.name || "").trim().length > 0 &&
+      String(fields.slug || "").trim().length > 0
+    );
+  }, [fields.name, fields.slug]);
+
   // ---- Check for duplicates ----
   const checkDuplicates = useCallback(
     (name: string, slug: string) => {
@@ -502,7 +739,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   // ---- Auto-save logic ----
   const doAutoSave = useCallback(async () => {
     if (isSaving.current) return;
-    if (!allRequiredFilled()) return;
+    if (!canSave()) return;
     // Don't save if duplicates detected
     if (dupeNameWarn || dupeSlugWarn) return;
 
@@ -538,6 +775,9 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           setDraftId(newId);
           // Update URL to edit mode without full navigation
           window.history.replaceState(null, "", `/listings/${newId}/edit`);
+          // Create the checklist row — new listings are tagged New by default.
+          // Carries over any locally-checked items (e.g. flyer).
+          createChecklistRow(newId, checklistRef.current?.is_new ?? true);
         }
       } else {
         // Subsequent save — PATCH
@@ -547,6 +787,19 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           body: JSON.stringify({ fieldData: payload }),
         });
         if (!res.ok) throw new Error(`Update failed: ${res.status}`);
+
+        // Keep the denormalized checklist listing_name in sync on rename
+        const cl = checklistRef.current;
+        if (
+          cl?.listing_id &&
+          cl.is_new &&
+          payload.name &&
+          payload.name !== cl.listing_name
+        ) {
+          patchChecklistOnServer(cl.listing_id, {
+            listing_name: String(payload.name),
+          });
+        }
       }
 
       setSaveStatus("saved");
@@ -558,7 +811,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     } finally {
       isSaving.current = false;
     }
-  }, [allRequiredFilled, buildPayload, draftId, dupeNameWarn, dupeSlugWarn]);
+  }, [canSave, buildPayload, draftId, dupeNameWarn, dupeSlugWarn, createChecklistRow, patchChecklistOnServer]);
 
   // ---- Schedule auto-save on field change ----
   const scheduleAutoSave = useCallback(() => {
@@ -607,21 +860,24 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     checkDuplicates(String(fields.name), String(fields.slug));
   }, [fields.name, fields.slug, checkDuplicates]);
 
-  // ---- Manual "Save Draft" ----
+  // ---- Manual "Save Listing" ----
+  // Only a name is required to save — everything else can be filled in
+  // later. Full validation happens on Publish.
   const handleSaveDraft = useCallback(async () => {
     if (isSaving.current) return;
 
-    // Mark all required as touched so validation shows
-    setTouched(new Set(REQUIRED_KEYS));
-
-    if (!allRequiredFilled()) return;
+    if (!canSave()) {
+      // Show the error on the name field only
+      setTouched((prev) => new Set(prev).add("name"));
+      return;
+    }
     if (dupeNameWarn || dupeSlugWarn) return;
 
     // Cancel any pending auto-save
     if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
 
     await doAutoSave();
-  }, [allRequiredFilled, doAutoSave, dupeNameWarn, dupeSlugWarn]);
+  }, [canSave, doAutoSave, dupeNameWarn, dupeSlugWarn]);
 
   // ---- Delete listing ----
   const handleDelete = useCallback(async () => {
@@ -631,7 +887,6 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
 
     try {
       // Stop any active email campaigns for this listing
-      const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
       try {
         await fetch("/api/email/mark-sold", {
           method: "POST",
@@ -640,6 +895,16 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             "x-user-email": userEmail,
           },
           body: JSON.stringify({ listing_id: draftId }),
+        });
+      } catch {
+        // Non-critical — continue with delete
+      }
+
+      // Remove the checklist row (if any)
+      try {
+        await fetch(`/api/listings/checklists/${draftId}`, {
+          method: "DELETE",
+          headers: { "x-user-email": userEmail },
         });
       } catch {
         // Non-critical — continue with delete
@@ -661,7 +926,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       setIsDeleting(false);
       setDeleteError(err instanceof Error ? err.message : "Delete failed");
     }
-  }, [draftId, router, accounts]);
+  }, [draftId, router, userEmail]);
 
   // ---- Cleanup timer on unmount ----
   useEffect(() => {
@@ -814,14 +1079,14 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             </button>
           )}
 
-          {/* Save Draft button */}
+          {/* Save Listing button */}
           <button
             onClick={handleSaveDraft}
             disabled={isSaving.current}
             className="bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] font-semibold px-5 py-2 rounded-btn text-sm
                        hover:bg-[#E0E0E0] transition-colors disabled:opacity-50"
           >
-            Save Draft
+            Save Listing
           </button>
 
           {/* Publish button */}
@@ -839,7 +1104,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
                          ? "bg-[#E0E0E0] text-[#999] cursor-not-allowed"
                          : "bg-green text-black hover:bg-green/90"}`}
           >
-            Publish
+            Publish to Website
           </button>
         </div>
       </div>
@@ -865,6 +1130,22 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
             </button>
           )}
         </div>
+      )}
+
+      {/* ---- New Listing Checklist ---- */}
+      {checklist?.is_new && (
+        <ChecklistCard
+          items={checklist.items}
+          onToggleItem={(key, value) =>
+            patchChecklist({ items: { [key]: value } })
+          }
+          listingAgreementUrl={checklist.listing_agreement_url}
+          laFile={laFile}
+          onLaFileSelect={handleLaFileSelect}
+          laUploadState={laUploadState}
+          laDisabled={!draftId}
+          onComplete={handleNewToggle}
+        />
       )}
 
       {/* ---- Sections ---- */}
@@ -903,6 +1184,36 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           <div className="px-5 py-4">
             {/* Render fields — wrap halfs in a flex row */}
             {renderFields(section.fields)}
+
+            {/* "New Listing" toggle — Status section only.
+                NOT a Webflow field (checklist state lives in Supabase),
+                so it can't go through SECTIONS/buildPayload. */}
+            {section.title === "Status" && (
+              <div className="flex flex-wrap gap-8 py-1 mt-3 pt-4 border-t border-[#F0F0F0]">
+                <button
+                  type="button"
+                  onClick={handleNewToggle}
+                  disabled={!draftId}
+                  className="flex items-center gap-2.5 select-none disabled:opacity-50"
+                  title={
+                    !draftId
+                      ? "New listings are tagged automatically on first save"
+                      : undefined
+                  }
+                >
+                  <span
+                    className={`relative inline-block w-10 h-[22px] rounded-full transition-colors duration-200
+                      ${checklist?.is_new ? "bg-green" : "bg-[#DDD]"}`}
+                  >
+                    <span
+                      className={`absolute left-0 top-[2px] w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200
+                        ${checklist?.is_new ? "translate-x-[20px]" : "translate-x-[2px]"}`}
+                    />
+                  </span>
+                  <span className="text-sm text-[#333]">New Listing</span>
+                </button>
+              </div>
+            )}
 
             {/* Location map — merged into Property Info section */}
             {section.title === "Property Info" && (
@@ -994,6 +1305,14 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
               assets={packageAssets}
               onChange={(newAssets) => {
                 setPackageAssets(newAssets);
+                // Auto-check "Marketing flyer" on the new-listing checklist
+                if (
+                  newAssets.packageFile &&
+                  checklist?.is_new &&
+                  !checklist.items.flyer
+                ) {
+                  patchChecklist({ items: { flyer: true } });
+                }
                 scheduleAutoSave();
               }}
               existingPackageUrl={item?.fieldData?.["package-2"] || undefined}
@@ -1102,6 +1421,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           sitePlanFile={sitePlanFile}
           slug={String(fields.slug || "")}
           listingName={String(fields.name || "")}
+          checklistIsNew={checklist?.is_new ?? !isEditMode}
           existingUrls={{
             package: item?.fieldData?.["package-2"] || undefined,
             alta: item?.fieldData?.["alta-survey-2"] || undefined,

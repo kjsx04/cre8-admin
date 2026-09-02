@@ -2,7 +2,10 @@
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import { useMsal } from "@azure/msal-react";
 import AppShell from "@/components/AppShell";
+import NewListingsSection from "@/components/checklist/NewListingsSection";
+import type { ListingChecklist } from "@/lib/checklist/types";
 import {
   ListingItem,
   getListingStatus,
@@ -12,6 +15,7 @@ import {
   PROPERTY_TYPES_SHORT,
   PROPERTY_TYPES,
   BROKERS,
+  brokerIdForEmail,
 } from "@/lib/admin-constants";
 
 /* ============================================================
@@ -25,11 +29,15 @@ type StatusTab = (typeof STATUS_TABS)[number];
    ============================================================ */
 export default function DashboardPage() {
   const router = useRouter();
+  const { accounts } = useMsal();
 
   // Listings data
   const [items, setItems] = useState<ListingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // New-listing checklists (Supabase) — listings tagged New
+  const [checklists, setChecklists] = useState<ListingChecklist[]>([]);
 
   // Filters
   const [activeStatus, setActiveStatus] = useState<StatusTab>("All");
@@ -46,15 +54,24 @@ export default function DashboardPage() {
   // Table body ref for dynamic height sizing
   const tbodyRef = useRef<HTMLDivElement>(null);
 
-  // ---- Fetch listings on mount ----
+  // ---- Fetch listings + new-listing checklists on mount ----
   const fetchListings = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/listings");
-      if (!res.ok) throw new Error(`API ${res.status}`);
-      const data = await res.json();
+      const [listRes, clRes] = await Promise.all([
+        fetch("/api/listings"),
+        fetch("/api/listings/checklists?new=true"),
+      ]);
+      if (!listRes.ok) throw new Error(`API ${listRes.status}`);
+      const data = await listRes.json();
       setItems(data.items || []);
+
+      // Checklists are non-critical — dashboard still works without them
+      if (clRes.ok) {
+        const clData = await clRes.json();
+        setChecklists(clData.checklists || []);
+      }
     } catch (err) {
       setError(`Failed to load: ${(err as Error).message}`);
     } finally {
@@ -93,8 +110,98 @@ export default function DashboardPage() {
     return () => window.removeEventListener("resize", sizeTableBody);
   }, [sizeTableBody, items, loading]);
 
+  // ---- New-listing lookups ----
+  // Listings tagged New live in the pinned section, not the main table
+  const newIds = new Set(checklists.map((c) => c.listing_id));
+  const listingsById = new Map(items.map((i) => [i.id, i] as const));
+  const tableItems = items.filter((i) => !newIds.has(i.id));
+
+  // New Listing cards are broker-scoped: only shown when the signed-in
+  // user is checked as a broker on the listing. Non-broker accounts
+  // (e.g. admin) and listings with no brokers assigned show for everyone
+  // so nothing goes invisible.
+  const myBrokerId = brokerIdForEmail(accounts[0]?.username);
+  const myChecklists = checklists.filter((c) => {
+    if (!myBrokerId) return true;
+    const listing = listingsById.get(c.listing_id);
+    const brokerIds = listing?.fieldData?.["listing-brokers"] || [];
+    if (brokerIds.length === 0) return true;
+    return brokerIds.includes(myBrokerId);
+  });
+
+  // ---- Toggle a manual checklist item (optimistic) ----
+  const handleChecklistToggle = useCallback(
+    async (listingId: string, key: string, value: boolean) => {
+      const prev = checklists;
+
+      // Optimistic local update
+      setChecklists((cur) =>
+        cur.map((c) =>
+          c.listing_id === listingId
+            ? { ...c, items: { ...c.items, [key]: value } }
+            : c
+        )
+      );
+
+      try {
+        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
+          },
+          body: JSON.stringify({ items: { [key]: value } }),
+        });
+        if (!res.ok) throw new Error(`PATCH ${res.status}`);
+        const data = await res.json();
+
+        // Server flips is_new=false when all 8 are checked — the card
+        // disappears and the listing returns to the main table
+        if (data.checklist && !data.checklist.is_new) {
+          setChecklists((cur) =>
+            cur.filter((c) => c.listing_id !== listingId)
+          );
+        } else if (data.checklist) {
+          setChecklists((cur) =>
+            cur.map((c) => (c.listing_id === listingId ? data.checklist : c))
+          );
+        }
+      } catch (err) {
+        console.error("[Dashboard] Checklist toggle failed:", err);
+        setChecklists(prev); // revert
+      }
+    },
+    [checklists, accounts]
+  );
+
+  // ---- Manually complete: move a listing out of New (optimistic) ----
+  const handleCompleteListing = useCallback(
+    async (listingId: string) => {
+      const prev = checklists;
+
+      // Optimistic — card disappears, listing reappears in the main table
+      setChecklists((cur) => cur.filter((c) => c.listing_id !== listingId));
+
+      try {
+        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
+          },
+          body: JSON.stringify({ is_new: false }),
+        });
+        if (!res.ok) throw new Error(`PATCH ${res.status}`);
+      } catch (err) {
+        console.error("[Dashboard] Complete listing failed:", err);
+        setChecklists(prev); // revert
+      }
+    },
+    [checklists, accounts]
+  );
+
   // ---- Filter + sort items ----
-  const filteredItems = items
+  const filteredItems = tableItems
     .filter((item) => {
       const fd = item.fieldData || {};
       const status = getListingStatus(item);
@@ -180,6 +287,16 @@ export default function DashboardPage() {
       <div className="px-6 py-4">
         {/* ---- Page heading ---- */}
         <h1 className="text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
+
+        {/* ---- New Listings (pinned, with checklists — broker-scoped) ---- */}
+        {!loading && myChecklists.length > 0 && (
+          <NewListingsSection
+            checklists={myChecklists}
+            listingsById={listingsById}
+            onToggleItem={handleChecklistToggle}
+            onComplete={handleCompleteListing}
+          />
+        )}
 
         {/* ---- Toolbar: tabs + filters + search ---- */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
@@ -322,9 +439,9 @@ export default function DashboardPage() {
 
           {/* Listing count */}
           <span className="text-sm text-[#777] whitespace-nowrap">
-            {filteredItems.length === items.length
-              ? `All ${items.length}`
-              : `${filteredItems.length} of ${items.length}`}
+            {filteredItems.length === tableItems.length
+              ? `All ${tableItems.length}`
+              : `${filteredItems.length} of ${tableItems.length}`}
           </span>
 
           {/* Search — pushed right */}
