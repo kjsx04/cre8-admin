@@ -93,7 +93,13 @@ export async function POST(request: NextRequest) {
           },
         ],
       });
-    } else if (ext === "docx" || ext === "doc") {
+    } else if (ext === "doc") {
+      // Legacy binary .doc — mammoth can't parse it; fail with a clear message
+      return NextResponse.json(
+        { error: "Legacy .doc files aren't supported — save the file as .docx or PDF and try again." },
+        { status: 400 }
+      );
+    } else if (ext === "docx") {
       // DOCX: extract text with mammoth, then send text to Claude
       const buffer = Buffer.from(data, "base64");
       const mammoth = await import("mammoth");
@@ -143,6 +149,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(extracted);
   } catch (err) {
     console.error("[extract] Extraction failed:", err);
-    return NextResponse.json({ error: "AI extraction failed" }, { status: 500 });
+    // Surface the real cause instead of a generic message so failures are debuggable
+    let message = "AI extraction failed";
+    if (err instanceof Anthropic.APIError) {
+      // Anthropic API rejected the request (bad PDF, too many pages, rate limit, etc.)
+      message = `AI extraction failed: ${err.message}`;
+    } else if (err instanceof SyntaxError) {
+      // Claude's response wasn't valid JSON
+      message = "AI extraction failed: couldn't parse the AI response — try dropping the file again.";
+    } else if (err instanceof Error && err.message) {
+      message = `AI extraction failed: ${err.message}`;
+    }
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

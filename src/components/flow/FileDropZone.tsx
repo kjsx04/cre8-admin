@@ -64,8 +64,17 @@ export default function FileDropZone({ onExtracted, onFileReady, compact }: File
         });
 
         if (!res.ok) {
-          const err = await res.json();
-          throw new Error(err.error || "Extraction failed");
+          // Error body may not be JSON (e.g. a 413 from the hosting platform's body-size limit)
+          let message = `Extraction failed (HTTP ${res.status})`;
+          try {
+            const err = await res.json();
+            message = err.error || message;
+          } catch {
+            if (res.status === 413) {
+              message = "File too large to upload — try a smaller PDF.";
+            }
+          }
+          throw new Error(message);
         }
 
         const extracted: ExtractedDealData = await res.json();
