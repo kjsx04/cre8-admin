@@ -4,8 +4,7 @@
 -- provider_send_id : Resend broadcast id for the PENDING send (null once sent/cancelled)
 -- last_sent_at     : when the most recent send actually went out (recurring cadence anchor)
 --
--- The old sendgrid_single_send_id column is kept until the new code is deployed,
--- then can be dropped with the statement at the bottom.
+-- The old sendgrid_single_send_id column was dropped once the new code deployed.
 
 alter table public.email_campaigns
   add column if not exists provider_send_id text,
@@ -26,5 +25,5 @@ create index if not exists email_campaigns_recurring_due_idx
   on public.email_campaigns (next_send_date)
   where status = 'active' and campaign_type = 'recurring';
 
--- AFTER the Resend code is live on Vercel, run this to remove the old column:
--- alter table public.email_campaigns drop column if exists sendgrid_single_send_id;
+-- Ran after the Resend code went live on Vercel (2026-09-03):
+alter table public.email_campaigns drop column if exists sendgrid_single_send_id;
