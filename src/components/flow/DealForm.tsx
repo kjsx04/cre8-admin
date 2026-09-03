@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Deal, DealFormData, DealType, DealDate, CRE8Listing, ExtractedDealData, AdditionalSplit, BrokerDefaults, Broker } from "@/lib/flow/types";
+import { Deal, DealFormData, DealType, DealDate, CRE8Listing, ExtractedDealData, AdditionalSplit, BrokerDefaults, Broker, LeaseStage } from "@/lib/flow/types";
 import {
   formatCurrency,
   addDays,
   toInputDate,
   daysBetween,
+  LEASE_KANBAN_COLUMNS,
 } from "@/lib/flow/utils";
 import FileDropZone from "./FileDropZone";
 import dynamic from "next/dynamic";
@@ -57,6 +58,8 @@ interface FormPayment {
   payment_date: string;           // YYYY-MM-DD
   offset_days: string;            // string for input — e.g. "60"
   offset_from: string;            // "close_date" or "previous"
+  received: boolean;              // carried through on edit so saving doesn't reset paid payments
+  received_date: string | null;
 }
 
 interface DealFormProps {
@@ -72,6 +75,7 @@ interface DealFormProps {
   // Kanban drop highlight — amber ring on fields that need attention after a drag-drop
   initialHighlightFields?: string[];
   contextBanner?: string;     // amber banner message below the form title
+  defaultDealType?: DealType; // pre-select deal type for new deals (e.g. "lease" from the Lease tab)
 }
 
 // Empty form defaults
@@ -91,6 +95,7 @@ const emptyForm: DealFormData = {
   escrow_company: "",
   additional_splits: [],
   broker_members: [],
+  lease_stage: "negotiating_loi",
 };
 
 // Generate a short random ID for local form state
@@ -235,7 +240,7 @@ function ListingSearch({
 
 // ── Main DealForm component ──
 
-export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, brokerDefaults, userEmail, brokerId, allBrokers, initialHighlightFields, contextBanner }: DealFormProps) {
+export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, brokerDefaults, userEmail, brokerId, allBrokers, initialHighlightFields, contextBanner, defaultDealType }: DealFormProps) {
   const [form, setForm] = useState<DealFormData>(emptyForm);
   const isEditing = !!deal;
 
@@ -306,6 +311,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           broker_id: m.broker_id,
           split_percent: m.split_percent,
         })),
+        lease_stage: deal.lease_stage || "negotiating_loi",
       });
       setAdditionalSplits(deal.additional_splits || []);
 
@@ -350,28 +356,43 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
             .map((lp) => ({
               tempId: lp.id,
               percent: String(lp.percent),
-              mode: lp.offset_days ? "relative" : "absolute",
+              mode: (lp.payment_date ? "absolute" : "relative") as "absolute" | "relative",
               payment_date: lp.payment_date || "",
-              offset_days: lp.offset_days ? String(lp.offset_days) : "",
+              offset_days: lp.offset_days !== null ? String(lp.offset_days) : "",
               offset_from: lp.offset_from || "close_date",
+              received: lp.received || false,
+              received_date: lp.received_date || null,
             }))
         );
       } else if (deal.deal_type === "lease") {
         // Lease deal with no payments — default 50/50
         setLeasePayments([
-          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date" },
-          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous" },
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date", received: false, received_date: null },
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous", received: false, received_date: null },
         ]);
       }
-    } else if (brokerDefaults) {
-      // New deal — pre-fill from broker defaults
+    } else {
+      // New deal — pre-fill from broker defaults + the tab's deal type
       setForm((prev) => ({
         ...prev,
-        commission_rate: String(brokerDefaults.commission_rate * 100),
-        broker_split: String(brokerDefaults.broker_split * 100),
-        additional_splits: brokerDefaults.additional_splits || [],
+        ...(brokerDefaults
+          ? {
+              commission_rate: String(brokerDefaults.commission_rate * 100),
+              broker_split: String(brokerDefaults.broker_split * 100),
+              additional_splits: brokerDefaults.additional_splits || [],
+            }
+          : {}),
+        ...(defaultDealType ? { deal_type: defaultDealType } : {}),
       }));
-      setAdditionalSplits(brokerDefaults.additional_splits || []);
+      if (brokerDefaults) setAdditionalSplits(brokerDefaults.additional_splits || []);
+
+      // New lease deal (from the Lease tab) — start with the default 50/50 payment schedule
+      if (defaultDealType === "lease") {
+        setLeasePayments([
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date", received: false, received_date: null },
+          { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous", received: false, received_date: null },
+        ]);
+      }
 
       // Auto-add the current broker as the first member
       if (brokerId) {
@@ -379,7 +400,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
         setBrokerMembers([{ broker_id: brokerId, broker_name: me?.name || "You", split_percent: null }]);
       }
     }
-  }, [deal, brokerDefaults, brokerId, allBrokers]);
+  }, [deal, brokerDefaults, brokerId, allBrokers, defaultDealType]);
 
   // Fetch CRE8 listings for the dropdown
   useEffect(() => {
@@ -770,15 +791,17 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
       }));
 
     // Convert lease payments to API shape (only for lease deals)
-    // First payment is always offset from close_date, regardless of what the form says
+    // First payment is always offset from close_date, regardless of what the form says.
+    // received/received_date carry through from the existing rows so editing a deal
+    // never resets payments that were already marked paid.
     const apiLeasePayments = form.deal_type === "lease" ? leasePayments.map((lp, i) => ({
       sort_order: i,
       percent: parseFloat(lp.percent) || 0,
       payment_date: lp.mode === "absolute" ? lp.payment_date || null : null,
       offset_days: lp.mode === "relative" ? parseInt(lp.offset_days) || 0 : null,
       offset_from: lp.mode === "relative" ? (i === 0 ? "close_date" : lp.offset_from) : null,
-      received: false,
-      received_date: null,
+      received: lp.received,
+      received_date: lp.received_date,
     })) : [];
 
     // Attach lease_payments to formData so it flows through to the API
@@ -944,8 +967,8 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                 // Auto-populate/clear lease payment schedule on type switch
                 if (newType === "lease" && leasePayments.length === 0) {
                   setLeasePayments([
-                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date" },
-                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous" },
+                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "0", offset_from: "close_date", received: false, received_date: null },
+                    { tempId: tempId(), percent: "50", mode: "relative", payment_date: "", offset_days: "60", offset_from: "previous", received: false, received_date: null },
                   ]);
                 } else if (newType === "sale") {
                   setLeasePayments([]);
@@ -1245,7 +1268,9 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
 
         {/* ── Lease Payment Schedule — only for lease deals ── */}
         {form.deal_type === "lease" && (
-          <div className="border-t border-border-light pt-4 mb-6">
+          <div className={`border-t border-border-light pt-4 mb-6 rounded-btn transition-all duration-300 ${
+            amberFields.has("lease_payments_section") ? "ring-1 ring-amber-300/50 bg-amber-50/50 p-4 -mx-2" : ""
+          }`}>
             <h3 className="font-dm font-semibold text-sm text-charcoal mb-1">Payment Schedule</h3>
             <p className="text-xs text-muted-gray mb-3">
               Split commission into scheduled payments. Percentages must total 100%.
@@ -1381,11 +1406,32 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                 payment_date: "",
                 offset_days: "",
                 offset_from: leasePayments.length === 0 ? "close_date" : "previous",
+                received: false,
+                received_date: null,
               }])}
               className="text-xs text-green hover:text-green/80 transition-colors font-medium mt-2"
             >
               + Add Payment
             </button>
+          </div>
+        )}
+
+        {/* ── Lease Stage — only for lease deals ── */}
+        {form.deal_type === "lease" && (
+          <div className="border-t border-border-light pt-4 mb-6">
+            <label className={labelCls}>Lease Stage</label>
+            <select
+              value={form.lease_stage}
+              onChange={(e) => update("lease_stage", e.target.value as LeaseStage)}
+              className={inputCls("lease_stage")}
+            >
+              {LEASE_KANBAN_COLUMNS.map((col) => (
+                <option key={col.key} value={col.key}>{col.label}</option>
+              ))}
+            </select>
+            <p className="text-xs text-muted-gray mt-1">
+              Where this deal sits on the Lease board — you can also drag it between columns
+            </p>
           </div>
         )}
 

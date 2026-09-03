@@ -1,4 +1,4 @@
-import { Deal, CriticalDate, AdditionalSplit, DealMember, DealStatus, DealDate, DealDiffItem, StageSuggestion, ExtractedDealData } from "./types";
+import { Deal, CriticalDate, AdditionalSplit, DealMember, DealStatus, DealDate, DealDiffItem, StageSuggestion, ExtractedDealData, LeaseStage } from "./types";
 
 // ── Date helpers ──
 
@@ -108,6 +108,54 @@ export function getMemberSplit(members: DealMember[] | undefined, brokerId: stri
   return member.split_percent;
 }
 
+// ── Lease payment labels + due dates ──
+
+/**
+ * Human label for a lease payment by position.
+ * Two-payment schedules read as halves ("1st Half", "2nd Half") since that's
+ * the standard GL commission structure; other counts fall back to "Payment N".
+ */
+export function leasePaymentLabel(index: number, totalPayments: number): string {
+  if (totalPayments === 2) return index === 0 ? "1st Half" : "2nd Half";
+  const ordinals = ["1st", "2nd", "3rd", "4th", "5th", "6th"];
+  return `${ordinals[index] || `${index + 1}th`} Payment`;
+}
+
+/**
+ * Build critical-date entries for a lease deal's unreceived commission payments.
+ * Payment due dates use a 30-day reminder window (yellow at ≤30 days instead of ≤14)
+ * and go red when overdue — an unreceived payment past its due date needs chasing.
+ * Received payments are skipped (nothing left to remind about).
+ */
+export function getLeasePaymentDates(deal: Deal): CriticalDate[] {
+  if (deal.deal_type !== "lease" || !deal.lease_payments || deal.lease_payments.length === 0) return [];
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const sorted = [...deal.lease_payments].sort((a, b) => a.sort_order - b.sort_order);
+  const dates: CriticalDate[] = [];
+
+  sorted.forEach((lp, i) => {
+    if (lp.received || !lp.payment_date) return;   // received or no resolved date yet — nothing to track
+    const date = new Date(lp.payment_date + "T00:00:00");
+    const daysAway = daysBetween(today, date);
+    const isPast = daysAway < 0;
+    // Payment urgency: overdue = red (money is owed), ≤3 days = red, ≤30 days = yellow (the 30-day reminder), else green
+    let urgency: "green" | "yellow" | "red" | "gray" = "green";
+    if (isPast || daysAway <= 3) urgency = "red";
+    else if (daysAway <= 30) urgency = "yellow";
+    dates.push({
+      label: `${leasePaymentLabel(i, sorted.length)} Commission Due`,
+      date,
+      isPast,
+      daysAway,
+      urgency,
+    });
+  });
+
+  return dates;
+}
+
 // ── Critical dates from dynamic deal_dates ──
 
 /**
@@ -168,6 +216,9 @@ export function getCriticalDates(deal: Deal): CriticalDate[] {
     }
   }
 
+  // Lease deals: unreceived commission payment due dates (30-day reminder window, red when overdue)
+  dates.push(...getLeasePaymentDates(deal));
+
   return dates;
 }
 
@@ -213,6 +264,40 @@ export function getKanbanColumn(deal: Deal): KanbanColumn {
   return "pre_escrow";
 }
 
+// ── Lease board helpers ──
+
+/** Ordered lease stages — also the column order on the Lease board */
+export const LEASE_STAGES: LeaseStage[] = ["negotiating_loi", "signed_loi", "draft_lease", "signed_lease", "invoiced"];
+
+/** Display labels for lease stages */
+export const LEASE_STAGE_LABELS: Record<LeaseStage, string> = {
+  negotiating_loi: "Negotiating LOI",
+  signed_loi: "Signed LOI",
+  draft_lease: "Draft Lease",
+  signed_lease: "Signed Lease",
+  invoiced: "Invoiced",
+};
+
+/** Column display config for the Lease board */
+export const LEASE_KANBAN_COLUMNS: { key: LeaseStage; label: string; description: string }[] = [
+  { key: "negotiating_loi", label: "Negotiating LOI", description: "LOI out, terms in play" },
+  { key: "signed_loi", label: "Signed LOI", description: "LOI executed by both sides" },
+  { key: "draft_lease", label: "Draft Lease", description: "Lease being drafted / redlined" },
+  { key: "signed_lease", label: "Signed Lease", description: "Lease fully executed" },
+  { key: "invoiced", label: "Invoiced", description: "Commission invoice sent" },
+];
+
+/** Map a lease deal to its board column (defaults to the first stage) */
+export function getLeaseStage(deal: Deal): LeaseStage {
+  return LEASE_STAGES.includes(deal.lease_stage) ? deal.lease_stage : "negotiating_loi";
+}
+
+/** True once the lease is signed — payment tracking (due dates, W9) becomes relevant */
+export function isLeasePaymentPhase(deal: Deal): boolean {
+  const stage = getLeaseStage(deal);
+  return stage === "signed_lease" || stage === "invoiced";
+}
+
 /** Check if a deal_date label is an extension (case-insensitive) */
 export function isExtensionDate(label: string): boolean {
   return label.toLowerCase().includes("extension");
@@ -231,6 +316,9 @@ export type AdvancementResult =
  *   (extension dates trigger a prompt instead of silent advance)
  */
 export function checkStatusAdvancement(deal: Deal): AdvancementResult {
+  // Lease deals move through lease_stage on the Lease board, not the sale statuses — never auto-advance them
+  if (deal.deal_type === "lease") return null;
+
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
@@ -445,6 +533,9 @@ export function buildDealDiff(deal: Deal, extracted: ExtractedDealData): DealDif
  * Returns null if no stage change is suggested.
  */
 export function suggestStageMove(deal: Deal, extracted: ExtractedDealData): StageSuggestion | null {
+  // Lease deals move through lease_stage on the Lease board — sale status suggestions don't apply
+  if (deal.deal_type === "lease") return null;
+
   // Active → Escrow: PSA with effective date
   if (deal.status === "active") {
     if (extracted.document_type === "psa" && extracted.effective_date) {

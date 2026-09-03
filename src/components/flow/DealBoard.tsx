@@ -2,37 +2,43 @@
 
 import { useState, useRef } from "react";
 import { Deal } from "@/lib/flow/types";
-import { KanbanColumn, KANBAN_COLUMNS, getKanbanColumn, getNextCriticalDate } from "@/lib/flow/utils";
+import { getNextCriticalDate } from "@/lib/flow/utils";
 import DealCard from "./DealCard";
 
-interface DealBoardProps {
-  deals: Deal[];                          // all active deals (active + due_diligence + closing)
-  brokerId: string;
-  onCardClick: (deal: Deal) => void;      // open DealDetail slide-over
-  onDrop: (deal: Deal, targetColumn: KanbanColumn) => void;  // handle drag-drop between columns
+// Generic column config — works for both the Sale board (3 columns) and the Lease board (5 columns)
+export interface BoardColumn<K extends string> {
+  key: K;
+  label: string;
+  description: string;
 }
 
-export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: DealBoardProps) {
+interface DealBoardProps<K extends string> {
+  deals: Deal[];                          // deals to show on this board
+  brokerId: string;
+  columns: BoardColumn<K>[];              // column definitions (order = display order)
+  getColumn: (deal: Deal) => K;           // maps a deal to its column key
+  onCardClick: (deal: Deal) => void;      // open DealDetail slide-over
+  onDrop: (deal: Deal, targetColumn: K) => void;  // handle drag-drop between columns
+}
+
+export default function DealBoard<K extends string>({ deals, brokerId, columns, getColumn, onCardClick, onDrop }: DealBoardProps<K>) {
   // Track which column is being dragged over (for drop zone styling)
-  const [dragOverColumn, setDragOverColumn] = useState<KanbanColumn | null>(null);
+  const [dragOverColumn, setDragOverColumn] = useState<K | null>(null);
   // Track the deal being dragged
   const dragDealRef = useRef<Deal | null>(null);
 
   // Group deals into columns
-  const columns: Record<KanbanColumn, Deal[]> = {
-    pre_escrow: [],
-    due_diligence: [],
-    closing: [],
-  };
+  const grouped: Record<string, Deal[]> = {};
+  for (const col of columns) grouped[col.key] = [];
 
   for (const deal of deals) {
-    const col = getKanbanColumn(deal);
-    columns[col].push(deal);
+    const col = getColumn(deal);
+    (grouped[col] || (grouped[col] = [])).push(deal);
   }
 
   // Sort each column by nearest critical date (most urgent first)
-  for (const col of Object.keys(columns) as KanbanColumn[]) {
-    columns[col].sort((a, b) => {
+  for (const key of Object.keys(grouped)) {
+    grouped[key].sort((a, b) => {
       const nextA = getNextCriticalDate(a);
       const nextB = getNextCriticalDate(b);
       if (!nextA && !nextB) return 0;
@@ -60,13 +66,13 @@ export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: Deal
     setDragOverColumn(null);
   };
 
-  const handleDragOver = (e: React.DragEvent, column: KanbanColumn) => {
+  const handleDragOver = (e: React.DragEvent, column: K) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverColumn(column);
   };
 
-  const handleDragLeave = (e: React.DragEvent, column: KanbanColumn) => {
+  const handleDragLeave = (e: React.DragEvent, column: K) => {
     // Only clear if actually leaving the column (not entering a child element)
     const relatedTarget = e.relatedTarget as HTMLElement | null;
     if (relatedTarget && e.currentTarget.contains(relatedTarget)) return;
@@ -75,7 +81,7 @@ export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: Deal
     }
   };
 
-  const handleDrop = (e: React.DragEvent, targetColumn: KanbanColumn) => {
+  const handleDrop = (e: React.DragEvent, targetColumn: K) => {
     e.preventDefault();
     setDragOverColumn(null);
 
@@ -83,17 +89,22 @@ export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: Deal
     if (!deal) return;
 
     // Same-column drop = no-op
-    const sourceColumn = getKanbanColumn(deal);
+    const sourceColumn = getColumn(deal);
     if (sourceColumn === targetColumn) return;
 
     onDrop(deal, targetColumn);
   };
 
+  // Grid sizing: 3 columns for the Sale board, 5 for the Lease board
+  const gridCls = columns.length === 5
+    ? "grid grid-cols-5 gap-3 min-w-[1080px]"
+    : "grid grid-cols-3 gap-4 min-w-[720px]";
+
   return (
-    <div className="grid grid-cols-3 gap-4 min-w-[720px]">
-      {KANBAN_COLUMNS.map((col) => {
+    <div className={gridCls}>
+      {columns.map((col) => {
         const isOver = dragOverColumn === col.key;
-        const colDeals = columns[col.key];
+        const colDeals = grouped[col.key] || [];
 
         return (
           <div
@@ -115,15 +126,10 @@ export default function DealBoard({ deals, brokerId, onCardClick, onDrop }: Deal
                   {colDeals.length}
                 </span>
               </div>
-              <p className="text-xs text-muted-gray mt-0.5">{col.description}</p>
             </div>
 
-            {/* Deal cards stacked vertically */}
-            {colDeals.length === 0 ? (
-              <div className="text-center py-8">
-                <p className="text-xs text-muted-gray">No deals in this stage</p>
-              </div>
-            ) : (
+            {/* Deal cards stacked vertically — empty columns stay blank (still valid drop targets) */}
+            {colDeals.length > 0 && (
               <div className="space-y-3">
                 {colDeals.map((deal) => (
                   <DealCard

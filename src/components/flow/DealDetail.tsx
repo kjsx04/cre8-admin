@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useMsal } from "@azure/msal-react";
-import { Deal, DealFormData, DealDate, Broker, DealDiffItem, StageSuggestion, ExtractedDealData, DealStatus } from "@/lib/flow/types";
-import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS, buildDealDiff, suggestStageMove } from "@/lib/flow/utils";
+import { Deal, DealFormData, DealDate, Broker, DealDiffItem, StageSuggestion, ExtractedDealData, DealStatus, W9Status } from "@/lib/flow/types";
+import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS, buildDealDiff, suggestStageMove, LEASE_STAGE_LABELS, getLeaseStage, isLeasePaymentPhase, leasePaymentLabel } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
 import { getSiteId, getDriveId, listFolderContents, uploadToFolder, SharePointItem } from "@/lib/graph";
 import TimelineBar from "./TimelineBar";
@@ -60,23 +60,25 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-// ── Lease Payment Schedule (received toggles for closed deals, read-only for active) ──
+// ── Lease Payment Schedule (received toggles once the lease is signed, read-only before) ──
 function LeasePaymentSchedule({
   deal,
   onToggleReceived,
+  onSetW9Status,
 }: {
   deal: Deal;
   onToggleReceived?: (paymentId: string, received: boolean) => void;
+  onSetW9Status?: (status: W9Status) => void;
 }) {
   // Calculate member's take-home for display
   const totalCommission = (deal.price || 0) * (deal.commission_rate || 0);
+  const sortedPayments = [...(deal.lease_payments || [])].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <div className="bg-white border border-border-light rounded-card p-4">
       <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Payment Schedule</h3>
       <div className="space-y-2">
-        {(deal.lease_payments || [])
-          .sort((a, b) => a.sort_order - b.sort_order)
+        {sortedPayments
           .map((lp, i) => {
             const amount = totalCommission * (lp.percent / 100);
             return (
@@ -89,7 +91,7 @@ function LeasePaymentSchedule({
                 }`}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-medium text-medium-gray">#{i + 1}</span>
+                  <span className="text-xs font-medium text-medium-gray whitespace-nowrap">{leasePaymentLabel(i, sortedPayments.length)}</span>
                   <div className="min-w-0">
                     <p className="text-sm text-charcoal font-medium">
                       {lp.percent}% — {formatCurrency(amount)}
@@ -147,6 +149,58 @@ function LeasePaymentSchedule({
             );
           })}
       </div>
+
+      {/* W9 / Invoice from outside broker — always shown, N/A when there's no outside broker */}
+      {onSetW9Status && (
+        <div className={`mt-2 flex items-center justify-between py-2 px-3 rounded-btn border transition-colors ${
+          deal.w9_status === "received" ? "border-green/30 bg-green/5" : "border-border-light"
+        }`}>
+          <div className="min-w-0">
+            <p className="text-sm text-charcoal font-medium">W9 &amp; Invoice — Outside Broker</p>
+            <p className="text-xs text-muted-gray">
+              {deal.w9_status === "received" ? "Received" : deal.w9_status === "na" ? "Not applicable" : "Needed before paying an outside broker"}
+            </p>
+          </div>
+          {/* Three-state control: Pending → Received, or mark N/A when no outside broker is involved */}
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <button
+              onClick={() => onSetW9Status(deal.w9_status === "received" ? "pending" : "received")}
+              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
+                deal.w9_status === "received"
+                  ? "bg-green/10 border-green text-green"
+                  : "border-border-light text-medium-gray hover:border-green hover:text-green"
+              }`}
+            >
+              {deal.w9_status === "received" ? (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                  Received
+                </>
+              ) : (
+                <>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <circle cx="12" cy="12" r="10" />
+                  </svg>
+                  Pending
+                </>
+              )}
+            </button>
+            <button
+              onClick={() => onSetW9Status(deal.w9_status === "na" ? "pending" : "na")}
+              className={`px-2.5 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
+                deal.w9_status === "na"
+                  ? "bg-charcoal/5 border-charcoal/30 text-charcoal"
+                  : "border-border-light text-muted-gray hover:border-charcoal/30 hover:text-charcoal"
+              }`}
+              title="No outside broker on this deal"
+            >
+              N/A
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -278,6 +332,11 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     await onUpdate(deal.id, {
       received_payments: [{ id: paymentId, received }],
     } as unknown as Partial<Deal>);
+  };
+
+  // ── Set the W9/invoice status (pending / received / na) ──
+  const handleSetW9Status = async (status: W9Status) => {
+    await onUpdate(deal.id, { w9_status: status } as Partial<Deal>);
   };
 
   // ── Extract the base folder path from a SharePoint URL ──
@@ -530,8 +589,11 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
                 )}
               </div>
               <div className="flex items-center gap-2 flex-shrink-0">
+                {/* Active lease deals show their board stage; everything else shows status */}
                 <span className={`text-xs font-medium px-2 py-0.5 rounded border ${STATUS_COLORS[deal.status]}`}>
-                  {STATUS_LABELS[deal.status]}
+                  {deal.deal_type === "lease" && isActive
+                    ? LEASE_STAGE_LABELS[getLeaseStage(deal)]
+                    : STATUS_LABELS[deal.status]}
                 </span>
                 <button
                   onClick={onClose}
@@ -630,11 +692,15 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
             {/* Commission breakdown */}
             <CommissionCalc deal={deal} brokerId={brokerId} />
 
-            {/* Lease Payment Schedule — shows for lease deals with payments */}
+            {/* Lease Payment Schedule — shows for lease deals with payments.
+                Received toggles unlock once the lease is signed (or the deal is closed). */}
             {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
               <LeasePaymentSchedule
                 deal={deal}
-                onToggleReceived={deal.status === "closed" ? handleToggleReceived : undefined}
+                onToggleReceived={
+                  deal.status === "closed" || isLeasePaymentPhase(deal) ? handleToggleReceived : undefined
+                }
+                onSetW9Status={deal.status !== "cancelled" ? handleSetW9Status : undefined}
               />
             )}
 

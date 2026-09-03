@@ -6,7 +6,7 @@ import DealCard from "@/components/flow/DealCard";
 import DealDetail from "@/components/flow/DealDetail";
 import DealForm from "@/components/flow/DealForm";
 import DealBoard from "@/components/flow/DealBoard";
-import { Deal, DealFormData, DealStatus, BrokerDefaults, DealDate, Broker } from "@/lib/flow/types";
+import { Deal, DealFormData, DealStatus, BrokerDefaults, DealDate, Broker, LeaseStage } from "@/lib/flow/types";
 import {
   formatCurrency,
   formatDate,
@@ -17,14 +17,19 @@ import {
   countdownText,
   checkStatusAdvancement,
   getDropHighlightConfig,
+  getKanbanColumn,
+  getLeaseStage,
   KanbanColumn,
+  KANBAN_COLUMNS,
+  LEASE_KANBAN_COLUMNS,
 } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
 import { getSiteId, getDriveId, createDealFolder, uploadDealFile as uploadDealFileToSP, uploadToFolder } from "@/lib/graph";
 
-// Tab options for filtering deals
+// Status tabs — scoped to whichever deal type (Sale/Lease) is toggled on
+const ACTIVE_STATUSES: DealStatus[] = ["active", "due_diligence", "closing"];
 const TABS: { label: string; statuses: DealStatus[] }[] = [
-  { label: "Active", statuses: ["active", "due_diligence", "closing"] },
+  { label: "Active", statuses: ACTIVE_STATUSES },
   { label: "Closed", statuses: ["closed"] },
   { label: "Cancelled", statuses: ["cancelled"] },
 ];
@@ -47,8 +52,19 @@ export default function FlowPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
+
+  // ── Deal type toggle: Sale vs Lease — everything below it is scoped to this type ──
+  const [dealTypeTab, setDealTypeTab] = useState<"sale" | "lease">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("flow_deal_type_tab") as "sale" | "lease") || "sale";
+    }
+    return "sale";
+  });
   const [selectedDeal, setSelectedDeal] = useState<Deal | null>(null);
   const [showNewForm, setShowNewForm] = useState(false);
+  // New Deal flow: the type picker shows first, then the form opens with the chosen type
+  const [showTypePicker, setShowTypePicker] = useState(false);
+  const [newDealType, setNewDealType] = useState<"sale" | "lease">("sale");
   const [saving, setSaving] = useState(false);
 
   // ── Editable forecast day windows (default 30/60/90) ──
@@ -66,6 +82,8 @@ export default function FlowPage() {
   // When a deal is dropped on a new column, we optimistically move it and open the edit form
   const [dropEditDeal, setDropEditDeal] = useState<Deal | null>(null);
   const [dropTargetColumn, setDropTargetColumn] = useState<KanbanColumn | null>(null);
+  // Lease board drop target — set when a lease drop needs the edit form (signed_lease confirms payment dates)
+  const [dropTargetLeaseStage, setDropTargetLeaseStage] = useState<LeaseStage | null>(null);
 
   // ── Auto-move notifications (deals that silently advanced) ──
   const [autoMoveNotices, setAutoMoveNotices] = useState<{ dealName: string; from: string; to: string }[]>([]);
@@ -80,10 +98,13 @@ export default function FlowPage() {
   // Track whether auto-move has run for this data load
   const autoMoveRanRef = useRef(false);
 
-  // Persist view mode
+  // Persist view mode + deal type toggle
   useEffect(() => {
     localStorage.setItem("flow_view_mode", viewMode);
   }, [viewMode]);
+  useEffect(() => {
+    localStorage.setItem("flow_deal_type_tab", dealTypeTab);
+  }, [dealTypeTab]);
 
   // Fetch deals + broker defaults from API
   const fetchDeals = useCallback(async () => {
@@ -259,6 +280,9 @@ export default function FlowPage() {
       if (!res.ok) throw new Error("Failed to create deal");
       const createdDeal = await res.json();
       setShowNewForm(false);
+      // Jump to the new deal's type + Active tab so it's immediately visible
+      setDealTypeTab(data.deal_type === "lease" ? "lease" : "sale");
+      setActiveTab(0);
 
       // Fire-and-forget SharePoint upload if a file was dropped
       if (pendingFile && createdDeal.id) {
@@ -321,7 +345,7 @@ export default function FlowPage() {
     }
   };
 
-  // ── Kanban drag-drop handler ──
+  // ── Kanban drag-drop handler (Sale board) ──
   const handleBoardDrop = (deal: Deal, targetColumn: KanbanColumn) => {
     // Optimistically update the deal's status in local state
     const newStatus = COLUMN_TO_STATUS[targetColumn];
@@ -333,15 +357,49 @@ export default function FlowPage() {
     setDropTargetColumn(targetColumn);
   };
 
-  // Save from the drop-triggered edit form — persist status + field changes
+  // ── Lease board drag-drop handler ──
+  // Most stage moves just save immediately. Dropping into Signed Lease opens the edit
+  // form so the commission payment due dates get confirmed (1st half is often due at
+  // lease execution, but not always — that's what the 30-day reminders guard against).
+  const handleLeaseBoardDrop = async (deal: Deal, targetStage: LeaseStage) => {
+    // Optimistically update the stage in local state
+    setDeals((prev) =>
+      prev.map((d) => (d.id === deal.id ? { ...d, lease_stage: targetStage } : d))
+    );
+
+    if (targetStage === "signed_lease") {
+      // Open the edit form highlighting the payment schedule before saving the stage
+      setDropEditDeal({ ...deal, lease_stage: targetStage });
+      setDropTargetLeaseStage(targetStage);
+      return;
+    }
+
+    // Simple stage move — persist directly
+    try {
+      const res = await fetch(`/api/flow/deals/${deal.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lease_stage: targetStage }),
+      });
+      if (!res.ok) throw new Error("Failed to update lease stage");
+      await fetchDeals();
+    } catch (e) {
+      console.error("Lease stage move failed:", e);
+      await fetchDeals(); // revert optimistic move
+    }
+  };
+
+  // Save from the drop-triggered edit form — persist status/stage + field changes
   const handleDropSave = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     if (!dropEditDeal) return;
     setSaving(true);
     try {
-      const payload: Record<string, unknown> = {
-        ...data,
-        status: dropEditDeal.status, // include the new status from the drop
-      };
+      const payload: Record<string, unknown> = { ...data };
+      if (dropTargetLeaseStage) {
+        payload.lease_stage = dropTargetLeaseStage; // lease drop — save the new stage
+      } else {
+        payload.status = dropEditDeal.status; // sale drop — save the new status
+      }
       if (dealDates !== undefined) {
         payload.deal_dates = dealDates;
       }
@@ -361,6 +419,7 @@ export default function FlowPage() {
 
       setDropEditDeal(null);
       setDropTargetColumn(null);
+      setDropTargetLeaseStage(null);
       await fetchDeals();
     } catch (e) {
       console.error("Drop save failed:", e);
@@ -373,6 +432,7 @@ export default function FlowPage() {
   const handleDropCancel = async () => {
     setDropEditDeal(null);
     setDropTargetColumn(null);
+    setDropTargetLeaseStage(null);
     await fetchDeals();
   };
 
@@ -405,12 +465,17 @@ export default function FlowPage() {
     }
   };
 
-  // Filter deals by active tab
-  const filteredDeals = deals.filter((d) => TABS[activeTab].statuses.includes(d.status));
+  // Filter deals by the deal type toggle + active status tab
+  const filteredDeals = deals.filter(
+    (d) => d.deal_type === dealTypeTab && TABS[activeTab].statuses.includes(d.status)
+  );
+
+  // The board shows on the Active tab
+  const isBoardTab = activeTab === 0;
 
   // Sort active deals by nearest critical date (most urgent first)
   const sortedDeals = [...filteredDeals].sort((a, b) => {
-    if (activeTab === 0) {
+    if (isBoardTab) {
       // Active tab — sort by nearest upcoming date
       const nextA = getNextCriticalDate(a);
       const nextB = getNextCriticalDate(b);
@@ -446,34 +511,36 @@ export default function FlowPage() {
     return fullTakeHome * (percent / 100);
   };
 
-  // ── YTD take-home: deals closed in the current calendar year ──
-  // For lease deals with payments: sum only received payments where received_date is in current year
-  // For sales (or leases without payments): full take-home if closed this year
-  const currentYear = new Date().getFullYear();
-  const ytdTakeHome = deals
-    .filter((d) => d.status === "closed" && d.actual_close_date)
-    .reduce((sum, d) => {
-      const hasLeasePayments = d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0;
+  // ── Helper: does this deal track money through its lease payment schedule? ──
+  // Such deals are counted payment-by-payment (received/unreceived), never by close date —
+  // this covers both closed lease deals and active ones moving through the Lease board.
+  const usesLeasePayments = (d: Deal): boolean =>
+    d.deal_type === "lease" && !!d.lease_payments && d.lease_payments.length > 0 && d.status !== "cancelled";
 
-      if (hasLeasePayments) {
-        // Sum received payments where received_date is in the current year
-        return sum + (d.lease_payments || [])
-          .filter((lp) => lp.received && lp.received_date && new Date(lp.received_date).getFullYear() === currentYear)
-          .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
-      } else {
-        // Sale deal or lease without payment schedule — full take-home if closed this year
-        if (new Date(d.actual_close_date!).getFullYear() !== currentYear) return sum;
-        const memberSplit = getMemberSplit(d.deal_members, brokerId);
-        return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
-      }
-    }, 0);
+  // ── YTD take-home: money actually landed in the current calendar year ──
+  // Lease deals with payment schedules: sum received payments by received_date (any status).
+  // Sales (or leases without schedules): full take-home if closed this year.
+  const currentYear = new Date().getFullYear();
+  const ytdTakeHome = deals.reduce((sum, d) => {
+    if (usesLeasePayments(d)) {
+      // Sum received payments where received_date is in the current year
+      return sum + (d.lease_payments || [])
+        .filter((lp) => lp.received && lp.received_date && new Date(lp.received_date).getFullYear() === currentYear)
+        .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
+    }
+    // Sale deal or lease without payment schedule — full take-home if closed this year
+    if (d.status !== "closed" || !d.actual_close_date) return sum;
+    if (new Date(d.actual_close_date).getFullYear() !== currentYear) return sum;
+    const memberSplit = getMemberSplit(d.deal_members, brokerId);
+    return sum + calcTakeHome(d.price, d.commission_rate, memberSplit, d.additional_splits || []);
+  }, 0);
 
   // ── Projected: YTD + unreceived lease payments before Dec 31 + active deals closing before year end ──
   const yearEnd = new Date(currentYear, 11, 31); // Dec 31
 
-  // Add unreceived lease payments from closed deals with payment_date before Dec 31
+  // Unreceived lease payments due before Dec 31 (any deal with a payment schedule)
   const unrecevedLeasePaymentsThisYear = deals
-    .filter((d) => d.status === "closed" && d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0)
+    .filter(usesLeasePayments)
     .reduce((sum, d) => {
       return sum + (d.lease_payments || [])
         .filter((lp) => !lp.received && lp.payment_date && new Date(lp.payment_date + "T00:00:00") <= yearEnd
@@ -481,7 +548,10 @@ export default function FlowPage() {
         .reduce((pSum, lp) => pSum + calcPaymentTakeHome(d, lp.percent), 0);
     }, 0);
 
+  // Active deals counted by estimated close date — skip lease deals with payment
+  // schedules (they're already counted payment-by-payment above)
   const projectedTakeHome = ytdTakeHome + unrecevedLeasePaymentsThisYear + activeDeals.reduce((sum, deal) => {
+    if (usesLeasePayments(deal)) return sum;
     const closeDate = getEstimatedCloseDate(deal);
     if (!closeDate || closeDate > yearEnd) return sum;
     const memberSplit = getMemberSplit(deal.deal_members, brokerId);
@@ -489,15 +559,16 @@ export default function FlowPage() {
   }, 0);
 
   // Calculate forecast take-home: sum take-home for deals closing within N days from today
-  // Also includes unreceived lease payments from closed deals within the window
+  // Also includes unreceived lease payments due within the window
   const calcForecastTakeHome = (days: number): number => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const cutoff = new Date(today);
     cutoff.setDate(cutoff.getDate() + days);
 
-    // Active deals closing within the window
+    // Active deals closing within the window (lease deals with schedules counted below instead)
     const activeForecast = activeDeals.reduce((sum, deal) => {
+      if (usesLeasePayments(deal)) return sum;
       const closeDate = getEstimatedCloseDate(deal);
       if (!closeDate) return sum;
       if (closeDate > cutoff) return sum;
@@ -505,9 +576,9 @@ export default function FlowPage() {
       return sum + calcTakeHome(deal.price, deal.commission_rate, memberSplit, deal.additional_splits || []);
     }, 0);
 
-    // Unreceived lease payments from closed deals within the window
+    // Unreceived lease payments due within the window (any deal with a payment schedule)
     const leaseForecast = deals
-      .filter((d) => d.status === "closed" && d.deal_type === "lease" && d.lease_payments && d.lease_payments.length > 0)
+      .filter(usesLeasePayments)
       .reduce((sum, d) => {
         return sum + (d.lease_payments || [])
           .filter((lp) => !lp.received && lp.payment_date && (() => {
@@ -527,13 +598,21 @@ export default function FlowPage() {
     .sort((a, b) => a.next!.daysAway - b.next!.daysAway)[0];
 
   // Get drop highlight config for the edit form opened after a drag-drop
-  const dropHighlight = dropTargetColumn ? getDropHighlightConfig(dropTargetColumn) : null;
+  // Lease drops (Signed Lease) highlight the payment schedule instead of the sale date fields
+  const dropHighlight = dropTargetLeaseStage
+    ? {
+        fields: ["lease_payments_section"],
+        banner: "Lease signed — confirm the commission payment schedule and due dates",
+      }
+    : dropTargetColumn
+    ? getDropHighlightConfig(dropTargetColumn)
+    : null;
 
   return (
     <div>
       {/* ── Summary header zone ── */}
       <div className="bg-white border-b border-[#E0E0E0] px-6 pt-6 pb-6">
-        <div className="max-w-6xl mx-auto">
+        <div className="w-full">
           {/* Summary bar */}
           <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
             <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
@@ -585,8 +664,8 @@ export default function FlowPage() {
         </div>
       </div>
 
-      {/* ── Light content area ── */}
-      <div className="px-6 py-6 max-w-6xl mx-auto">
+      {/* ── Light content area — full width so the 5-column lease board has room to breathe ── */}
+      <div className="px-6 py-6 w-full">
 
       {/* Auto-move notification bar */}
       {autoMoveNotices.length > 0 && (
@@ -627,10 +706,29 @@ export default function FlowPage() {
       {/* Tab bar + View toggle + New Deal button */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-3">
-          {/* Tabs */}
+          {/* Sale / Lease toggle — everything on the page below is scoped to this type */}
+          <div className="flex border border-border-light rounded-btn overflow-hidden">
+            {(["sale", "lease"] as const).map((type) => (
+              <button
+                key={type}
+                onClick={() => setDealTypeTab(type)}
+                className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors duration-200 ${
+                  dealTypeTab === type
+                    ? "bg-charcoal text-white"
+                    : "bg-white text-medium-gray hover:text-charcoal"
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+
+          {/* Status tabs — counts reflect only the selected deal type */}
           <div className="flex gap-1">
             {TABS.map((tab, i) => {
-              const count = deals.filter((d) => tab.statuses.includes(d.status)).length;
+              const count = deals.filter(
+                (d) => d.deal_type === dealTypeTab && tab.statuses.includes(d.status)
+              ).length;
               return (
                 <button
                   key={tab.label}
@@ -646,8 +744,8 @@ export default function FlowPage() {
             })}
           </div>
 
-          {/* View toggle — only visible on Active tab */}
-          {activeTab === 0 && (
+          {/* View toggle — only visible on the Sale/Lease board tabs */}
+          {isBoardTab && (
             <div className="flex border border-border-light rounded-btn overflow-hidden">
               {/* Board view icon */}
               <button
@@ -686,7 +784,7 @@ export default function FlowPage() {
         </div>
 
         <button
-          onClick={() => setShowNewForm(true)}
+          onClick={() => setShowTypePicker(true)}
           className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
                      hover:bg-green/90 transition-colors duration-200 flex items-center gap-1"
         >
@@ -707,17 +805,34 @@ export default function FlowPage() {
           <p className="text-red-600 text-sm mb-2">{error}</p>
           <button onClick={fetchDeals} className="text-sm text-green hover:underline">Retry</button>
         </div>
-      ) : activeTab === 0 && viewMode === "board" ? (
-        /* ── Kanban Board View (Active tab only) ── */
-        activeDeals.length === 0 ? (
+      ) : isBoardTab && viewMode === "board" ? (
+        /* ── Kanban Board View (Active tab — Sale or Lease board per the toggle) ── */
+        filteredDeals.length === 0 ? (
           <div className="text-center py-16">
-            <p className="text-muted-gray text-sm">No active deals. Create one to get started.</p>
+            <p className="text-muted-gray text-sm">
+              No active {dealTypeTab} deals. Create one to get started.
+            </p>
           </div>
-        ) : (
+        ) : dealTypeTab === "lease" ? (
+          /* Lease board — 5 stage columns driven by lease_stage */
           <div className="overflow-x-auto">
             <DealBoard
-              deals={activeDeals}
+              deals={filteredDeals}
               brokerId={brokerId}
+              columns={LEASE_KANBAN_COLUMNS}
+              getColumn={getLeaseStage}
+              onCardClick={(deal) => setSelectedDeal(deal)}
+              onDrop={handleLeaseBoardDrop}
+            />
+          </div>
+        ) : (
+          /* Sale board — 3 status columns */
+          <div className="overflow-x-auto">
+            <DealBoard
+              deals={filteredDeals}
+              brokerId={brokerId}
+              columns={KANBAN_COLUMNS}
+              getColumn={getKanbanColumn}
               onCardClick={(deal) => setSelectedDeal(deal)}
               onDrop={handleBoardDrop}
             />
@@ -727,7 +842,9 @@ export default function FlowPage() {
         /* ── Empty state (list view or non-active tabs) ── */
         <div className="text-center py-16">
           <p className="text-muted-gray text-sm">
-            {activeTab === 0 ? "No active deals. Create one to get started." : `No ${TABS[activeTab].label.toLowerCase()} deals.`}
+            {isBoardTab
+              ? `No active ${dealTypeTab} deals. Create one to get started.`
+              : `No ${TABS[activeTab].label.toLowerCase()} ${dealTypeTab} deals.`}
           </p>
         </div>
       ) : (
@@ -757,6 +874,40 @@ export default function FlowPage() {
       )}
 
       {/* New deal form — pre-fill commission from broker defaults */}
+      {/* New Deal type picker — choose Sale or Lease before the form opens */}
+      {showTypePicker && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="fixed inset-0 bg-black/30" onClick={() => setShowTypePicker(false)} />
+          <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
+            <h3 className="font-bebas text-2xl tracking-wide text-charcoal mb-4 text-center">Deal Type</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                onClick={() => {
+                  setNewDealType("sale");
+                  setShowTypePicker(false);
+                  setShowNewForm(true);
+                }}
+                className="border border-border-light rounded-card py-6 text-center font-bebas text-xl tracking-wide text-charcoal
+                           hover:border-green hover:bg-green/5 transition-colors duration-200"
+              >
+                Sale
+              </button>
+              <button
+                onClick={() => {
+                  setNewDealType("lease");
+                  setShowTypePicker(false);
+                  setShowNewForm(true);
+                }}
+                className="border border-border-light rounded-card py-6 text-center font-bebas text-xl tracking-wide text-charcoal
+                           hover:border-green hover:bg-green/5 transition-colors duration-200"
+              >
+                Lease
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showNewForm && (
         <DealForm
           onSave={handleCreate}
@@ -767,6 +918,7 @@ export default function FlowPage() {
           userEmail={userEmail}
           brokerId={brokerId}
           allBrokers={allBrokers}
+          defaultDealType={newDealType}
         />
       )}
 

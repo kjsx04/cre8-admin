@@ -128,6 +128,8 @@ export async function POST(request: NextRequest) {
       escrow_company: body.escrow_company || null,
       additional_splits: body.additional_splits || [],
       sharepoint_folder_url: body.sharepoint_folder_url || null,
+      lease_stage: body.lease_stage || "negotiating_loi",
+      w9_status: body.w9_status || "pending",
     })
     .select()
     .single();

@@ -3,6 +3,14 @@
 export type DealStatus = "active" | "due_diligence" | "closing" | "closed" | "cancelled";
 export type DealType = "sale" | "lease";
 
+// ── Lease deal flow stages (columns on the Lease board) ──
+// Lease deals keep status "active" while moving through these stages,
+// then get closed via the normal Close Deal flow once payments come in.
+export type LeaseStage = "negotiating_loi" | "signed_loi" | "draft_lease" | "signed_lease" | "invoiced";
+
+// W9 + invoice from outside broker: pending (not yet), received, or na (no outside broker)
+export type W9Status = "pending" | "received" | "na";
+
 // ── Dynamic critical date row (stored in deal_dates table) ──
 
 export interface DealDate {
@@ -78,6 +86,8 @@ export interface Deal {
   deal_members?: DealMember[];     // brokers assigned to this deal (joined from deal_members table)
   sharepoint_folder_url?: string | null;  // URL to deal's SharePoint folder
   lease_payments?: LeasePayment[];       // payment schedule for lease deals (joined from lease_payments table)
+  lease_stage: LeaseStage;               // lease board stage (only meaningful for lease deals)
+  w9_status: W9Status;                   // W9/invoice from outside broker (only meaningful for lease deals)
   created_at: string;
   updated_at: string;
 }
@@ -100,6 +110,7 @@ export interface DealFormData {
   escrow_company: string;    // Escrow/title company name
   additional_splits: AdditionalSplit[];  // extra commission deductions
   broker_members: { broker_id: string; split_percent: number | null }[];  // brokers on this deal
+  lease_stage: LeaseStage;   // lease board stage (only used for lease deals)
   // deal_dates managed separately — sent as a parallel array on save
 }
 
