@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
+import { requireUser } from "@/lib/email/auth";
+import { scheduleCampaign } from "@/lib/email/scheduler";
 
 // GET /api/email/campaigns — list campaigns, optionally filtered by listing_id or status
 export async function GET(request: NextRequest) {
@@ -35,11 +37,15 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/email/campaigns — create a new campaign, optionally trigger AI scheduling
+//
+// Flow when auto_schedule is true:
+//   1. Insert the campaign as a draft (snapshot of listing data + user inputs)
+//   2. Ask the AI for a send slot
+//   3. Save the slot, push the rendered email to Resend as a scheduled broadcast
+//   4. Apply any calendar shifts the AI suggested (those get re-pushed too)
 export async function POST(request: NextRequest) {
-  const email = request.headers.get("x-user-email");
-  if (!email) {
-    return NextResponse.json({ error: "Missing x-user-email header" }, { status: 401 });
-  }
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
 
   const body = await request.json();
 
@@ -81,195 +87,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  // If auto_schedule is true, call the AI scheduling endpoint internally
+  // If auto_schedule is true, get an AI slot + push to Resend
   if (body.auto_schedule) {
     try {
-      // Fetch all existing scheduled/active campaigns for AI context
-      const { data: existing } = await supabase
-        .from("email_campaigns")
-        .select("id, listing_name, email_label, scheduled_date, status, campaign_type, frequency")
-        .in("status", ["scheduled", "active"]);
+      const baseUrl = new URL(request.url).origin;
+      const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
 
-      // Call the AI schedule logic
-      const scheduleRes = await fetch(new URL("/api/email/schedule", request.url).toString(), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          campaign_id: campaign.id,
-          email_label: campaign.email_label,
-          campaign_type: campaign.campaign_type,
-          listing_name: campaign.listing_name,
-          frequency: campaign.frequency,
-          existing_campaigns: existing || [],
-        }),
-      });
-
-      if (scheduleRes.ok) {
-        const scheduleData = await scheduleRes.json();
-
-        // Update campaign with scheduled date + AI reasoning
-        const scheduledDate = `${scheduleData.new_campaign_slot.date}T${scheduleData.new_campaign_slot.time}:00-07:00`;
-
-        const updateFields: Record<string, unknown> = {
-          scheduled_date: scheduledDate,
-          ai_reasoning: scheduleData.new_campaign_slot.reasoning,
-          status: "scheduled",
-        };
-
-        // For recurring campaigns, set next_send_date = scheduled_date
-        if (campaign.campaign_type === "recurring") {
-          updateFields.next_send_date = scheduledDate;
-          updateFields.status = "active";
-        }
-
-        // Create SendGrid Single Send if API key is configured
-        const sendgridId = await createSendGridSingleSend(campaign, scheduledDate);
-        if (sendgridId) {
-          updateFields.sendgrid_single_send_id = sendgridId;
-        }
-
-        await supabase
-          .from("email_campaigns")
-          .update(updateFields)
-          .eq("id", campaign.id);
-
-        // Apply any calendar shifts the AI suggested
-        if (scheduleData.calendar_changes?.length > 0) {
-          for (const change of scheduleData.calendar_changes) {
-            const newDate = `${change.new_date}T${change.new_time}:00-07:00`;
-
-            // Cancel old SendGrid send and create new one
-            const { data: shifted } = await supabase
-              .from("email_campaigns")
-              .select("*")
-              .eq("id", change.id)
-              .single();
-
-            if (shifted?.sendgrid_single_send_id) {
-              await cancelSendGridSend(shifted.sendgrid_single_send_id);
-            }
-
-            const newSgId = shifted ? await createSendGridSingleSend(shifted, newDate) : null;
-
-            await supabase
-              .from("email_campaigns")
-              .update({
-                scheduled_date: newDate,
-                sendgrid_single_send_id: newSgId,
-                ai_reasoning: `Shifted: ${change.reason}`,
-              })
-              .eq("id", change.id);
-          }
-        }
-
-        // Re-fetch the updated campaign
-        const { data: updated } = await supabase
-          .from("email_campaigns")
-          .select("*")
-          .eq("id", campaign.id)
-          .single();
-
-        return NextResponse.json(updated || campaign, { status: 201 });
+      if (scheduled) {
+        return NextResponse.json(
+          { ...scheduled, highlights: scheduled.highlights || [], provider_sync: sync },
+          { status: 201 }
+        );
       }
     } catch (err) {
       console.error("[POST campaigns] AI scheduling failed, campaign saved as draft:", err);
     }
   }
 
-  return NextResponse.json(campaign, { status: 201 });
-}
-
-// ── SendGrid helpers ──
-
-async function createSendGridSingleSend(
-  campaign: Record<string, unknown>,
-  scheduledDate: string
-): Promise<string | null> {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey) return null;
-
-  try {
-    // Import template helpers dynamically to avoid bundling in client
-    const { buildTemplateVars, renderEmailHtml } = await import("@/lib/email/constants");
-
-    const html = renderEmailHtml(buildTemplateVars(campaign as Record<string, unknown>));
-
-    // Create Single Send in SendGrid
-    const createRes = await fetch("https://api.sendgrid.com/v3/marketing/singlesends", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        name: `${campaign.email_label}: ${campaign.listing_name}`,
-        send_to: campaign.segment_id && campaign.segment_id !== "all"
-          ? { segment_ids: [campaign.segment_id] }
-          : { all: true },
-        email_config: {
-          subject: `${campaign.email_label}: ${campaign.listing_name}`,
-          html_content: html,
-          sender_id: undefined, // Will use default verified sender
-          suppression_group_id: undefined,
-        },
-      }),
-    });
-
-    if (!createRes.ok) {
-      console.error("[SendGrid] Create failed:", await createRes.text());
-      return null;
-    }
-
-    const sendData = await createRes.json();
-    const singleSendId = sendData.id;
-
-    // Schedule the Single Send
-    const scheduleRes = await fetch(
-      `https://api.sendgrid.com/v3/marketing/singlesends/${singleSendId}/schedule`,
-      {
-        method: "PUT",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ send_at: scheduledDate }),
-      }
-    );
-
-    if (!scheduleRes.ok) {
-      console.error("[SendGrid] Schedule failed:", await scheduleRes.text());
-    }
-
-    return singleSendId;
-  } catch (err) {
-    console.error("[SendGrid] Error:", err);
-    return null;
-  }
-}
-
-async function cancelSendGridSend(singleSendId: string): Promise<void> {
-  const apiKey = process.env.SENDGRID_API_KEY;
-  if (!apiKey || !singleSendId) return;
-
-  try {
-    // Unschedule first
-    await fetch(
-      `https://api.sendgrid.com/v3/marketing/singlesends/${singleSendId}/schedule`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }
-    );
-
-    // Delete the Single Send
-    await fetch(
-      `https://api.sendgrid.com/v3/marketing/singlesends/${singleSendId}`,
-      {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${apiKey}` },
-      }
-    );
-  } catch (err) {
-    console.error("[SendGrid] Cancel error:", err);
-  }
+  return NextResponse.json({ ...campaign, highlights: campaign.highlights || [] }, { status: 201 });
 }

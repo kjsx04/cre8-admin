@@ -3,14 +3,14 @@
  *
  * Senders, segments, labels, colors, broker maps, company info,
  * the buildTemplateVars() helper, and the full HTML email template renderer.
- * Dev mode uses a single Gmail sender; production swaps to cre8advisors.com domain.
+ * Sending goes through Resend (see provider.ts). Any address on the verified
+ * cre8advisors.com domain can be a sender, so each broker sends as themselves.
  */
 
 import { EmailSender, EmailSegment, EmailTemplateVars } from "./types";
 
 // ── Broker senders ──
-// In dev: all emails send from the single verified Gmail address.
-// In production: verify cre8advisors.com domain in SendGrid, then these emails work directly.
+// Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
 export const EMAIL_SENDERS: EmailSender[] = [
   { id: "6987ab84b1ac0ee1e143f72f", name: "Rommie Mojahed", email: "Rommie@cre8Advisors.com", phone: "602.702.4663" },
   { id: "6987abdaa473a39098593f50", name: "Andy Kroot",     email: "Andy@CRE8Advisors.com",   phone: "602.430.8589" },
@@ -20,7 +20,9 @@ export const EMAIL_SENDERS: EmailSender[] = [
 ];
 
 // ── Contact segments ──
-// "All Contacts" and "Test" are enabled; others disabled until SendGrid lists are built.
+// Internal ids ("all", "test") are stored on the campaign. provider.ts maps them to real
+// Resend segment ids via RESEND_SEGMENT_ID_ALL / RESEND_SEGMENT_ID_TEST env vars.
+// Others stay disabled until those segments exist in Resend (add an env var + enable here).
 export const EMAIL_SEGMENTS: EmailSegment[] = [
   { id: "all",       name: "All Contacts",  enabled: true  },
   { id: "test",      name: "Test",          enabled: true  },
@@ -88,7 +90,7 @@ const BROKER_TITLES: Record<string, string> = {
 
 /**
  * Build EmailTemplateVars from a campaign-like record.
- * Centralizes the mapping so preview, SendGrid creation, and cron routes all use one source.
+ * Centralizes the mapping so preview, Resend broadcast creation, and cron routes all use one source.
  * Accepts any object with campaign-shaped fields (Campaign, CampaignFormData, or raw body).
  */
 export function buildTemplateVars(
@@ -123,7 +125,7 @@ export function buildTemplateVars(
 /**
  * Parse a highlight string on the first ":" into label + value.
  * "Price: $2,000,000" → { label: "Price", value: "$2,000,000" }
- * "10 Acres" → { label: "", value: "10 Acres" }
+ * "10 Acres" (no title) → { label: "", value: "10 Acres" } — renders as "Detail"
  */
 function parseHighlight(h: string): { label: string; value: string } {
   const idx = h.indexOf(":");
@@ -135,7 +137,7 @@ function parseHighlight(h: string): { label: string; value: string } {
 
 /**
  * Render the full HTML email for a campaign.
- * Used by both the preview endpoint and SendGrid Single Send creation.
+ * Used by the preview endpoint, test sends, and Resend broadcast creation.
  * Dark premium CRE8 brand — table-based layout with all inline styles
  * for maximum email client compatibility.
  */
@@ -143,57 +145,24 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   // Parse highlights into label/value pairs for the stats grid
   const highlights = vars.highlights.filter((h) => h.trim()).map(parseHighlight);
 
-  // Build 2-column stats grid cells
-  // Pair them up, odd last item goes full-width
+  // Build the property details list — one full-width row per item, stacked.
+  // Every row has a title (the part before ":") and a value. Custom items
+  // typed without a title fall back to "Detail" so the layout stays consistent.
   let statsGridHtml = "";
   if (highlights.length > 0) {
-    const rows: string[] = [];
-    for (let i = 0; i < highlights.length; i += 2) {
-      const left = highlights[i];
-      const right = i + 1 < highlights.length ? highlights[i + 1] : null;
-
-      if (right) {
-        // Two-column row with 8px gutter
-        rows.push(`
-                            <tr>
-                              <td width="50%" style="padding:0 4px 8px 0;vertical-align:top;">
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                                  <tr>
-                                    <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
-                                    </td>
-                                  </tr>
-                                </table>
-                              </td>
-                              <td width="50%" style="padding:0 0 8px 4px;vertical-align:top;">
-                                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                                  <tr>
-                                    <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${right.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(right.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(right.value)}</p>
-                                    </td>
-                                  </tr>
-                                </table>
-                              </td>
-                            </tr>`);
-      } else {
-        // Odd last item — full width
-        rows.push(`
+    const rows = highlights.map((h) => `
                             <tr>
                               <td colspan="2" style="padding:0 0 8px 0;">
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                   <tr>
                                     <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      ${left.label ? `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(left.label)}</p>` : ""}
-                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(left.value)}</p>
+                                      <p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(h.label || "Detail")}</p>
+                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(h.value)}</p>
                                     </td>
                                   </tr>
                                 </table>
                               </td>
                             </tr>`);
-      }
-    }
     statsGridHtml = rows.join("");
   }
 
@@ -269,8 +238,11 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     <p style="margin:0 0 10px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
                       ${escapeHtml(vars.label)}
                     </p>
-                    <!-- Heading — Bebas Neue -->
-                    <h1 style="margin:0;font-family:'Bebas Neue','Arial Narrow',Arial,sans-serif;font-size:32px;font-weight:400;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">
+                    <!-- Heading — Bebas Neue where web fonts load (Apple Mail, iOS).
+                         Outlook/Gmail strip web fonts, so the fallback is bold uppercase
+                         Helvetica/Arial with tracking — reads as the same display style
+                         instead of the cramped Arial Narrow fallback. -->
+                    <h1 style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.heading)}
                     </h1>
                     ${vars.propertyAddress ? `
@@ -379,13 +351,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
                                   ${escapeHtml(vars.brokerName)}
                                 </p>
-                                <p style="margin:3px 0 0 0;font-size:13px;font-weight:500;color:#8CC644;line-height:1.4;">
-                                  ${escapeHtml(vars.brokerTitle)}
-                                </p>
-                                <p style="margin:3px 0 0 0;font-size:13px;color:#888888;line-height:1.4;">
-                                  CRE8 Advisors
-                                </p>
-                                <p style="margin:8px 0 0 0;font-size:13px;line-height:1.4;">
+                                <!-- Title + company intentionally omitted — card shows name, email, phone only -->
+                                <p style="margin:6px 0 0 0;font-size:13px;line-height:1.4;">
                                   <a href="mailto:${vars.brokerEmail}" style="color:#8CC644;text-decoration:none;">${escapeHtml(vars.brokerEmail)}</a>${vars.brokerPhone ? ` &nbsp;&middot;&nbsp; <span style="color:#BFBFBF;">${escapeHtml(vars.brokerPhone)}</span>` : ""}
                                 </p>
                               </td>
@@ -421,9 +388,9 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                 <a href="${CRE8_SITE_URL}" target="_blank" style="color:#8CC644;text-decoration:none;">Website</a>
               </p>
 
-              <!-- Unsubscribe (SendGrid merge tag) -->
+              <!-- Unsubscribe (Resend merge tag — replaced with a real per-contact link at send time) -->
               <p style="margin:18px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:1.4;">
-                <a href="{{{unsubscribe}}}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>
+                <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>
               </p>
             </td>
           </tr>

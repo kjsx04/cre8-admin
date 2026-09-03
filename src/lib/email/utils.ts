@@ -6,6 +6,7 @@
 
 import { Campaign, PriorityLevel, CalendarEvent } from "./types";
 import { TYPE_COLORS, RECURRING_COLOR } from "./constants";
+import type { ListingFieldData } from "@/lib/admin-constants";
 
 /**
  * Auto-derive campaign priority from label + listing age.
@@ -46,12 +47,48 @@ export function getPriorityLabel(priority: PriorityLevel): string {
   }
 }
 
+/**
+ * Build the default highlight rows from a listing's CMS fields.
+ * Used when a listing is first picked in the campaign form, and by the
+ * listing → campaign sync to know which rows are "auto" rows.
+ */
+export function buildAutoHighlights(fd: Partial<ListingFieldData>): string[] {
+  const rows: string[] = [];
+  if (fd["list-price"]) rows.push(`Price: ${fd["list-price"]}`);
+  if (fd["square-feet"]) rows.push(`Acreage: ${fd["square-feet"]} Acres`);
+  if (fd.zoning) rows.push(`Zoning: ${fd.zoning}`);
+  if (fd["city-county"]) rows.push(`Location: ${fd["city-county"]}`);
+  return rows;
+}
+
+/**
+ * Refresh listing-derived highlight rows with new listing data, in place.
+ * Rows are matched by their title ("Price:", "Acreage:", "Zoning:", etc.)
+ * so custom rows and the user's ordering are preserved. A row is only
+ * rewritten when the matching listing field is present in `fd`.
+ */
+export function refreshHighlights(
+  highlights: string[],
+  fd: Partial<ListingFieldData>
+): string[] {
+  return highlights.map((h) => {
+    const t = h.trim();
+    if (/^Price:/i.test(t) && fd["list-price"]) return `Price: ${fd["list-price"]}`;
+    if ((/^Acreage:/i.test(t) || /^[\d.,]+\s*Acres$/i.test(t)) && fd["square-feet"]) return `Acreage: ${fd["square-feet"]} Acres`;
+    if ((/^Building SF:/i.test(t) || /SF Building$/i.test(t)) && fd["building-sqft"]) return `Building SF: ${Number(fd["building-sqft"]).toLocaleString()} SF`;
+    if (/^Zoning:/i.test(t) && fd.zoning) return `Zoning: ${fd.zoning}`;
+    if (/^Location:/i.test(t) && fd["city-county"]) return `Location: ${fd["city-county"]}`;
+    if (/^Cross Streets:/i.test(t) && fd["cross-streets"]) return `Cross Streets: ${fd["cross-streets"]}`;
+    if (/^Traffic Count:/i.test(t) && fd["traffic-count"]) return `Traffic Count: ${fd["traffic-count"]}`;
+    return h;
+  });
+}
+
 /** Convert a Campaign to a FullCalendar event object */
 export function campaignToEvent(campaign: Campaign): CalendarEvent | null {
-  // Use scheduled_date for one-time, next_send_date for recurring
-  const dateStr = campaign.campaign_type === "recurring"
-    ? (campaign.next_send_date || campaign.scheduled_date)
-    : campaign.scheduled_date;
+  // scheduled_date is the pending send for both one-time and recurring
+  // (recurring keeps next_send_date == scheduled_date; fall back just in case)
+  const dateStr = campaign.scheduled_date || campaign.next_send_date;
 
   if (!dateStr) return null;
 

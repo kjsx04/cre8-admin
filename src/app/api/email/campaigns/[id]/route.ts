@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
+import { requireUser } from "@/lib/email/auth";
+import { syncCampaignToProvider, cancelSend } from "@/lib/email/provider";
+import { scheduleCampaign } from "@/lib/email/scheduler";
 
 // GET /api/email/campaigns/[id] — fetch a single campaign
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const { data, error } = await supabase
@@ -22,11 +25,20 @@ export async function GET(
   });
 }
 
-// PATCH /api/email/campaigns/[id] — update campaign fields
+// PATCH /api/email/campaigns/[id] — update campaign fields, then push the change to Resend
+//
+// This is the "edit it here and it's live at the provider" path:
+//   - Save the new fields to Supabase
+//   - If the campaign has a pending send → update the Resend broadcast in place
+//   - If it's still a draft and auto_schedule is set → get an AI slot and schedule it
+// The response includes `provider_sync` so the UI can show a warning if Resend failed.
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
   const body = await request.json();
 
   // Build update object — only include present fields
@@ -53,7 +65,6 @@ export async function PATCH(
   if (body.end_date !== undefined) updates.end_date = body.end_date || null;
   if (body.status !== undefined) updates.status = body.status;
   if (body.ai_reasoning !== undefined) updates.ai_reasoning = body.ai_reasoning;
-  if (body.sendgrid_single_send_id !== undefined) updates.sendgrid_single_send_id = body.sendgrid_single_send_id;
 
   updates.updated_at = new Date().toISOString();
 
@@ -64,47 +75,64 @@ export async function PATCH(
     .select()
     .single();
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error || !data) {
+    return NextResponse.json({ error: error?.message || "Update failed" }, { status: 500 });
+  }
+
+  let campaign = data;
+  let providerSync = null;
+
+  try {
+    if (campaign.status === "draft" && body.auto_schedule) {
+      // Never scheduled yet — treat this like a create
+      const baseUrl = new URL(request.url).origin;
+      const result = await scheduleCampaign(baseUrl, campaign);
+      if (result.campaign) campaign = result.campaign;
+      providerSync = result.sync;
+    } else if (campaign.status === "scheduled" || campaign.status === "active") {
+      // Has (or should have) a pending send — make Resend match the new content
+      providerSync = await syncCampaignToProvider(campaign);
+      if (providerSync.provider_send_id !== campaign.provider_send_id) {
+        await supabase
+          .from("email_campaigns")
+          .update({ provider_send_id: providerSync.provider_send_id })
+          .eq("id", params.id);
+        campaign.provider_send_id = providerSync.provider_send_id;
+      }
+    }
+  } catch (err) {
+    console.error("[PATCH campaign] provider sync error:", err);
+    providerSync = {
+      ok: false,
+      provider_send_id: campaign.provider_send_id,
+      action: "failed",
+      error: err instanceof Error ? err.message : "Provider sync failed",
+    };
   }
 
   return NextResponse.json({
-    ...data,
-    highlights: data.highlights || [],
+    ...campaign,
+    highlights: campaign.highlights || [],
+    provider_sync: providerSync,
   });
 }
 
-// DELETE /api/email/campaigns/[id] — delete a campaign + cancel SendGrid send
+// DELETE /api/email/campaigns/[id] — delete a campaign + cancel its pending Resend send
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  // Fetch campaign first to cancel any pending SendGrid send
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
+  // Fetch campaign first to cancel any pending send
   const { data: campaign } = await supabase
     .from("email_campaigns")
-    .select("sendgrid_single_send_id")
+    .select("provider_send_id")
     .eq("id", params.id)
     .single();
 
-  if (campaign?.sendgrid_single_send_id) {
-    const apiKey = process.env.SENDGRID_API_KEY;
-    if (apiKey) {
-      try {
-        // Unschedule
-        await fetch(
-          `https://api.sendgrid.com/v3/marketing/singlesends/${campaign.sendgrid_single_send_id}/schedule`,
-          { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } }
-        );
-        // Delete
-        await fetch(
-          `https://api.sendgrid.com/v3/marketing/singlesends/${campaign.sendgrid_single_send_id}`,
-          { method: "DELETE", headers: { Authorization: `Bearer ${apiKey}` } }
-        );
-      } catch (err) {
-        console.error("[DELETE campaign] SendGrid cleanup error:", err);
-      }
-    }
-  }
+  await cancelSend(campaign?.provider_send_id);
 
   const { error } = await supabase
     .from("email_campaigns")

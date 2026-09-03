@@ -45,9 +45,10 @@ export interface Campaign {
   segment_id: string | null;
   segment_name: string;
   frequency: CampaignFrequency | null;
-  scheduled_date: string | null;       // ISO timestamp
-  sendgrid_single_send_id: string | null;
-  next_send_date: string | null;       // ISO timestamp (recurring)
+  scheduled_date: string | null;       // ISO timestamp of the pending (or last) send
+  provider_send_id: string | null;     // Resend broadcast id for the pending send (null once sent/cancelled)
+  next_send_date: string | null;       // ISO timestamp (recurring) — kept equal to scheduled_date
+  last_sent_at: string | null;         // ISO timestamp of the most recent send that went out
   end_date: string | null;             // ISO timestamp (recurring end)
   status: CampaignStatus;
   ai_reasoning: string | null;
@@ -95,7 +96,7 @@ export interface ScheduleResult {
   calendar_changes: CalendarChange[];
 }
 
-// ── Email segment (contact list in SendGrid) ──
+// ── Email segment (maps to a Resend segment via env vars — see provider.ts) ──
 export interface EmailSegment {
   id: string;
   name: string;

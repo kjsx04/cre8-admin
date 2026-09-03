@@ -228,7 +228,7 @@ export default function CampaignDetail({
               {showDeleteConfirm && (
                 <div className="bg-red-50 border border-red-200 rounded-btn p-3 space-y-2">
                   <p className="text-sm text-red-700">
-                    Delete this campaign? This will also cancel any pending SendGrid send.
+                    Delete this campaign? This will also cancel any pending scheduled send.
                   </p>
                   <div className="flex gap-2">
                     <button

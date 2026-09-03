@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { API_BASE } from "@/lib/admin-constants";
+import { syncCampaignsForListing } from "@/lib/email/listing-sync";
 
 /**
  * GET /api/listings/[id]
@@ -75,6 +76,16 @@ export async function PATCH(
     }
 
     const data = await res.json();
+
+    // Keep any email campaigns for this listing in sync (photo, price, URL, name)
+    // and push the refreshed content to Resend. Never blocks the listing save.
+    try {
+      const sync = await syncCampaignsForListing(params.id, body?.fieldData || {});
+      if (sync.errors.length) console.warn("[Listing PATCH] campaign sync issues:", sync.errors);
+    } catch (err) {
+      console.error("[Listing PATCH] campaign sync failed:", err);
+    }
+
     return NextResponse.json(data);
   } catch (err) {
     console.error("Failed to update listing:", err);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 
 interface EmailPreviewProps {
@@ -8,16 +9,27 @@ interface EmailPreviewProps {
   onClose: () => void;
 }
 
-/** Modal rendering the full HTML email preview via the preview API */
+/** Modal rendering the full HTML email preview via the preview API, with a "send test" option */
 export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
+  // Signed-in user — used for API auth and as the default test recipient
+  const { accounts } = useMsal();
+  const userEmail = accounts[0]?.username || "";
+
   const [html, setHtml] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // Send test email state
+  const [recipient, setRecipient] = useState(userEmail);
   const [sendingTest, setSendingTest] = useState(false);
   const [testSent, setTestSent] = useState(false);
   const [testError, setTestError] = useState<string | null>(null);
+
+  // Keep the default recipient in sync once MSAL resolves the account
+  useEffect(() => {
+    if (userEmail && !recipient) setRecipient(userEmail);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
 
   // Fetch preview HTML on mount
   useEffect(() => {
@@ -25,7 +37,10 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
       try {
         const res = await fetch("/api/email/preview", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-user-email": userEmail || "preview@cre8advisors.com",
+          },
           body: JSON.stringify({
             email_label: campaign.email_label,
             heading_text: campaign.heading_text || campaign.listing_name,
@@ -53,8 +68,14 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /** Send a real test email to kevin@cre8advisors.com via SendGrid */
+  const recipientValid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(recipient.trim());
+
+  /** Send a real test email to the recipient in the box (via Resend) */
   async function handleSendTest() {
+    if (!recipientValid) {
+      setTestError("Enter a valid email address");
+      return;
+    }
     setSendingTest(true);
     setTestError(null);
     setTestSent(false);
@@ -62,10 +83,13 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
     try {
       const res = await fetch("/api/email/send-test", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-user-email": userEmail || recipient.trim(),
+        },
         body: JSON.stringify({
           campaign,
-          recipientEmail: "kevin@cre8advisors.com",
+          recipientEmail: recipient.trim(),
         }),
       });
 
@@ -95,6 +119,19 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
             Email Preview
           </h3>
           <div className="flex items-center gap-3">
+            {/* Test recipient input */}
+            <input
+              type="email"
+              value={recipient}
+              onChange={(e) => {
+                setRecipient(e.target.value);
+                setTestSent(false);
+                setTestError(null);
+              }}
+              placeholder="test recipient"
+              className="w-56 border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal focus:outline-none focus:ring-1 focus:ring-green"
+            />
+
             {/* Send Test Email button */}
             {testSent ? (
               <span className="flex items-center gap-1.5 text-sm font-medium text-green">
@@ -106,7 +143,7 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
               </span>
             ) : testError ? (
               <div className="flex items-center gap-2">
-                <span className="text-sm text-red-500">{testError}</span>
+                <span className="text-sm text-red-500 max-w-[220px] truncate" title={testError}>{testError}</span>
                 <button
                   onClick={handleSendTest}
                   className="text-sm font-medium text-green hover:underline"
@@ -117,7 +154,7 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
             ) : (
               <button
                 onClick={handleSendTest}
-                disabled={sendingTest || !html}
+                disabled={sendingTest || !html || !recipientValid}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-green text-black text-sm font-semibold rounded hover:opacity-90 transition-opacity disabled:opacity-50"
               >
                 {sendingTest ? (

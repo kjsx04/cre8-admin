@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
+import { requireUser } from "@/lib/email/auth";
+import { scheduleCampaign } from "@/lib/email/scheduler";
 
 // POST /api/email/campaigns/[id]/resume — resume a paused recurring campaign
+// Asks the AI for the next slot, saves it, and creates a fresh Resend broadcast.
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
   // Fetch campaign
   const { data: campaign, error: fetchErr } = await supabase
     .from("email_campaigns")
@@ -21,60 +27,28 @@ export async function POST(
     return NextResponse.json({ error: "Campaign is not paused" }, { status: 400 });
   }
 
-  // Re-trigger AI scheduling to pick the next optimal slot
+  // Re-trigger AI scheduling to pick the next optimal slot + push to Resend
   try {
-    const { data: existing } = await supabase
-      .from("email_campaigns")
-      .select("id, listing_name, email_label, scheduled_date, status, campaign_type, frequency")
-      .in("status", ["scheduled", "active"])
-      .neq("id", params.id);
-
     const baseUrl = new URL(request.url).origin;
-    const scheduleRes = await fetch(`${baseUrl}/api/email/schedule`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        campaign_id: campaign.id,
-        email_label: campaign.email_label,
-        campaign_type: campaign.campaign_type,
-        listing_name: campaign.listing_name,
-        frequency: campaign.frequency,
-        existing_campaigns: existing || [],
-      }),
-    });
+    const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
 
-    if (scheduleRes.ok) {
-      const scheduleData = await scheduleRes.json();
-      const scheduledDate = `${scheduleData.new_campaign_slot.date}T${scheduleData.new_campaign_slot.time}:00-07:00`;
-
-      const { data: updated, error: updateErr } = await supabase
-        .from("email_campaigns")
-        .update({
-          status: "active",
-          next_send_date: scheduledDate,
-          scheduled_date: scheduledDate,
-          ai_reasoning: scheduleData.new_campaign_slot.reasoning,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", params.id)
-        .select()
-        .single();
-
-      if (updateErr) {
-        return NextResponse.json({ error: updateErr.message }, { status: 500 });
-      }
-
-      return NextResponse.json(updated);
+    if (scheduled) {
+      return NextResponse.json({
+        ...scheduled,
+        highlights: scheduled.highlights || [],
+        provider_sync: sync,
+      });
     }
   } catch (err) {
     console.error("[Resume] AI scheduling failed:", err);
   }
 
-  // Fallback: just set to active without re-scheduling
+  // Fallback: set to active without a send time. The daily cron will schedule it.
   const { data: updated, error: updateErr } = await supabase
     .from("email_campaigns")
     .update({
       status: "active",
+      next_send_date: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     })
     .eq("id", params.id)
@@ -85,5 +59,5 @@ export async function POST(
     return NextResponse.json({ error: updateErr.message }, { status: 500 });
   }
 
-  return NextResponse.json(updated);
+  return NextResponse.json({ ...updated, highlights: updated.highlights || [] });
 }

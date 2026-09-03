@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
       campaign_type,
       listing_name,
       frequency,
+      target_date,          // optional — recurring next occurrence should land near this date
       existing_campaigns,
     } = body;
 
@@ -71,6 +72,7 @@ NEW CAMPAIGN TO SCHEDULE:
 - Type: ${campaign_type}
 - Listing: ${listing_name}
 - Frequency: ${frequency || "one-time"}
+${target_date ? `- TARGET DATE: this is the next occurrence of a recurring campaign. Schedule it in the same week as ${String(target_date).substring(0, 10)} (same weekday/time as the previous send when possible). If that date is already in the past, pick the next valid business-hours slot at least 24 hours from now.` : ""}
 
 Return ONLY valid JSON (no markdown, no preamble):
 {

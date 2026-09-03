@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { CampaignFormData, CampaignType, CampaignFrequency, EmailSender, EmailSegment, Campaign } from "@/lib/email/types";
 import { ListingItem, ListingFieldData, BROKERS, BROKER_CONTACTS } from "@/lib/admin-constants";
+import { buildAutoHighlights } from "@/lib/email/utils";
 import EmailPreview from "./EmailPreview";
 
 interface CampaignFormProps {
@@ -23,10 +24,10 @@ interface CmsChip {
 function buildCmsChips(fd: ListingFieldData): CmsChip[] {
   const chips: CmsChip[] = [];
   if (fd["list-price"]) chips.push({ key: "list-price", label: "Price", value: `Price: ${fd["list-price"]}` });
-  if (fd["square-feet"]) chips.push({ key: "square-feet", label: "Acreage", value: `${fd["square-feet"]} Acres` });
-  if (fd["building-sqft"]) chips.push({ key: "building-sqft", label: "Building SF", value: `${fd["building-sqft"].toLocaleString()} SF Building` });
+  if (fd["square-feet"]) chips.push({ key: "square-feet", label: "Acreage", value: `Acreage: ${fd["square-feet"]} Acres` });
+  if (fd["building-sqft"]) chips.push({ key: "building-sqft", label: "Building SF", value: `Building SF: ${fd["building-sqft"].toLocaleString()} SF` });
   if (fd.zoning) chips.push({ key: "zoning", label: "Zoning", value: `Zoning: ${fd.zoning}` });
-  if (fd["city-county"]) chips.push({ key: "city-county", label: "Location", value: fd["city-county"] });
+  if (fd["city-county"]) chips.push({ key: "city-county", label: "Location", value: `Location: ${fd["city-county"]}` });
   if (fd["cross-streets"]) chips.push({ key: "cross-streets", label: "Cross Streets", value: `Cross Streets: ${fd["cross-streets"]}` });
   if (fd["traffic-count"]) chips.push({ key: "traffic-count", label: "Traffic", value: `Traffic Count: ${fd["traffic-count"]}` });
   // Intentionally excluded: property-type and listing-type-2 store Webflow reference IDs (hex), not display text
@@ -51,7 +52,6 @@ export default function CampaignForm({
   const [listingId, setListingId] = useState(existingCampaign?.listing_id || "");
   const [listingName, setListingName] = useState(existingCampaign?.listing_name || "");
   const [campaignType, setCampaignType] = useState<CampaignType>(existingCampaign?.campaign_type || "one-time");
-  const [templateStyle, setTemplateStyle] = useState<"new_listing" | "broker_blast">("new_listing");
   const [emailLabel, setEmailLabel] = useState(existingCampaign?.email_label || "");
   const [headingText, setHeadingText] = useState(existingCampaign?.heading_text || "");
   const [bodyText, setBodyText] = useState(existingCampaign?.body_text || "");
@@ -107,12 +107,8 @@ export default function CampaignForm({
       setPhotoUrl(fd.gallery?.[0]?.url || "");
       setListingPageUrl(fd.slug ? `https://cre8advisors.com/listings/${fd.slug}` : "");
 
-      // Auto-build highlights from listing fields (no trailing empty row)
-      const autoHighlights: string[] = [];
-      if (fd["list-price"]) autoHighlights.push(`Price: ${fd["list-price"]}`);
-      if (fd["square-feet"]) autoHighlights.push(`${fd["square-feet"]} Acres`);
-      if (fd.zoning) autoHighlights.push(`Zoning: ${fd.zoning}`);
-      if (fd["city-county"]) autoHighlights.push(fd["city-county"]);
+      // Auto-build highlights from listing fields (shared with the listing → campaign sync)
+      const autoHighlights = buildAutoHighlights(fd);
       if (autoHighlights.length > 0) setHighlights(autoHighlights);
     }
   };
@@ -301,28 +297,6 @@ export default function CampaignForm({
                 </div>
               </div>
 
-              {/* Template style toggle */}
-              <div>
-                <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
-                  Template Style
-                </label>
-                <div className="flex gap-2">
-                  {([{ id: "new_listing", label: "New Listing" }, { id: "broker_blast", label: "Broker Blast" }] as const).map((style) => (
-                    <button
-                      key={style.id}
-                      onClick={() => setTemplateStyle(style.id)}
-                      className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150
-                        ${templateStyle === style.id
-                          ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-                          : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
-                        }`}
-                    >
-                      {style.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               {/* Heading — short description (replaces old Email Label button group) */}
               <div>
                 <label className="block text-xs font-semibold text-muted-gray uppercase tracking-wide mb-1">
@@ -432,7 +406,7 @@ export default function CampaignForm({
                         <input
                           value={h}
                           onChange={(e) => updateHighlight(i, e.target.value)}
-                          placeholder={`Highlight ${i + 1}...`}
+                          placeholder="Title: Value  (e.g. Zoning: C-2)"
                           className="flex-1 bg-transparent text-sm text-charcoal focus:outline-none placeholder:text-border-medium"
                         />
 

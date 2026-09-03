@@ -99,6 +99,15 @@ export default function EmailPage() {
         });
         if (!res.ok) throw new Error("Failed to update campaign");
 
+        // The API saved to Supabase AND pushed the change to Resend.
+        // If the Resend step failed, surface it so the toast shows a retry.
+        const saved = await res.json();
+        if (saved.provider_sync && saved.provider_sync.ok === false) {
+          throw new Error(
+            `Saved, but the email provider wasn't updated: ${saved.provider_sync.error || saved.provider_sync.action}`
+          );
+        }
+
         // Refresh campaigns + selected campaign detail
         await fetchCampaigns();
         const refreshRes = await fetch(`/api/email/campaigns/${editId}`);
@@ -117,6 +126,12 @@ export default function EmailPage() {
           body: JSON.stringify({ ...data, auto_schedule: true }),
         });
         if (!res.ok) throw new Error("Failed to create campaign");
+        const created = await res.json();
+        if (created.provider_sync && created.provider_sync.ok === false) {
+          throw new Error(
+            `Campaign saved, but the email provider wasn't updated: ${created.provider_sync.error || created.provider_sync.action}`
+          );
+        }
         await fetchCampaigns();
       }
       // Signal success to the toast
@@ -158,7 +173,7 @@ export default function EmailPage() {
     try {
       const res = await fetch(`/api/email/campaigns/${id}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
         body: JSON.stringify(data),
       });
       if (!res.ok) throw new Error("Failed to update campaign");
@@ -176,7 +191,10 @@ export default function EmailPage() {
   // Delete campaign
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/email/campaigns/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/email/campaigns/${id}`, {
+        method: "DELETE",
+        headers: { "x-user-email": userEmail },
+      });
       if (!res.ok) throw new Error("Failed to delete campaign");
       setSelectedCampaign(null);
       await fetchCampaigns();
@@ -188,7 +206,10 @@ export default function EmailPage() {
   // Pause campaign
   const handlePause = async (id: string) => {
     try {
-      const res = await fetch(`/api/email/campaigns/${id}/pause`, { method: "POST" });
+      const res = await fetch(`/api/email/campaigns/${id}/pause`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
       if (!res.ok) throw new Error("Failed to pause campaign");
       await fetchCampaigns();
       if (selectedCampaign?.id === id) {
@@ -203,7 +224,10 @@ export default function EmailPage() {
   // Resume campaign
   const handleResume = async (id: string) => {
     try {
-      const res = await fetch(`/api/email/campaigns/${id}/resume`, { method: "POST" });
+      const res = await fetch(`/api/email/campaigns/${id}/resume`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
       if (!res.ok) throw new Error("Failed to resume campaign");
       await fetchCampaigns();
       if (selectedCampaign?.id === id) {
