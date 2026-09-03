@@ -57,12 +57,10 @@ export default function NewListingsSection({
     <div className="mb-5">
       {/* Section heading */}
       <div className="flex items-center gap-2 mb-2.5">
+        {/* Green badge is now the section title itself */}
         <span className="bg-green text-black text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded">
-          New
-        </span>
-        <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
           New Listings
-        </h2>
+        </span>
         <span className="text-xs text-[#777]">
           {visible.length} in progress
         </span>
