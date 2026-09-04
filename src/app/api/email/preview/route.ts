@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireUser } from "@/lib/email/auth";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 
-// POST /api/email/preview — render email HTML for the preview modal
+// POST /api/email/preview — render email HTML for the preview modal.
+// No auth check on purpose: it only renders HTML from the fields in the request
+// and touches no data, so a stale browser tab can't break it.
 export async function POST(request: NextRequest) {
-  const auth = requireUser(request);
-  if (auth.response) return auth.response;
-
   try {
     const body = await request.json();
 
