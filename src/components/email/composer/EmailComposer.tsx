@@ -228,7 +228,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         {/* Left: live email */}
         <div
           data-scroll-pane
-          className={`w-full lg:w-1/2 overflow-y-auto bg-light-gray p-6 lg:p-10 relative ${
+          className={`w-full lg:w-[60%] overflow-y-auto bg-light-gray p-6 lg:p-10 relative ${
             mobileTab === "preview" ? "block" : "hidden lg:block"
           }`}
         >
@@ -251,7 +251,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
         {/* Right: controls */}
         <div
-          className={`w-full lg:w-1/2 shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light px-6 lg:px-8 py-6 space-y-8 ${
+          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light px-6 lg:px-8 py-6 space-y-8 ${
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
