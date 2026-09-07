@@ -11,6 +11,9 @@ const MODULES = [
 export default function MarketingSidebar() {
   const pathname = usePathname();
 
+  // The campaign composer wants the whole width — hide the module rail there
+  if (/^\/marketing\/email\/(new|[^/]+\/edit)/.test(pathname || "")) return null;
+
   return (
     <aside className="w-48 bg-white border-r border-border-light flex flex-col py-4 shrink-0">
       <h3 className="px-4 text-xs font-semibold text-muted-gray uppercase tracking-wider mb-3">

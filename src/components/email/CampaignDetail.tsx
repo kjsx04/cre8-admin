@@ -1,13 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
-import { ListingItem } from "@/lib/admin-constants";
 import PriorityBadge from "./PriorityBadge";
 import EmailPreview from "./EmailPreview";
-import CampaignForm from "./CampaignForm";
 
 interface CampaignDetailProps {
   campaign: Campaign;
@@ -16,9 +15,6 @@ interface CampaignDetailProps {
   onPause: (id: string) => Promise<void>;
   onResume: (id: string) => Promise<void>;
   onClose: () => void;
-  /** Called when user edits via the form — triggers full re-schedule */
-  onEdit?: (data: CampaignFormData, autoSchedule: boolean) => Promise<void>;
-  listings?: ListingItem[];
 }
 
 /** Slide-over detail panel — same pattern as DealDetail */
@@ -29,12 +25,10 @@ export default function CampaignDetail({
   onPause,
   onResume,
   onClose,
-  onEdit,
-  listings,
 }: CampaignDetailProps) {
   void onUpdate; // reserved for inline edit
+  const router = useRouter();
   const [showPreview, setShowPreview] = useState(false);
-  const [showEditForm, setShowEditForm] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
@@ -62,15 +56,6 @@ export default function CampaignDetail({
     await onDelete(campaign.id);
     setActionLoading(false);
     setShowDeleteConfirm(false);
-  };
-
-  // Handle edit form submission — fire callback and close form immediately.
-  // Parent page manages the toast animation lifecycle.
-  const handleEditSubmit = async (data: CampaignFormData, autoSchedule: boolean) => {
-    if (onEdit) {
-      onEdit(data, autoSchedule); // don't await — parent shows toast
-      setShowEditForm(false);
-    }
   };
 
   return (
@@ -186,10 +171,10 @@ export default function CampaignDetail({
                 Preview Email
               </button>
 
-              {/* Edit button — only for draft/scheduled campaigns */}
-              {canEdit(campaign.status) && onEdit && (
+              {/* Edit button — opens the full-page composer (draft/scheduled/active only) */}
+              {canEdit(campaign.status) && (
                 <button
-                  onClick={() => setShowEditForm(true)}
+                  onClick={() => router.push(`/marketing/email/${campaign.id}/edit`)}
                   className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors"
                 >
                   Edit Campaign
@@ -257,15 +242,6 @@ export default function CampaignDetail({
         <EmailPreview campaign={campaign} onClose={() => setShowPreview(false)} />
       )}
 
-      {/* Edit campaign form modal */}
-      {showEditForm && (
-        <CampaignForm
-          existingCampaign={campaign}
-          onSubmit={handleEditSubmit}
-          onClose={() => setShowEditForm(false)}
-          listings={listings}
-        />
-      )}
     </>
   );
 }

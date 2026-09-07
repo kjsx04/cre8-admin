@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
       campaign_type,
       listing_name,
       frequency,
+      priority,             // "high" | "normal" — set by the user in the composer
       target_date,          // optional — recurring next occurrence should land near this date
       existing_campaigns,
     } = body;
@@ -36,8 +37,8 @@ export async function POST(request: NextRequest) {
     // Format existing campaigns for the prompt
     const existingList = (existing_campaigns || [])
       .map(
-        (c: { id: string; listing_name: string; email_label: string; scheduled_date: string; campaign_type: string }) =>
-          `- ID: ${c.id} | "${c.email_label}: ${c.listing_name}" | Scheduled: ${c.scheduled_date || "unscheduled"} | Type: ${c.campaign_type}`
+        (c: { id: string; listing_name: string; email_label: string; scheduled_date: string; campaign_type: string; priority?: string }) =>
+          `- ID: ${c.id} | "${c.email_label}: ${c.listing_name}" | Scheduled: ${c.scheduled_date || "unscheduled"} | Type: ${c.campaign_type} | Priority: ${c.priority === "high" ? "HIGHEST" : "normal"}`
       )
       .join("\n");
 
@@ -49,8 +50,11 @@ RULES:
 - Business hours ONLY: 7:00 AM - 5:00 PM MST, Monday through Friday
 - Time preferences: mornings (7-11 AM) > afternoons (12-5 PM). Tuesday-Thursday > Monday/Friday.
 - Maximum 2 campaigns per day. Minimum 2-hour gap between any two sends on the same day.
-- Priority hierarchy (higher = more important, gets better slots):
-  1. Just Listed (highest)
+- USER PRIORITY (set by the broker, overrides everything below):
+  - HIGHEST: a major listing. Give it the single best available slot in the next 1-3 business days (Tue-Thu morning if at all possible). You may shift normal-priority campaigns to make room.
+  - normal: fit it into any open slot that satisfies the rules. Never displace a HIGHEST campaign for it.
+- Secondary hierarchy when priorities tie (higher = better slot):
+  1. Just Listed
   2. Just Sold
   3. Featured
   4. New (listing < 60 days old)
@@ -72,6 +76,7 @@ NEW CAMPAIGN TO SCHEDULE:
 - Type: ${campaign_type}
 - Listing: ${listing_name}
 - Frequency: ${frequency || "one-time"}
+- User priority: ${priority === "high" ? "HIGHEST" : "normal"}
 ${target_date ? `- TARGET DATE: this is the next occurrence of a recurring campaign. Schedule it in the same week as ${String(target_date).substring(0, 10)} (same weekday/time as the previous send when possible). If that date is already in the past, pick the next valid business-hours slot at least 24 hours from now.` : ""}
 
 Return ONLY valid JSON (no markdown, no preamble):

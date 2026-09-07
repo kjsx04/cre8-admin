@@ -37,3 +37,6 @@ next-env.d.ts
 
 # Pulled Vercel env snapshots — contain secrets, never commit
 .env.vercel*
+
+# Supabase CLI cache
+supabase/.temp/

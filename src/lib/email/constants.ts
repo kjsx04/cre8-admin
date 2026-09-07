@@ -7,7 +7,7 @@
  * cre8advisors.com domain can be a sender, so each broker sends as themselves.
  */
 
-import { EmailSender, EmailSegment, EmailTemplateVars } from "./types";
+import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars } from "./types";
 
 // ── Broker senders ──
 // Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
@@ -71,7 +71,7 @@ const CRE8_LINKEDIN = "https://www.linkedin.com/company/cre8-advisors";
 const CRE8_INSTAGRAM = "https://www.instagram.com/cre8advisors";
 
 // ── Broker headshot URLs (square PNGs from Webflow CDN) ──
-const BROKER_HEADSHOTS: Record<string, string> = {
+export const BROKER_HEADSHOTS: Record<string, string> = {
   "6987ab84b1ac0ee1e143f72f": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c6e8ac15213b103fbb_Rommie%20Square.png",
   "6987abdaa473a39098593f50": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c62928977ac46368d0_Andy%20Square.png",
   "6987fada67c88dd8b9b89e39": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c60e361af25a1df351_Lindsey%20Square.png",
@@ -103,6 +103,21 @@ export function buildTemplateVars(
   const heading = (data.heading_text as string) || (data.listing_name as string) || "Property Listing";
   const brokerId = (data.broker_id as string) || "";
 
+  // All brokers on the email: broker_ids (primary first) with broker_id guaranteed at the front.
+  // Each resolves to a sender from EMAIL_SENDERS; the primary falls back to the stored fields.
+  const rawIds = Array.isArray(data.broker_ids) ? (data.broker_ids as string[]) : [];
+  const orderedIds = Array.from(new Set([brokerId, ...rawIds].filter(Boolean)));
+  const brokers: BrokerCardVars[] = orderedIds.map((id) => {
+    const sender = EMAIL_SENDERS.find((s) => s.id === id);
+    const isPrimary = id === brokerId;
+    return {
+      name: sender?.name || (isPrimary ? (data.broker_name as string) : "") || "",
+      email: (sender?.email || (isPrimary ? (data.broker_email as string) : "") || "").toLowerCase(),
+      phone: sender?.phone || (isPrimary ? (data.broker_phone as string) : "") || "",
+      headshotUrl: BROKER_HEADSHOTS[id] || "",
+    };
+  });
+
   return {
     label,
     labelColor,
@@ -119,6 +134,7 @@ export function buildTemplateVars(
     brokerHeadshotUrl: BROKER_HEADSHOTS[brokerId] || "",
     brokerTitle: BROKER_TITLES[brokerId] || "Advisor",
     propertyAddress: (data.property_address as string) || "",
+    brokers,
   };
 }
 
@@ -141,6 +157,10 @@ function parseHighlight(h: string): { label: string; value: string } {
  * Dark premium CRE8 brand — table-based layout with all inline styles
  * for maximum email client compatibility.
  */
+// NOTE: the `data-field="…"` attributes below are inert in email clients. The
+// composer's live preview uses them to map a click in the email to the matching
+// input (see src/lib/email/preview-wrapper.ts). This function must stay send-safe:
+// no scripts, nothing preview-only.
 export function renderEmailHtml(vars: EmailTemplateVars): string {
   // Parse highlights into label/value pairs for the stats grid
   const highlights = vars.highlights.filter((h) => h.trim()).map(parseHighlight);
@@ -150,14 +170,19 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   // typed without a title fall back to "Detail" so the layout stays consistent.
   let statsGridHtml = "";
   if (highlights.length > 0) {
-    const rows = highlights.map((h) => `
+    const rows = highlights.map((h, i) => `
                             <tr>
                               <td colspan="2" style="padding:0 0 8px 0;">
                                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                   <tr>
-                                    <td style="background-color:#111111;border-radius:6px;padding:14px 16px;">
-                                      <p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;">${escapeHtml(h.label || "Detail")}</p>
-                                      <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:16px;font-weight:700;color:#FFFFFF;line-height:1.3;">${escapeHtml(h.value)}</p>
+                                    <td data-field="highlight-${i}" style="background-color:#111111;border-radius:6px;padding:12px 16px;">
+                                      <!-- Title left, value right, on one line -->
+                                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                                        <tr>
+                                          <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;white-space:nowrap;padding-right:16px;">${escapeHtml(h.label || "Detail")}</td>
+                                          <td valign="middle" align="right" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;color:#FFFFFF;line-height:1.3;text-align:right;">${escapeHtml(h.value)}</td>
+                                        </tr>
+                                      </table>
                                     </td>
                                   </tr>
                                 </table>
@@ -168,6 +193,45 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
   // CTA text varies by campaign type
   const ctaText = vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
+
+  // Broker cards — one per broker, 8px apart. Falls back to the single primary broker fields.
+  const brokerList: BrokerCardVars[] =
+    vars.brokers && vars.brokers.length > 0
+      ? vars.brokers
+      : [{ name: vars.brokerName, email: vars.brokerEmail, phone: vars.brokerPhone, headshotUrl: vars.brokerHeadshotUrl }];
+  const brokerCardsHtml = brokerList
+    .map(
+      (b, i) => `
+                <tr>
+                  <td style="padding:${i === 0 ? "0" : "8px"} 0 0 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border-radius:8px;width:100%;">
+                      <tr>
+                        <td style="padding:20px 24px;">
+                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                            <tr>
+                              ${b.headshotUrl ? `
+                              <!-- Broker headshot — 80px -->
+                              <td valign="top" style="width:80px;padding-right:20px;">
+                                <img src="${b.headshotUrl}" alt="${escapeHtml(b.name)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
+                              </td>` : ""}
+                              <!-- Broker info: name, email, phone -->
+                              <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
+                                <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
+                                  ${escapeHtml(b.name)}
+                                </p>
+                                <p style="margin:6px 0 0 0;font-size:13px;line-height:1.4;">
+                                  <a href="mailto:${b.email}" style="color:#8CC644;text-decoration:none;">${escapeHtml(b.email)}</a>${b.phone ? ` &nbsp;&middot;&nbsp; <span style="color:#BFBFBF;">${escapeHtml(b.phone)}</span>` : ""}
+                                </p>
+                              </td>
+                            </tr>
+                          </table>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>`
+    )
+    .join("");
 
   // ~60 zero-width spacers to push body text out of inbox preview snippet
   const preheaderSpacer = "&zwnj;&nbsp;".repeat(60);
@@ -235,14 +299,14 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                   <!-- Left: Label + Heading + Address -->
                   <td valign="top" style="padding-right:16px;">
                     <!-- Label — green uppercase text -->
-                    <p style="margin:0 0 10px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
+                    <p data-field="label" style="margin:0 0 10px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
                       ${escapeHtml(vars.label)}
                     </p>
                     <!-- Heading — Bebas Neue where web fonts load (Apple Mail, iOS).
                          Outlook/Gmail strip web fonts, so the fallback is bold uppercase
                          Helvetica/Arial with tracking — reads as the same display style
                          instead of the cramped Arial Narrow fallback. -->
-                    <h1 style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
+                    <h1 data-field="heading" style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.heading)}
                     </h1>
                     ${vars.propertyAddress ? `
@@ -266,7 +330,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <!-- Hero property photo — full bleed, clickable to listing page -->
           ${vars.photoUrl ? `
           <tr>
-            <td style="padding:0;line-height:0;font-size:0;">
+            <td data-field="photo" style="padding:0;line-height:0;font-size:0;">
               ${vars.listingUrl
                 ? `<a href="${vars.listingUrl}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;"><img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" /></a>`
                 : `<img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" />`}
@@ -277,7 +341,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           ${vars.bodyText ? `
           <tr>
             <td style="padding:20px 32px 0 32px;">
-              <p style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
+              <p data-field="body" style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
                 ${escapeHtml(vars.bodyText)}
               </p>
             </td>
@@ -296,7 +360,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <!-- CTA button — dark text on green -->
           ${vars.listingUrl ? `
           <tr>
-            <td style="padding:28px 32px 0 32px;text-align:center;">
+            <td data-field="cta" style="padding:28px 32px 0 32px;text-align:center;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
                 <tr>
                   <td align="center" style="border-radius:4px;background-color:#8CC644;">
@@ -330,39 +394,11 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>
 
-          <!-- Broker contact card -->
+          <!-- Broker contact card(s) — one per broker, stacked -->
           <tr>
-            <td style="padding:28px 32px 28px 32px;">
+            <td data-field="broker" style="padding:28px 32px 28px 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td>
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border-radius:8px;width:100%;">
-                      <tr>
-                        <td style="padding:20px 24px;">
-                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                            <tr>
-                              ${vars.brokerHeadshotUrl ? `
-                              <!-- Broker headshot — 80px -->
-                              <td valign="top" style="width:80px;padding-right:20px;">
-                                <img src="${vars.brokerHeadshotUrl}" alt="${escapeHtml(vars.brokerName)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
-                              </td>` : ""}
-                              <!-- Broker info -->
-                              <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
-                                <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
-                                  ${escapeHtml(vars.brokerName)}
-                                </p>
-                                <!-- Title + company intentionally omitted — card shows name, email, phone only -->
-                                <p style="margin:6px 0 0 0;font-size:13px;line-height:1.4;">
-                                  <a href="mailto:${vars.brokerEmail}" style="color:#8CC644;text-decoration:none;">${escapeHtml(vars.brokerEmail)}</a>${vars.brokerPhone ? ` &nbsp;&middot;&nbsp; <span style="color:#BFBFBF;">${escapeHtml(vars.brokerPhone)}</span>` : ""}
-                                </p>
-                              </td>
-                            </tr>
-                          </table>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
+                ${brokerCardsHtml}
               </table>
             </td>
           </tr>

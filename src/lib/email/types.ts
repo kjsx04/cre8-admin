@@ -26,6 +26,9 @@ export type EmailLabel = "Just Listed" | "Just Sold" | string;
 // Priority level (auto-derived from listing + label)
 export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
 
+// User-chosen scheduling priority: "high" = grab a great slot, "normal" = fit anywhere
+export type CampaignPriority = "high" | "normal";
+
 // ── Campaign record (matches Supabase schema) ──
 export interface Campaign {
   id: string;
@@ -38,10 +41,12 @@ export interface Campaign {
   photo_url: string | null;
   highlights: string[];       // JSONB array of highlight strings
   listing_page_url: string | null;
-  broker_id: string;
+  broker_id: string;              // primary broker — the From address
   broker_name: string;
   broker_email: string;
   broker_phone: string | null;
+  broker_ids: string[];           // all brokers shown on the email (primary first)
+  priority: CampaignPriority;     // tells the AI scheduler how hard to fight for a slot
   segment_id: string | null;
   segment_name: string;
   frequency: CampaignFrequency | null;
@@ -71,6 +76,8 @@ export interface CampaignFormData {
   broker_name: string;
   broker_email: string;
   broker_phone?: string;
+  broker_ids?: string[];          // optional — defaults to [broker_id]
+  priority?: CampaignPriority;    // defaults to "normal"
   segment_id?: string;
   segment_name?: string;
   frequency?: CampaignFrequency;
@@ -134,11 +141,20 @@ export interface EmailTemplateVars {
   photoUrl: string;
   highlights: string[];
   listingUrl: string;
-  brokerName: string;
+  brokerName: string;          // primary broker (kept for compatibility)
   brokerEmail: string;
   brokerPhone: string;
   preheaderText: string;       // Hidden inbox preview text
   brokerHeadshotUrl: string;   // Square PNG from Webflow CDN
   brokerTitle: string;         // "Associate Broker" etc.
   propertyAddress: string;     // Street address line below heading
+  brokers: BrokerCardVars[];   // one card per broker, primary first
+}
+
+// One broker contact card in the email
+export interface BrokerCardVars {
+  name: string;
+  email: string;
+  phone: string;
+  headshotUrl: string;
 }

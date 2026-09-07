@@ -68,6 +68,8 @@ export async function POST(request: NextRequest) {
         broker_name: template.broker_name,
         broker_email: template.broker_email,
         broker_phone: template.broker_phone,
+        broker_ids: template.broker_ids || [template.broker_id],
+        priority: template.priority || "normal",
         segment_id: template.segment_id,
         segment_name: template.segment_name,
         frequency: "one-time",

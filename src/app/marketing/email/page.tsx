@@ -1,15 +1,13 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData, CampaignStatus } from "@/lib/email/types";
 
 import EmailCalendar from "@/components/email/EmailCalendar";
 import CampaignCard from "@/components/email/CampaignCard";
-import CampaignForm from "@/components/email/CampaignForm";
 import CampaignDetail from "@/components/email/CampaignDetail";
-import SchedulingAnimation from "@/components/email/SchedulingAnimation";
-import { ListingItem } from "@/lib/admin-constants";
 
 // Status tabs for filtering the campaign list
 const STATUS_TABS: { label: string; statuses: CampaignStatus[] }[] = [
@@ -22,27 +20,17 @@ const STATUS_TABS: { label: string; statuses: CampaignStatus[] }[] = [
 export default function EmailPage() {
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
+  const router = useRouter();
 
   // Data state
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [listings, setListings] = useState<ListingItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   // UI state
   const [activeTab, setActiveTab] = useState(0);
-  const [showForm, setShowForm] = useState(false);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
-
-  // Toast scheduling animation state (lives at page level, independent of any modal)
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastApiDone, setToastApiDone] = useState(false);
-  const [toastApiError, setToastApiError] = useState<string | null>(null);
-  // Track whether the toast should use create (5-step) or edit (2-step) animation
-  const [toastMode, setToastMode] = useState<"create" | "edit">("create");
-  // Store last form data + context for retry
-  const lastFormRef = useRef<{ data: CampaignFormData; editId?: string } | null>(null);
 
   // Fetch campaigns from API
   const fetchCampaigns = useCallback(async () => {
@@ -58,115 +46,9 @@ export default function EmailPage() {
     }
   }, []);
 
-  // Fetch CRE8 listings for the campaign form dropdown
-  const fetchListings = useCallback(async () => {
-    try {
-      const res = await fetch("/api/listings");
-      if (res.ok) {
-        const data = await res.json();
-        setListings(data.items || []);
-      }
-    } catch {
-      // Non-critical — form still works with manual input
-    }
-  }, []);
-
   useEffect(() => {
     fetchCampaigns();
-    fetchListings();
-  }, [fetchCampaigns, fetchListings]);
-
-  // Fire the API call for create or edit, updating toast state as it resolves
-  const fireSchedulingApi = async (data: CampaignFormData, editId?: string) => {
-    // Store for retry
-    lastFormRef.current = { data, editId };
-
-    // Show the toast and reset state
-    setToastVisible(true);
-    setToastApiDone(false);
-    setToastApiError(null);
-
-    try {
-      if (editId) {
-        // Edit existing campaign
-        const res = await fetch(`/api/email/campaigns/${editId}`, {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-email": userEmail,
-          },
-          body: JSON.stringify({ ...data, auto_schedule: true }),
-        });
-        if (!res.ok) throw new Error("Failed to update campaign");
-
-        // The API saved to Supabase AND pushed the change to Resend.
-        // If the Resend step failed, surface it so the toast shows a retry.
-        const saved = await res.json();
-        if (saved.provider_sync && saved.provider_sync.ok === false) {
-          throw new Error(
-            `Saved, but the email provider wasn't updated: ${saved.provider_sync.error || saved.provider_sync.action}`
-          );
-        }
-
-        // Refresh campaigns + selected campaign detail
-        await fetchCampaigns();
-        const refreshRes = await fetch(`/api/email/campaigns/${editId}`);
-        if (refreshRes.ok) {
-          const refreshed = await refreshRes.json();
-          setSelectedCampaign(refreshed);
-        }
-      } else {
-        // Create new campaign
-        const res = await fetch("/api/email/campaigns", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "x-user-email": userEmail,
-          },
-          body: JSON.stringify({ ...data, auto_schedule: true }),
-        });
-        if (!res.ok) throw new Error("Failed to create campaign");
-        const created = await res.json();
-        if (created.provider_sync && created.provider_sync.ok === false) {
-          throw new Error(
-            `Campaign saved, but the email provider wasn't updated: ${created.provider_sync.error || created.provider_sync.action}`
-          );
-        }
-        await fetchCampaigns();
-      }
-      // Signal success to the toast
-      setToastApiDone(true);
-    } catch (err) {
-      setToastApiError(err instanceof Error ? err.message : "Failed to schedule campaign");
-    }
-  };
-
-  // Create new campaign — form calls this, then closes immediately
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleCreate = async (data: CampaignFormData, _autoSchedule: boolean) => {
-    setToastMode("create");
-    fireSchedulingApi(data);
-  };
-
-  // Edit campaign via full form — called from CampaignDetail
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const handleEdit = async (data: CampaignFormData, _autoSchedule: boolean) => {
-    if (!selectedCampaign) return;
-    setToastMode("edit");
-    fireSchedulingApi(data, selectedCampaign.id);
-  };
-
-  // Retry from the toast — re-fires stored form data
-  const handleToastRetry = () => {
-    if (!lastFormRef.current) return;
-    const { data, editId } = lastFormRef.current;
-    fireSchedulingApi(data, editId);
-  };
-
-  // Toast done — hide it
-  const handleToastComplete = () => {
-    setToastVisible(false);
-  };
+  }, [fetchCampaigns]);
 
   // Update campaign (partial PATCH — used for inline edits, not the full form)
   const handleUpdate = async (id: string, data: Partial<CampaignFormData>) => {
@@ -286,7 +168,7 @@ export default function EmailPage() {
 
           {/* New campaign button */}
           <button
-            onClick={() => setShowForm(true)}
+            onClick={() => router.push("/marketing/email/new")}
             className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
           >
             + New Campaign
@@ -353,15 +235,6 @@ export default function EmailPage() {
         </>
       )}
 
-      {/* Campaign form modal */}
-      {showForm && (
-        <CampaignForm
-          onSubmit={handleCreate}
-          onClose={() => setShowForm(false)}
-          listings={listings}
-        />
-      )}
-
       {/* Campaign detail slide-over */}
       {selectedCampaign && (
         <CampaignDetail
@@ -371,21 +244,9 @@ export default function EmailPage() {
           onPause={handlePause}
           onResume={handleResume}
           onClose={() => setSelectedCampaign(null)}
-          onEdit={handleEdit}
-          listings={listings}
         />
       )}
 
-      {/* Scheduling toast — fixed bottom-left, independent of modals */}
-      {toastVisible && (
-        <SchedulingAnimation
-          apiDone={toastApiDone}
-          apiError={toastApiError}
-          onComplete={handleToastComplete}
-          onRetry={handleToastRetry}
-          mode={toastMode}
-        />
-      )}
     </div>
   );
 }

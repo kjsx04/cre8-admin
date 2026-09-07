@@ -36,7 +36,7 @@ export async function requestAiSlot(
 ): Promise<AiSlot | null> {
   const { data: existing } = await supabase
     .from("email_campaigns")
-    .select("id, listing_name, email_label, scheduled_date, status, campaign_type, frequency")
+    .select("id, listing_name, email_label, scheduled_date, status, campaign_type, frequency, priority")
     .in("status", ["scheduled", "active"])
     .neq("id", campaign.id as string);
 
@@ -49,6 +49,7 @@ export async function requestAiSlot(
       campaign_type: campaign.campaign_type,
       listing_name: campaign.listing_name,
       frequency: campaign.frequency,
+      priority: campaign.priority || "normal",
       target_date: targetDate || null,
       existing_campaigns: existing || [],
     }),

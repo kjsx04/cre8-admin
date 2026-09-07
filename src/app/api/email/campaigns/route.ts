@@ -74,6 +74,11 @@ export async function POST(request: NextRequest) {
       broker_name: body.broker_name,
       broker_email: body.broker_email,
       broker_phone: body.broker_phone || null,
+      // All brokers on the email (primary first). Defaults to just the primary.
+      broker_ids: Array.isArray(body.broker_ids) && body.broker_ids.length > 0
+        ? Array.from(new Set([body.broker_id, ...body.broker_ids]))
+        : [body.broker_id],
+      priority: body.priority === "high" ? "high" : "normal",
       segment_id: body.segment_id || null,
       segment_name: body.segment_name || "All Contacts",
       frequency: body.frequency || "one-time",

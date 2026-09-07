@@ -57,6 +57,13 @@ export async function PATCH(
   if (body.broker_name !== undefined) updates.broker_name = body.broker_name;
   if (body.broker_email !== undefined) updates.broker_email = body.broker_email;
   if (body.broker_phone !== undefined) updates.broker_phone = body.broker_phone || null;
+  if (body.broker_ids !== undefined) {
+    const primary = body.broker_id;
+    updates.broker_ids = Array.isArray(body.broker_ids) && body.broker_ids.length > 0
+      ? Array.from(new Set([primary, ...body.broker_ids].filter(Boolean)))
+      : primary ? [primary] : [];
+  }
+  if (body.priority !== undefined) updates.priority = body.priority === "high" ? "high" : "normal";
   if (body.segment_id !== undefined) updates.segment_id = body.segment_id || null;
   if (body.segment_name !== undefined) updates.segment_name = body.segment_name;
   if (body.frequency !== undefined) updates.frequency = body.frequency;

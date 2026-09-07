@@ -27,3 +27,15 @@ create index if not exists email_campaigns_recurring_due_idx
 
 -- Ran after the Resend code went live on Vercel (2026-09-03):
 alter table public.email_campaigns drop column if exists sendgrid_single_send_id;
+
+-- 2026-09-07: multiple brokers per campaign. broker_id stays the primary (From address);
+-- broker_ids lists everyone shown on the email, primary first.
+alter table public.email_campaigns
+  add column if not exists broker_ids jsonb not null default '[]'::jsonb;
+update public.email_campaigns
+  set broker_ids = jsonb_build_array(broker_id)
+  where (broker_ids = '[]'::jsonb or broker_ids is null) and broker_id is not null;
+
+-- 2026-09-07: user-chosen scheduling priority ("high" = best slot, "normal" = fit anywhere)
+alter table public.email_campaigns
+  add column if not exists priority text not null default 'normal';
