@@ -65,7 +65,7 @@ export const STATUS_COLORS: Record<string, string> = {
 // ── CRE8 branding constants for email template ──
 const CRE8_LOGO_URL = "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/6717f6e1c60fe16248597819_CRE8%20White.svg";
 const CRE8_SITE_URL = "https://cre8advisors.com";
-const CRE8_ADDRESS = "14050 N 83rd Ave, Suite 290, Peoria, AZ 85381";
+const CRE8_ADDRESS = "4120 E Indian School Rd, Phoenix, AZ 85018";
 const CRE8_PHONE = "602.888.2738";
 const CRE8_LINKEDIN = "https://www.linkedin.com/company/cre8-advisors";
 const CRE8_INSTAGRAM = "https://www.instagram.com/cre8advisors";
