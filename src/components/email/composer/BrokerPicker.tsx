@@ -11,14 +11,21 @@ interface BrokerPickerProps {
 }
 
 /**
- * Broker — a row of headshots. Click to add or remove a broker.
- * Every selected broker gets a contact card in the email; the first one picked
- * is the sender. The primary shows a small "From" tag.
+ * Broker — a row of headshots.
+ *   Single click  → add / remove that broker (they get a contact card in the email)
+ *   Double click  → make that broker the sender (the "From" address), adding them if needed
+ * The sender is always first in the list and wears the "From" tag.
  */
 export default function BrokerPicker({ brokerIds, onChange, fieldProps }: BrokerPickerProps) {
   const toggle = (id: string) => {
     if (brokerIds.includes(id)) onChange(brokerIds.filter((b) => b !== id));
     else onChange([...brokerIds, id]);
+  };
+
+  // Double-click: move to the front. The two single clicks that precede a double-click
+  // toggle the broker twice (net no change), so this always ends with them selected + first.
+  const makeSender = (id: string) => {
+    onChange([id, ...brokerIds.filter((b) => b !== id)]);
   };
 
   const selected = brokerIds
@@ -37,7 +44,14 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
               key={s.id}
               type="button"
               onClick={() => toggle(s.id)}
-              title={active ? `${s.name} — click to remove` : s.name}
+              onDoubleClick={() => makeSender(s.id)}
+              title={
+                idx === 0
+                  ? `${s.name} — sender`
+                  : active
+                  ? `${s.name} — click to remove, double-click to send from`
+                  : `${s.name} — click to add, double-click to send from`
+              }
               className={`relative w-12 h-12 rounded-full transition-all duration-150 ${
                 active ? "ring-[3px] ring-green ring-offset-2 opacity-100" : "opacity-50 hover:opacity-90"
               }`}
@@ -65,13 +79,14 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
 
       <div className="mt-3 text-xs text-muted-gray">
         {selected.length === 0 ? (
-          "Pick at least one"
+          "Click to add a broker"
         ) : (
           <>
             <span className="text-charcoal font-medium">{selected.map((s) => s.name).join(", ")}</span>
-            {selected.length > 1 && <span> · sends from {selected[0].name.split(" ")[0]}</span>}
+            <span> · sends from {selected[0].name.split(" ")[0]}</span>
           </>
         )}
+        <span className="block mt-0.5 text-[11px] text-border-medium">Click to add · Double-click to send from</span>
       </div>
     </div>
   );
