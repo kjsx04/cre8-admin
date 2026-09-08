@@ -321,7 +321,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={3} title="Partner Logo">
+              <Section n={3} title="Partner Logo" note="optional">
                 <PartnerLogoPicker
                   url={draft.partnerLogoUrl}
                   onPreview={(dataUrl, w, h) => {
@@ -490,7 +490,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 }
 
 /** Numbered section: badge + two-word title */
-function Section({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function Section({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
   return (
     <section>
       <div className="flex items-center gap-2 mb-3">
@@ -498,6 +498,7 @@ function Section({ n, title, children }: { n: number; title: string; children: R
           {n}
         </span>
         <h2 className="text-xs font-semibold text-muted-gray uppercase tracking-wide">{title}</h2>
+        {note && <span className="text-[11px] text-muted-gray/70 normal-case tracking-normal">· {note}</span>}
       </div>
       {children}
     </section>
