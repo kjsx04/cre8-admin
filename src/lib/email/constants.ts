@@ -310,16 +310,17 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                 <tr>
                   <!-- Left: Label + Heading + Address -->
                   <td valign="top" style="padding-right:16px;">
-                    <!-- Label — green uppercase text -->
-                    <p data-field="label" style="margin:0 0 10px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
-                      ${escapeHtml(vars.label)}
+                    <!-- Top line — the listing name (or a typed override), small green caps -->
+                    <p data-field="heading" style="margin:0 0 5px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
+                      ${escapeHtml(vars.heading.toUpperCase())}
                     </p>
                     <!-- Heading — Bebas Neue where web fonts load (Apple Mail, iOS).
                          Outlook/Gmail strip web fonts, so the fallback is bold uppercase
                          Helvetica/Arial with tracking — reads as the same display style
                          instead of the cramped Arial Narrow fallback. -->
-                    <h1 data-field="heading" style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
-                      ${escapeHtml(vars.heading)}
+                    <!-- Big line — the heading typed in the composer ("Just Listed", "Price Reduced", …) -->
+                    <h1 data-field="label" style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
+                      ${escapeHtml(vars.label)}
                     </h1>
                     ${vars.propertyAddress ? `
                     <p style="margin:6px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
