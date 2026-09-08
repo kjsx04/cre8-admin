@@ -9,7 +9,7 @@
  * produced — so nothing downstream changes.
  */
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Campaign, CampaignFormData, CampaignType, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
 import { EMAIL_SENDERS, EMAIL_SEGMENTS } from "@/lib/email/constants";
 import { BROKERS, BROKER_CONTACTS, brokerIdForEmail, ListingItem } from "@/lib/admin-constants";
@@ -46,6 +46,57 @@ export type MissingField = "listing" | "broker" | "partnerLogo";
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
 const newRow = (title = "", value = ""): HighlightRow => ({ id: nextRowId++, title, value });
+
+// ── Draft persistence (survives refresh / reload) ──
+// Saved in localStorage per campaign ("new" for a fresh one). A partner logo that is
+// still a data: URL (chosen but not applied) is not saved — it can be huge and isn't final.
+const STORAGE_PREFIX = "cre8-email-draft:";
+const storageKey = (campaignId?: string | null) => `${STORAGE_PREFIX}${campaignId || "new"}`;
+
+interface StoredDraft {
+  draft: CampaignDraft;
+  savedAt: string; // ISO
+}
+
+function readStoredDraft(campaignId?: string | null): StoredDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(storageKey(campaignId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredDraft;
+    if (!parsed?.draft || !parsed.savedAt) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDraft(campaignId: string | null | undefined, draft: CampaignDraft) {
+  if (typeof window === "undefined") return;
+  try {
+    const safe: CampaignDraft = draft.partnerLogoUrl.startsWith("data:")
+      ? { ...draft, partnerLogoUrl: "", partnerLogoWidth: 0, partnerLogoHeight: 0 }
+      : draft;
+    window.localStorage.setItem(storageKey(campaignId), JSON.stringify({ draft: safe, savedAt: new Date().toISOString() }));
+  } catch {
+    // Storage full or blocked — the composer still works, it just won't survive a refresh
+  }
+}
+
+export function clearStoredDraft(campaignId?: string | null) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(storageKey(campaignId));
+  } catch {
+    /* ignore */
+  }
+}
+
+/** Make sure new highlight rows never reuse an id from a restored draft */
+function bumpRowIds(draft: CampaignDraft) {
+  const max = draft.highlights.reduce((m, r) => Math.max(m, r.id), 0);
+  if (max >= nextRowId) nextRowId = max + 1;
+}
 
 /** Blank draft for a new campaign — broker defaults to the signed-in user when they're a broker */
 function emptyDraft(userEmail: string): CampaignDraft {
@@ -98,11 +149,47 @@ function fromCampaign(c: Campaign): CampaignDraft {
 }
 
 export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign | null; userEmail: string }) {
-  const [draft, setDraft] = useState<CampaignDraft>(() =>
-    campaign ? fromCampaign(campaign) : emptyDraft(userEmail)
-  );
-  // Snapshot for the dirty check
-  const initialJsonRef = useRef(JSON.stringify(draft));
+  const campaignId = campaign?.id ?? null;
+
+  // Start from the campaign (edit) or blank (create), then prefer a saved draft from a
+  // previous session if there is one that's newer than the campaign itself.
+  const [initial] = useState(() => {
+    const base = campaign ? fromCampaign(campaign) : emptyDraft(userEmail);
+    const stored = readStoredDraft(campaignId);
+    const storedIsNewer = stored && (!campaign?.updated_at || stored.savedAt > campaign.updated_at);
+    if (stored && storedIsNewer && JSON.stringify(stored.draft) !== JSON.stringify(base)) {
+      bumpRowIds(stored.draft);
+      return { draft: stored.draft, base, restored: true, restoredAt: stored.savedAt };
+    }
+    return { draft: base, base, restored: false, restoredAt: null as string | null };
+  });
+
+  const [draft, setDraft] = useState<CampaignDraft>(initial.draft);
+  const [restored, setRestored] = useState(initial.restored);
+  // Snapshot for the dirty check — the campaign/blank baseline, not the restored draft
+  const initialJsonRef = useRef(JSON.stringify(initial.base));
+
+  // Save as you type (lightly debounced). Cleared on submit or discard.
+  useEffect(() => {
+    const t = window.setTimeout(() => {
+      if (JSON.stringify(draft) === initialJsonRef.current) {
+        clearStoredDraft(campaignId); // back to baseline — nothing worth keeping
+      } else {
+        writeStoredDraft(campaignId, draft);
+      }
+    }, 300);
+    return () => window.clearTimeout(t);
+  }, [draft, campaignId]);
+
+  /** Throw away the restored draft and go back to the campaign / blank form */
+  const discardRestored = useCallback(() => {
+    clearStoredDraft(campaignId);
+    setDraft(initial.base);
+    setRestored(false);
+  }, [campaignId, initial.base]);
+
+  /** Forget the saved copy (after a successful submit) */
+  const forgetStored = useCallback(() => clearStoredDraft(campaignId), [campaignId]);
 
   /** Set one field */
   const set = useCallback(<K extends keyof CampaignDraft>(key: K, value: CampaignDraft[K]) => {
@@ -217,5 +304,9 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     missing,
     isValid,
     dirty,
+    restored,
+    restoredAt: initial.restoredAt,
+    discardRestored,
+    forgetStored,
   };
 }

@@ -65,6 +65,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     draft, set, pickListing,
     addHighlight, updateHighlight, moveHighlight, removeHighlight,
     formData, missing, isValid, dirty,
+    restored, restoredAt, discardRestored, forgetStored,
   } = useCampaignDraft({ campaign, userEmail });
 
   const isEdit = mode === "edit";
@@ -139,11 +140,12 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     try {
       await submitCampaign(lastPayloadRef.current, userEmail, campaign?.id);
       submittedRef.current = true;
+      forgetStored(); // it's saved for real now
       setToastDone(true);
     } catch (err) {
       setToastError(err instanceof Error ? err.message : "Something went wrong");
     }
-  }, [userEmail, campaign?.id]);
+  }, [userEmail, campaign?.id, forgetStored]);
 
   const handleSubmit = () => {
     if (!isValid || (toastVisible && !toastError)) return;
@@ -155,7 +157,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   // ── Unsaved-changes guard ──
   const handleBack = () => {
-    if (dirty && !submittedRef.current && !window.confirm("Discard changes?")) return;
+    if (dirty && !submittedRef.current) {
+      if (!window.confirm("Discard changes?")) return;
+      forgetStored();
+    }
     goBack();
   };
 
@@ -230,6 +235,19 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </button>
         ))}
       </div>
+
+      {/* Restored-draft notice */}
+      {restored && (
+        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-2 bg-[#f0fce8] border-b border-border-light text-xs text-charcoal">
+          <span>
+            Restored your unsaved work
+            {restoredAt && <span className="text-muted-gray"> from {new Date(restoredAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+          </span>
+          <button type="button" onClick={discardRestored} className="text-xs font-medium text-muted-gray hover:text-charcoal underline">
+            Start fresh
+          </button>
+        </div>
+      )}
 
       {/* ── Split panes ── */}
       <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
