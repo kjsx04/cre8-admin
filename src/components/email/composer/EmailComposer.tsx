@@ -27,6 +27,7 @@ import LivePreviewFrame from "./LivePreviewFrame";
 import TestSendControl from "./TestSendControl";
 import ListingPicker from "./ListingPicker";
 import PhotoPicker from "./PhotoPicker";
+import PartnerLogoPicker from "./PartnerLogoPicker";
 import BrokerPicker from "./BrokerPicker";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
@@ -44,6 +45,7 @@ const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm t
 const MISSING_COPY: Record<MissingField, string> = {
   listing: "a listing",
   broker: "a broker",
+  partnerLogo: "the partner logo (click Apply)",
 };
 
 /** "Add a listing, a broker and a label" */
@@ -78,12 +80,18 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   // ── Live preview ──
   const previewHtml = useMemo(() => {
     const input: Record<string, unknown> = { ...formData };
+    // While a partner logo is being adjusted it's a data: URL — show it in the preview anyway
+    if (draft.partnerLogoUrl) {
+      input.partner_logo_url = draft.partnerLogoUrl;
+      input.partner_logo_width = draft.partnerLogoWidth;
+      input.partner_logo_height = draft.partnerLogoHeight;
+    }
     // Before a listing is picked, show the template defaults so the shape reads
     if (!draft.listingId) {
       input.heading_text = draft.headingText || "Property Name";
     }
     return wrapPreviewHtml(renderEmailHtml(buildTemplateVars(input)));
-  }, [formData, draft.listingId, draft.headingText]);
+  }, [formData, draft.listingId, draft.headingText, draft.partnerLogoUrl, draft.partnerLogoWidth, draft.partnerLogoHeight]);
 
   // ── Focus bridge: preview region ⇄ input ──
   const [activeField, setActiveField] = useState<PreviewField | null>(null);
@@ -294,7 +302,29 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={3} title="Photo">
+              <Section n={3} title="Partner Logo">
+                <PartnerLogoPicker
+                  url={draft.partnerLogoUrl}
+                  onPreview={(dataUrl, w, h) => {
+                    set("partnerLogoUrl", dataUrl);
+                    set("partnerLogoWidth", w);
+                    set("partnerLogoHeight", h);
+                  }}
+                  onApply={({ url, width, height }) => {
+                    set("partnerLogoUrl", url);
+                    set("partnerLogoWidth", width);
+                    set("partnerLogoHeight", height);
+                  }}
+                  onRemove={() => {
+                    set("partnerLogoUrl", "");
+                    set("partnerLogoWidth", 0);
+                    set("partnerLogoHeight", 0);
+                  }}
+                  fieldProps={fieldProps}
+                />
+              </Section>
+
+              <Section n={4} title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
                   photoUrl={draft.photoUrl}
@@ -303,7 +333,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={4} title="Body">
+              <Section n={5} title="Body">
                 <textarea
                   {...fieldProps("body")}
                   value={draft.bodyText}
@@ -314,7 +344,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={5} title="Details">
+              <Section n={6} title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
                   chips={chips}
@@ -326,7 +356,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={6} title="Listing Link">
+              <Section n={7} title="Listing Link">
                 <input
                   {...fieldProps("cta")}
                   value={draft.listingPageUrl}
@@ -336,7 +366,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={7} title="Broker">
+              <Section n={8} title="Broker">
                 <BrokerPicker
                   brokerIds={draft.brokerIds}
                   onChange={(ids) => set("brokerIds", ids)}
@@ -344,7 +374,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={8} title="Audience">
+              <Section n={9} title="Audience">
                 <Segmented
                   value={draft.segmentId}
                   options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({ id: s.id, label: s.name }))}
@@ -352,7 +382,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={9} title="Frequency">
+              <Section n={10} title="Frequency">
                 <div className="space-y-3">
                   <Segmented
                     value={draft.campaignType}
@@ -392,7 +422,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={10} title="Priority">
+              <Section n={11} title="Priority">
                 <div className="space-y-2">
                   <Segmented
                     value={draft.priority}

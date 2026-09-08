@@ -39,3 +39,9 @@ update public.email_campaigns
 -- 2026-09-07: user-chosen scheduling priority ("high" = best slot, "normal" = fit anywhere)
 alter table public.email_campaigns
   add column if not exists priority text not null default 'normal';
+
+-- 2026-09-08: optional partner logo in the email header (hosted in Supabase Storage bucket "email-assets")
+alter table public.email_campaigns
+  add column if not exists partner_logo_url text,
+  add column if not exists partner_logo_width integer,
+  add column if not exists partner_logo_height integer;

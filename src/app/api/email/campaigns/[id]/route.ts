@@ -51,6 +51,9 @@ export async function PATCH(
   if (body.heading_text !== undefined) updates.heading_text = body.heading_text || null;
   if (body.body_text !== undefined) updates.body_text = body.body_text || null;
   if (body.photo_url !== undefined) updates.photo_url = body.photo_url || null;
+  if (body.partner_logo_url !== undefined) updates.partner_logo_url = body.partner_logo_url || null;
+  if (body.partner_logo_width !== undefined) updates.partner_logo_width = body.partner_logo_width ? Number(body.partner_logo_width) : null;
+  if (body.partner_logo_height !== undefined) updates.partner_logo_height = body.partner_logo_height ? Number(body.partner_logo_height) : null;
   if (body.highlights !== undefined) updates.highlights = body.highlights;
   if (body.listing_page_url !== undefined) updates.listing_page_url = body.listing_page_url || null;
   if (body.broker_id !== undefined) updates.broker_id = body.broker_id;

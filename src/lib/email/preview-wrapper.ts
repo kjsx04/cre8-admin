@@ -22,6 +22,7 @@ export type PreviewField =
   | "photo"
   | "cta"
   | "broker"
+  | "partner"
   | `highlight-${number}`;
 
 /** CSS class the parent toggles on the active region */

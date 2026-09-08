@@ -75,7 +75,13 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 // ── CRE8 branding constants for email template ──
-const CRE8_LOGO_URL = "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/6717f6e1c60fe16248597819_CRE8%20White.svg";
+// PNG (340×116, transparent) hosted in Supabase Storage. Gmail doesn't render SVG images.
+const CRE8_LOGO_URL = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/email-assets/brand/cre8-white.png";
+const CRE8_LOGO_RATIO = 340 / 116;
+// Header logo heights: alone vs. with a partner logo (75%)
+const HEADER_LOGO_H = 30;
+const HEADER_LOGO_H_PAIRED = 23;
+const PARTNER_LOGO_MAX_W = 140;
 const CRE8_SITE_URL = "https://cre8advisors.com";
 const CRE8_ADDRESS = "4120 E Indian School Rd, Phoenix, AZ 85018";
 const CRE8_PHONE = "602.888.2738";
@@ -146,6 +152,9 @@ export function buildTemplateVars(
     brokerHeadshotUrl: BROKER_HEADSHOTS[brokerId] || "",
     brokerTitle: BROKER_TITLES[brokerId] || "Advisor",
     propertyAddress: (data.property_address as string) || "",
+    partnerLogoUrl: (data.partner_logo_url as string) || "",
+    partnerLogoWidth: Number(data.partner_logo_width) || 0,
+    partnerLogoHeight: Number(data.partner_logo_height) || 0,
     brokers,
   };
 }
@@ -205,6 +214,36 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
   // CTA text varies by campaign type
   const ctaText = vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
+
+  // Header logos — CRE8 alone at 30px, or CRE8 + partner both at 23px with a divider.
+  const hasPartner = !!vars.partnerLogoUrl;
+  const logoH = hasPartner ? HEADER_LOGO_H_PAIRED : HEADER_LOGO_H;
+  const cre8W = Math.round(logoH * CRE8_LOGO_RATIO);
+  let partnerW = 0;
+  let partnerH = logoH;
+  if (hasPartner) {
+    const ratio = vars.partnerLogoWidth > 0 && vars.partnerLogoHeight > 0 ? vars.partnerLogoWidth / vars.partnerLogoHeight : 1;
+    partnerW = Math.round(logoH * ratio);
+    if (partnerW > PARTNER_LOGO_MAX_W) {
+      // Very wide logo: cap the width and let it sit a little shorter
+      partnerW = PARTNER_LOGO_MAX_W;
+      partnerH = Math.round(PARTNER_LOGO_MAX_W / ratio);
+    }
+  }
+  const headerLogosHtml = `
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-left:auto;">
+                      <tr>
+                        <td valign="middle" style="line-height:0;">
+                          <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="${cre8W}" height="${logoH}" style="display:block;width:${cre8W}px;height:${logoH}px;border:0;outline:none;text-decoration:none;" />
+                        </td>${hasPartner ? `
+                        <td valign="middle" style="padding:0 12px;line-height:0;">
+                          <div style="width:1px;height:${logoH}px;background-color:#444444;font-size:0;line-height:0;">&nbsp;</div>
+                        </td>
+                        <td valign="middle" data-field="partner" style="line-height:0;">
+                          <img src="${vars.partnerLogoUrl}" alt="Partner" width="${partnerW}" height="${partnerH}" style="display:block;width:${partnerW}px;height:${partnerH}px;border:0;outline:none;text-decoration:none;" />
+                        </td>` : ""}
+                      </tr>
+                    </table>`;
 
   // Broker cards — one per broker, 8px apart. Falls back to the single primary broker fields.
   const brokerList: BrokerCardVars[] =
@@ -327,9 +366,9 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       ${escapeHtml(vars.propertyAddress)}
                     </p>` : ""}
                   </td>
-                  <!-- Right: CRE8 logo -->
-                  <td valign="top" width="90" style="text-align:right;">
-                    <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="90" height="auto" style="display:inline-block;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;" />
+                  <!-- Right: CRE8 logo (+ optional partner logo, same height, thin divider) -->
+                  <td valign="top" style="text-align:right;white-space:nowrap;">
+                    ${headerLogosHtml}
                   </td>
                 </tr>
               </table>
@@ -420,7 +459,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <tr>
             <td style="background-color:#000000;border-top:1px solid #333333;padding:28px 32px 24px 32px;text-align:center;">
               <!-- Small CRE8 logo -->
-              <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="100" height="auto" style="display:block;margin:0 auto;border:0;outline:none;text-decoration:none;color:#ffffff;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;" />
+              <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="100" height="34" style="display:block;width:100px;height:34px;margin:0 auto;border:0;outline:none;text-decoration:none;" />
 
               <!-- Company address + phone -->
               <p style="margin:14px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#666666;line-height:1.5;">

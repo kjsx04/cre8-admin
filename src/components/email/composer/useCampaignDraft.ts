@@ -29,6 +29,9 @@ export interface CampaignDraft {
   headingText: string;
   bodyText: string;
   photoUrl: string;
+  partnerLogoUrl: string;       // hosted URL, or a data: URL while adjusting (blocks submit)
+  partnerLogoWidth: number;
+  partnerLogoHeight: number;
   listingPageUrl: string;
   highlights: HighlightRow[];
   brokerIds: string[];          // ordered — the first one is the sender
@@ -38,7 +41,7 @@ export interface CampaignDraft {
   endDate: string;              // "YYYY-MM-DD" or ""
 }
 
-export type MissingField = "listing" | "broker";
+export type MissingField = "listing" | "broker" | "partnerLogo";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -54,6 +57,9 @@ function emptyDraft(userEmail: string): CampaignDraft {
     headingText: "",
     bodyText: "",
     photoUrl: "",
+    partnerLogoUrl: "",
+    partnerLogoWidth: 0,
+    partnerLogoHeight: 0,
     listingPageUrl: "",
     highlights: [],
     brokerIds: [brokerIdForEmail(userEmail) || EMAIL_SENDERS[0]?.id || ""].filter(Boolean),
@@ -74,6 +80,9 @@ function fromCampaign(c: Campaign): CampaignDraft {
     headingText: c.heading_text || "",
     bodyText: c.body_text || "",
     photoUrl: c.photo_url || "",
+    partnerLogoUrl: c.partner_logo_url || "",
+    partnerLogoWidth: c.partner_logo_width || 0,
+    partnerLogoHeight: c.partner_logo_height || 0,
     listingPageUrl: c.listing_page_url || "",
     highlights: (c.highlights || []).map((h) => {
       const { title, value } = splitHighlight(h);
@@ -163,6 +172,9 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       heading_text: draft.headingText || undefined,
       body_text: draft.bodyText || undefined,
       photo_url: draft.photoUrl || undefined,
+      partner_logo_url: draft.partnerLogoUrl && !draft.partnerLogoUrl.startsWith("data:") ? draft.partnerLogoUrl : undefined,
+      partner_logo_width: draft.partnerLogoWidth || undefined,
+      partner_logo_height: draft.partnerLogoHeight || undefined,
       // Rows without a value are incomplete — drop them
       highlights: draft.highlights
         .filter((r) => r.value.trim())
@@ -186,8 +198,9 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     const m: MissingField[] = [];
     if (!draft.listingId) m.push("listing");
     if (draft.brokerIds.length === 0) m.push("broker");
+    if (draft.partnerLogoUrl.startsWith("data:")) m.push("partnerLogo"); // chosen but not applied
     return m;
-  }, [draft.listingId, draft.brokerIds]);
+  }, [draft.listingId, draft.brokerIds, draft.partnerLogoUrl]);
 
   const isValid = missing.length === 0;
   const dirty = JSON.stringify(draft) !== initialJsonRef.current;

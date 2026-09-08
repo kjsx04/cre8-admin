@@ -39,6 +39,9 @@ export interface Campaign {
   heading_text: string | null;
   body_text: string | null;
   photo_url: string | null;
+  partner_logo_url: string | null;     // optional partner/developer logo in the header
+  partner_logo_width: number | null;   // natural px of the uploaded PNG
+  partner_logo_height: number | null;
   highlights: string[];       // JSONB array of highlight strings
   listing_page_url: string | null;
   broker_id: string;              // primary broker — the From address
@@ -70,6 +73,9 @@ export interface CampaignFormData {
   heading_text?: string;
   body_text?: string;
   photo_url?: string;
+  partner_logo_url?: string;
+  partner_logo_width?: number;
+  partner_logo_height?: number;
   highlights?: string[];
   listing_page_url?: string;
   broker_id: string;
@@ -134,6 +140,9 @@ export interface EmailTemplateVars {
   brokerHeadshotUrl: string;   // Square PNG from Webflow CDN
   brokerTitle: string;         // "Associate Broker" etc.
   propertyAddress: string;     // Street address line below heading
+  partnerLogoUrl: string;      // optional partner logo next to the CRE8 logo
+  partnerLogoWidth: number;    // natural px (0 when unknown)
+  partnerLogoHeight: number;
   brokers: BrokerCardVars[];   // one card per broker, primary first
 }
 
