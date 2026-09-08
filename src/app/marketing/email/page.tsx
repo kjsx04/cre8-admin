@@ -23,6 +23,7 @@ import ScheduleToolbar from "@/components/email/schedule/ScheduleToolbar";
 import WeekPlanner from "@/components/email/schedule/WeekPlanner";
 import MonthOverview from "@/components/email/schedule/MonthOverview";
 import OffScheduleSection from "@/components/email/schedule/OffScheduleSection";
+import PriorityPanel from "@/components/email/schedule/PriorityPanel";
 import CampaignDetail from "@/components/email/CampaignDetail";
 
 type View = "week" | "month";
@@ -54,6 +55,7 @@ function EmailSchedule() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
+  const [showPriorities, setShowPriorities] = useState(false);
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -211,6 +213,15 @@ function EmailSchedule() {
             ))}
           </div>
 
+          {/* Priorities panel */}
+          <button
+            type="button"
+            onClick={() => setShowPriorities(true)}
+            className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
+          >
+            Priorities
+          </button>
+
           <button
             type="button"
             onClick={() => router.push("/marketing/email/new")}
@@ -245,6 +256,16 @@ function EmailSchedule() {
           )}
           <OffScheduleSection waiting={waiting} finished={finished} onSelect={setSelectedCampaign} />
         </div>
+      )}
+
+      {/* Priorities slide-over */}
+      {showPriorities && (
+        <PriorityPanel
+          campaigns={campaigns}
+          userEmail={userEmail}
+          onClose={() => setShowPriorities(false)}
+          onApplied={fetchCampaigns}
+        />
       )}
 
       {/* Campaign detail slide-over */}
