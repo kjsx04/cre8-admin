@@ -303,19 +303,20 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 <div className="space-y-2.5">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
-                  <input
-                    {...fieldProps("label")}
-                    value={draft.emailLabel}
-                    onChange={(e) => set("emailLabel", e.target.value)}
-                    placeholder="Just Listed"
-                    className={INPUT}
-                  />
+                  {/* Same order as the email: small green top line first, big white heading second */}
                   <input
                     {...fieldProps("heading")}
                     value={draft.headingText}
                     onChange={(e) => set("headingText", e.target.value)}
                     placeholder={(draft.listingName || "Property Name").toUpperCase()}
                     className={`${INPUT} text-xs uppercase tracking-wide`}
+                  />
+                  <input
+                    {...fieldProps("label")}
+                    value={draft.emailLabel}
+                    onChange={(e) => set("emailLabel", e.target.value)}
+                    placeholder="Just Listed"
+                    className={INPUT}
                   />
                 </div>
               </Section>
