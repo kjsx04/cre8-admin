@@ -118,20 +118,6 @@ export interface EmailSender {
   phone: string;
 }
 
-// ── Calendar event (for FullCalendar rendering) ──
-export interface CalendarEvent {
-  id: string;
-  title: string;
-  start: string;       // ISO date string
-  backgroundColor: string;
-  borderColor: string;
-  classNames?: string[];  // Extra CSS classes (e.g., 'recurring-event')
-  extendedProps: {
-    campaign: Campaign;
-    priority: PriorityLevel;
-  };
-}
-
 // ── Email template variables (passed to renderEmailHtml) ──
 export interface EmailTemplateVars {
   label: string;           // "Just Listed", "Just Sold", etc.

@@ -4,7 +4,7 @@
  * Priority calculation, color helpers, and date formatting.
  */
 
-import { Campaign, PriorityLevel, CalendarEvent } from "./types";
+import { Campaign, PriorityLevel } from "./types";
 import { TYPE_COLORS, RECURRING_COLOR } from "./constants";
 import type { ListingFieldData } from "@/lib/admin-constants";
 
@@ -119,32 +119,6 @@ export function joinHighlight(title: string, value: string): string {
   const t = title.trim();
   const v = value.trim();
   return t ? `${t}: ${v}` : v;
-}
-
-/** Convert a Campaign to a FullCalendar event object */
-export function campaignToEvent(campaign: Campaign): CalendarEvent | null {
-  // scheduled_date is the pending send for both one-time and recurring
-  // (recurring keeps next_send_date == scheduled_date; fall back just in case)
-  const dateStr = campaign.scheduled_date || campaign.next_send_date;
-
-  if (!dateStr) return null;
-
-  const color = getTypeColor(campaign.email_label);
-  const priority = calculatePriority(campaign.email_label);
-
-  return {
-    id: campaign.id,
-    title: `${campaign.email_label}: ${campaign.listing_name}`,
-    start: dateStr,
-    backgroundColor: color,
-    borderColor: color,
-    // Recurring campaigns get a distinct CSS class for striped pattern
-    classNames: campaign.campaign_type === "recurring" ? ["recurring-event"] : [],
-    extendedProps: {
-      campaign,
-      priority,
-    },
-  };
 }
 
 /** Format a date string for display (e.g., "Mar 2, 2026 at 8:30 AM") */

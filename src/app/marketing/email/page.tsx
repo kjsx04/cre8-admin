@@ -1,38 +1,60 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { Campaign, CampaignFormData, CampaignStatus } from "@/lib/email/types";
+import { Campaign, CampaignFormData } from "@/lib/email/types";
+import {
+  DateKey,
+  isDateKey,
+  todayKey,
+  addDays,
+  addMonths,
+  startOfWeekMonday,
+  weekKeys,
+  monthGridKeys,
+  keyRangeToInstants,
+  weekLabel,
+  monthLabel,
+} from "@/lib/email/schedule-dates";
+import { expandOccurrences, groupByDay } from "@/lib/email/occurrences";
 
-import EmailCalendar from "@/components/email/EmailCalendar";
-import CampaignCard from "@/components/email/CampaignCard";
+import ScheduleToolbar from "@/components/email/schedule/ScheduleToolbar";
+import WeekPlanner from "@/components/email/schedule/WeekPlanner";
+import MonthOverview from "@/components/email/schedule/MonthOverview";
+import OffScheduleSection from "@/components/email/schedule/OffScheduleSection";
 import CampaignDetail from "@/components/email/CampaignDetail";
 
-// Status tabs for filtering the campaign list
-const STATUS_TABS: { label: string; statuses: CampaignStatus[] }[] = [
-  { label: "All", statuses: [] },
-  { label: "Scheduled", statuses: ["scheduled", "active"] },
-  { label: "Drafts", statuses: ["draft"] },
-  { label: "Completed", statuses: ["completed", "cancelled", "paused"] },
-];
+type View = "week" | "month";
 
+/** Next 14 needs a Suspense boundary around anything that reads search params */
 export default function EmailPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-16">
+          <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
+        </div>
+      }
+    >
+      <EmailSchedule />
+    </Suspense>
+  );
+}
+
+function EmailSchedule() {
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
 
-  // Data state
+  // ── Data ──
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // UI state
-  const [activeTab, setActiveTab] = useState(0);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
-  const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
 
-  // Fetch campaigns from API
   const fetchCampaigns = useCallback(async () => {
     try {
       const res = await fetch("/api/email/campaigns");
@@ -50,7 +72,43 @@ export default function EmailPage() {
     fetchCampaigns();
   }, [fetchCampaigns]);
 
-  // Update campaign (partial PATCH — used for inline edits, not the full form)
+  // ── View + anchor live in the URL so refresh / share keep place ──
+  const view: View = params.get("view") === "month" ? "month" : "week";
+  const today = todayKey();
+  const rawDate = params.get("date");
+  const anchor: DateKey = isDateKey(rawDate) ? rawDate : today;
+
+  const setQuery = useCallback(
+    (next: { view?: View; date?: DateKey }) => {
+      const q = new URLSearchParams(params.toString());
+      q.set("view", next.view ?? view);
+      q.set("date", next.date ?? anchor);
+      router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+    },
+    [params, router, pathname, view, anchor]
+  );
+
+  const weekStart = startOfWeekMonday(anchor);
+  const visibleKeys = view === "week" ? weekKeys(weekStart) : monthGridKeys(anchor);
+  const { start, end } = keyRangeToInstants(visibleKeys[0], visibleKeys[visibleKeys.length - 1]);
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+
+  // Expand recurring campaigns into dated sends for the visible range
+  const itemsByDay = useMemo(
+    () => groupByDay(expandOccurrences(campaigns, new Date(startMs), new Date(endMs))),
+    [campaigns, startMs, endMs]
+  );
+
+  // ── Nav ──
+  const onPrev = () =>
+    view === "week" ? setQuery({ date: addDays(weekStart, -7) }) : setQuery({ date: addMonths(anchor, -1) });
+  const onNext = () =>
+    view === "week" ? setQuery({ date: addDays(weekStart, 7) }) : setQuery({ date: addMonths(anchor, 1) });
+  const onToday = () => setQuery({ date: today });
+  const label = view === "week" ? weekLabel(weekStart) : monthLabel(anchor);
+
+  // ── Handlers (unchanged) ──
   const handleUpdate = async (id: string, data: Partial<CampaignFormData>) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}`, {
@@ -60,7 +118,6 @@ export default function EmailPage() {
       });
       if (!res.ok) throw new Error("Failed to update campaign");
       await fetchCampaigns();
-
       if (selectedCampaign?.id === id) {
         const updated = await res.json();
         setSelectedCampaign(updated);
@@ -70,7 +127,6 @@ export default function EmailPage() {
     }
   };
 
-  // Delete campaign
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}`, {
@@ -85,7 +141,6 @@ export default function EmailPage() {
     }
   };
 
-  // Pause campaign
   const handlePause = async (id: string) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}/pause`, {
@@ -103,7 +158,6 @@ export default function EmailPage() {
     }
   };
 
-  // Resume campaign
   const handleResume = async (id: string) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}/resume`, {
@@ -121,53 +175,44 @@ export default function EmailPage() {
     }
   };
 
-  // Calendar event click → open detail
-  const handleEventClick = (campaign: Campaign) => {
-    setSelectedCampaign(campaign);
-  };
-
-  // Filter campaigns by active tab
-  const filteredCampaigns = STATUS_TABS[activeTab].statuses.length === 0
-    ? campaigns
-    : campaigns.filter((c) => STATUS_TABS[activeTab].statuses.includes(c.status));
-
-  // Summary counts
-  const scheduledCount = campaigns.filter((c) => c.status === "scheduled" || c.status === "active").length;
-  const draftCount = campaigns.filter((c) => c.status === "draft").length;
+  // ── Counts + partitions ──
+  const waiting = campaigns.filter((c) => c.status === "draft" || c.status === "paused");
+  const finished = campaigns.filter((c) => c.status === "completed" || c.status === "cancelled");
+  const onSchedule = campaigns.filter((c) => c.status === "scheduled" || c.status === "active");
+  const listingsOnSchedule = new Set(onSchedule.map((c) => c.listing_id)).size;
+  const weekSends = weekKeys(weekStart).reduce((n, k) => n + (itemsByDay.get(k)?.length ?? 0), 0);
+  const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   return (
     <div className="p-6 space-y-5">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="font-bebas text-3xl tracking-wide text-charcoal">
-            Email Campaigns
-          </h1>
+          <h1 className="font-bebas text-3xl tracking-wide text-charcoal">Email Campaigns</h1>
           <p className="text-sm text-muted-gray mt-0.5">
-            {scheduledCount} scheduled &middot; {draftCount} draft{draftCount !== 1 ? "s" : ""} &middot; {campaigns.length} total
+            {view === "week" && <>{plural(weekSends, "send")} this week &middot; </>}
+            {plural(listingsOnSchedule, "listing")} on schedule &middot; {waiting.length} waiting
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* View toggle */}
+          {/* Week | Month toggle */}
           <div className="flex border border-border-light rounded-btn overflow-hidden">
-            <button
-              onClick={() => setViewMode("calendar")}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors
-                ${viewMode === "calendar" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"}`}
-            >
-              Calendar
-            </button>
-            <button
-              onClick={() => setViewMode("list")}
-              className={`px-3 py-1.5 text-xs font-medium transition-colors
-                ${viewMode === "list" ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"}`}
-            >
-              List
-            </button>
+            {(["week", "month"] as const).map((v) => (
+              <button
+                key={v}
+                type="button"
+                onClick={() => setQuery({ view: v })}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
+                  view === v ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"
+                }`}
+              >
+                {v === "week" ? "Week" : "Month"}
+              </button>
+            ))}
           </div>
 
-          {/* New campaign button */}
           <button
+            type="button"
             onClick={() => router.push("/marketing/email/new")}
             className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
           >
@@ -176,63 +221,30 @@ export default function EmailPage() {
         </div>
       </div>
 
-      {/* Loading / Error states */}
+      {/* Loading / Error */}
       {loading && (
         <div className="flex items-center justify-center py-16">
           <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
         </div>
       )}
-      {error && (
-        <p className="text-center text-red-500 py-8">{error}</p>
-      )}
+      {error && <p className="text-center text-red-500 py-8">{error}</p>}
 
-      {/* Main content */}
+      {/* Schedule */}
       {!loading && !error && (
-        <>
-          {viewMode === "calendar" ? (
-            <EmailCalendar
-              campaigns={filteredCampaigns}
-              onEventClick={handleEventClick}
-            />
+        <div>
+          <ScheduleToolbar label={label} onPrev={onPrev} onNext={onNext} onToday={onToday} />
+          {view === "week" ? (
+            <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} onSelect={setSelectedCampaign} />
           ) : (
-            /* List view */
-            <div>
-              {/* Status tabs */}
-              <div className="flex gap-1 mb-4">
-                {STATUS_TABS.map((tab, i) => (
-                  <button
-                    key={tab.label}
-                    onClick={() => setActiveTab(i)}
-                    className={`px-3 py-1.5 text-sm font-medium rounded-btn transition-colors duration-150
-                      ${activeTab === i
-                        ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-                        : "text-muted-gray hover:text-charcoal hover:bg-light-gray border border-transparent"
-                      }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Campaign cards */}
-              {filteredCampaigns.length === 0 ? (
-                <div className="text-center py-12 text-muted-gray text-sm">
-                  No campaigns found. Create one to get started.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {filteredCampaigns.map((c) => (
-                    <CampaignCard
-                      key={c.id}
-                      campaign={c}
-                      onClick={handleEventClick}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
+            <MonthOverview
+              anchor={anchor}
+              itemsByDay={itemsByDay}
+              today={today}
+              onSelectDay={(key) => setQuery({ view: "week", date: key })}
+            />
           )}
-        </>
+          <OffScheduleSection waiting={waiting} finished={finished} onSelect={setSelectedCampaign} />
+        </div>
       )}
 
       {/* Campaign detail slide-over */}
@@ -246,7 +258,6 @@ export default function EmailPage() {
           onClose={() => setSelectedCampaign(null)}
         />
       )}
-
     </div>
   );
 }

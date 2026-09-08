@@ -43,6 +43,18 @@ export const TYPE_COLORS: Record<string, string> = {
 // Fallback for custom labels / recurring
 export const RECURRING_COLOR = "#8CC644"; // CRE8 green
 
+// ── Schedule planner ──
+// The AI scheduler's soft cap per business day. The week planner flags days above it.
+export const MAX_SENDS_PER_DAY = 2;
+export const FREQUENCY_LABELS: Record<string, string> = {
+  weekly: "Weekly",
+  "bi-weekly": "Bi-weekly",
+  monthly: "Monthly",
+};
+// Diagonal stripe overlay used on recurring campaign chips (inline backgroundImage)
+export const RECURRING_STRIPE =
+  "repeating-linear-gradient(135deg, transparent, transparent 3px, rgba(255,255,255,0.18) 3px, rgba(255,255,255,0.18) 6px)";
+
 // ── Status display config ──
 export const STATUS_LABELS: Record<string, string> = {
   draft:     "Draft",
