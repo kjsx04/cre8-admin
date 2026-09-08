@@ -27,12 +27,17 @@ export function loadImage(file: File): Promise<HTMLImageElement> {
   });
 }
 
-/** Draw an image to a fresh canvas (long side capped so processing stays fast) */
+const MIN_WIDTH = 600; // tiny sources (favicons, small web logos, SVGs) are upscaled so the header stays crisp
+
+/** Draw an image to a fresh canvas (long side capped so processing stays fast; small sources upscaled) */
 export function imageToCanvas(img: HTMLImageElement): HTMLCanvasElement {
-  const scale = Math.min(1, MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+  const w = img.naturalWidth || 600;
+  const h = img.naturalHeight || 200;
+  let scale = Math.min(1, MAX_SIDE / Math.max(w, h));
+  if (w * scale < MIN_WIDTH) scale = MIN_WIDTH / w;
   const c = document.createElement("canvas");
-  c.width = Math.max(1, Math.round(img.naturalWidth * scale));
-  c.height = Math.max(1, Math.round(img.naturalHeight * scale));
+  c.width = Math.max(1, Math.round(w * scale));
+  c.height = Math.max(1, Math.round(h * scale));
   c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
   return c;
 }

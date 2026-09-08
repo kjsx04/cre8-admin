@@ -45,17 +45,20 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
   const [tolerance, setTolerance] = useState(30);
   const [white, setWhite] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const rootRef = useRef<HTMLDivElement | null>(null);
   const processedRef = useRef<HTMLCanvasElement | null>(null);
 
   const adjusting = !!source;               // a file is chosen and not yet applied
   const hasSaved = !!url && !url.startsWith("data:");
 
-  // ── Pick a file ──
+  // ── Pick a file (drop, click, or paste) ──
+  // Anything the browser can draw on a canvas is fine as INPUT — it always leaves as a PNG.
   async function handleFile(file: File) {
     setError(null);
-    if (!/^image\/(png|jpeg)$/.test(file.type)) {
-      setError(file.type === "image/svg+xml" ? "SVG isn't supported in email — export a PNG" : "PNG or JPEG only");
+    if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(file.type)) {
+      setError("That isn't an image — try PNG, JPEG, WebP or SVG");
       return;
     }
     if (file.size > MAX_FILE) {
@@ -65,7 +68,7 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
     try {
       const img = await loadImage(file);
       const canvas = imageToCanvas(img);
-      // JPEGs never have transparency; PNGs on a solid background don't either → auto-on
+      // JPEGs never have transparency; PNGs/others on a solid background don't either → auto-on
       setRemoveBg(file.type === "image/jpeg" || !hasTransparency(canvas));
       setWhite(false);
       setTolerance(30);
@@ -74,6 +77,59 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
       setError(err instanceof Error ? err.message : "Couldn't read that image");
     }
   }
+
+  // ── Paste: an image from the clipboard, or an image link ──
+  async function handlePastedUrl(text: string) {
+    const url = text.trim();
+    if (!/^https?:\/\/\S+$/i.test(url)) return false;
+    setError(null);
+    setFetching(true);
+    try {
+      const res = await fetch(`/api/email/assets/fetch?url=${encodeURIComponent(url)}`, {
+        headers: { "x-user-email": userEmail },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Couldn't fetch that link");
+      }
+      const blob = await res.blob();
+      const ext = (blob.type.split("/")[1] || "png").replace("+xml", "");
+      await handleFile(new File([blob], `pasted-logo.${ext}`, { type: blob.type }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't fetch that link");
+    } finally {
+      setFetching(false);
+    }
+    return true;
+  }
+
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      // Don't hijack pastes into text fields elsewhere on the page
+      const active = document.activeElement as HTMLElement | null;
+      const typing = active && (active.tagName === "INPUT" || active.tagName === "TEXTAREA") && !rootRef.current?.contains(active);
+      if (typing) return;
+
+      const items = Array.from(e.clipboardData?.items || []);
+      const imageItem = items.find((it) => it.kind === "file" && it.type.startsWith("image/"));
+      if (imageItem) {
+        const f = imageItem.getAsFile();
+        if (f) {
+          e.preventDefault();
+          handleFile(f);
+        }
+        return;
+      }
+      const text = e.clipboardData?.getData("text/plain") || "";
+      if (/^https?:\/\/\S+$/i.test(text.trim())) {
+        e.preventDefault();
+        handlePastedUrl(text);
+      }
+    }
+    document.addEventListener("paste", onPaste);
+    return () => document.removeEventListener("paste", onPaste);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userEmail]);
 
   // ── Re-process whenever a toggle changes; push a live preview to the email ──
   useEffect(() => {
@@ -125,7 +181,15 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
   const previewSrc = adjusting ? url : hasSaved ? url : "";
 
   return (
-    <div {...fieldProps("partner")} tabIndex={-1} className="outline-none space-y-3">
+    <div
+      {...fieldProps("partner")}
+      ref={(el) => {
+        fieldProps("partner").ref(el);
+        rootRef.current = el as HTMLDivElement | null;
+      }}
+      tabIndex={-1}
+      className="outline-none space-y-3"
+    >
       {/* Drop zone (only when nothing is chosen/saved) */}
       {!adjusting && !hasSaved && (
         <div
@@ -142,14 +206,14 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
             dragOver ? "border-green bg-[#F0F9E5]" : "border-border-medium hover:border-muted-gray"
           }`}
         >
-          <p className="text-sm text-charcoal">Drop a logo, or click to choose</p>
-          <p className="text-[11px] text-muted-gray mt-0.5">PNG or JPEG · optional · goes next to the CRE8 logo</p>
+          <p className="text-sm text-charcoal">{fetching ? "Fetching…" : "Drop, paste, or click to choose a logo"}</p>
+          <p className="text-[11px] text-muted-gray mt-0.5">Paste a copied image or an image link · optional · goes next to the CRE8 logo</p>
         </div>
       )}
       <input
         ref={inputRef}
         type="file"
-        accept="image/png,image/jpeg"
+        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
         className="hidden"
         onChange={(e) => {
           const f = e.target.files?.[0];
