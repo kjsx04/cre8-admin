@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { getSendStatus, cancelSend } from "@/lib/email/provider";
-import { scheduleCampaign, computeNextSendDate } from "@/lib/email/scheduler";
+import { scheduleCampaign, computeNextSendDate, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 
 /**
  * GET /api/email/cron — Vercel Cron handler
@@ -141,9 +141,21 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Nightly rebalance: this week and next, so mornings start under the cap ──
+    const rebalance: unknown[] = [];
+    try {
+      const thisWeek = currentWeekStart();
+      rebalance.push(await optimizeWeek(baseUrl, thisWeek));
+      rebalance.push(await optimizeWeek(baseUrl, addDaysKey(thisWeek, 7)));
+    } catch (err) {
+      console.error("[Cron] rebalance failed:", err);
+      rebalance.push({ error: err instanceof Error ? err.message : "rebalance failed" });
+    }
+
     return NextResponse.json({
       processed: results.length,
       results,
+      rebalance,
       timestamp: now.toISOString(),
     });
   } catch (error) {
@@ -153,4 +165,11 @@ export async function GET(request: NextRequest) {
       { status: 500 }
     );
   }
+}
+
+/** YYYY-MM-DD + n days (civil, no timezone) */
+function addDaysKey(key: string, n: number): string {
+  const d = new Date(`${key}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
 }

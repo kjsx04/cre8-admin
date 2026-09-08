@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { scheduleCampaign } from "@/lib/email/scheduler";
+import { placeListing } from "@/lib/email/priorities";
 
 // GET /api/email/campaigns — list campaigns, optionally filtered by listing_id or status
 export async function GET(request: NextRequest) {
@@ -93,6 +94,13 @@ export async function POST(request: NextRequest) {
 
   if (insertErr) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
+  }
+
+  // Give the listing a spot in the ranked priority list (top for "Top of list", else bottom)
+  try {
+    await placeListing(campaign.listing_id, campaign.listing_name, campaign.priority === "high" ? "top" : "bottom");
+  } catch (err) {
+    console.error("[POST campaigns] rank placement failed:", err);
   }
 
   // If auto_schedule is true, get an AI slot + push to Resend

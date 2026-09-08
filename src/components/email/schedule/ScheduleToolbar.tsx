@@ -5,12 +5,16 @@ interface ScheduleToolbarProps {
   onPrev: () => void;
   onNext: () => void;
   onToday: () => void;
+  /** Week view only: ask the AI to rebalance this week */
+  onOptimize?: () => void;
+  optimizing?: boolean;
+  optimizeNote?: string | null;
 }
 
 const BTN = "px-3 py-1 rounded-md bg-[#F0F0F0] hover:bg-[#E0E0E0] text-xs font-semibold text-charcoal transition-colors";
 
 /** ‹ › Today + the Bebas period label */
-export default function ScheduleToolbar({ label, onPrev, onNext, onToday }: ScheduleToolbarProps) {
+export default function ScheduleToolbar({ label, onPrev, onNext, onToday, onOptimize, optimizing, optimizeNote }: ScheduleToolbarProps) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-1.5">
@@ -25,7 +29,20 @@ export default function ScheduleToolbar({ label, onPrev, onNext, onToday }: Sche
         </button>
       </div>
       <h2 className="font-bebas text-2xl tracking-wide text-charcoal">{label}</h2>
-      <div className="w-[140px]" aria-hidden />
+      <div className="w-[220px] flex items-center justify-end gap-2">
+        {optimizeNote && <span className="text-[11px] text-muted-gray truncate">{optimizeNote}</span>}
+        {onOptimize && (
+          <button
+            type="button"
+            onClick={onOptimize}
+            disabled={optimizing}
+            title="Ask the AI to rebalance this week under the per-day cap"
+            className={`${BTN} whitespace-nowrap disabled:opacity-50`}
+          >
+            {optimizing ? "Rebalancing…" : "Re-optimize week"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }

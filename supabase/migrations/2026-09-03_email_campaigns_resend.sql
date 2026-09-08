@@ -45,3 +45,13 @@ alter table public.email_campaigns
   add column if not exists partner_logo_url text,
   add column if not exists partner_logo_width integer,
   add column if not exists partner_logo_height integer;
+
+-- 2026-09-08: ranked listing priorities (one row per listing; rank 1 = most important).
+-- Feeds the AI scheduler and the week optimizer. Only listings with campaigns on the schedule get a row.
+create table if not exists public.listing_priorities (
+  listing_id   text primary key,
+  listing_name text,
+  rank         integer not null,
+  updated_at   timestamptz not null default now()
+);
+create index if not exists listing_priorities_rank_idx on public.listing_priorities (rank);

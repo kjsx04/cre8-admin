@@ -446,15 +446,15 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   <Segmented
                     value={draft.priority}
                     options={[
-                      { id: "high", label: "Highest" },
+                      { id: "high", label: "Top of list" },
                       { id: "normal", label: "Normal" },
                     ]}
                     onChange={(v) => set("priority", v as CampaignPriority)}
                   />
                   <p className="text-xs text-muted-gray">
                     {draft.priority === "high"
-                      ? "AI grabs the best slot in the next few days, moving others if needed."
-                      : "AI fits it into the next open slot."}
+                      ? "Goes to #1 in the Priorities list — AI grabs the best slot in the next few days, moving others if needed."
+                      : "Joins the bottom of the Priorities list — AI fits it into the next open slot. Reorder anytime from the schedule page."}
                     {isEdit && campaign?.scheduled_date && (
                       <> Currently {formatScheduleDate(campaign.scheduled_date)}.</>
                     )}

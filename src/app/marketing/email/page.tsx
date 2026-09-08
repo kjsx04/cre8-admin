@@ -56,6 +56,8 @@ function EmailSchedule() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showPriorities, setShowPriorities] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
+  const [optimizeNote, setOptimizeNote] = useState<string | null>(null);
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -177,6 +179,46 @@ function EmailSchedule() {
     }
   };
 
+  // Re-slot one campaign (after an edit, or from the detail panel)
+  const handleReschedule = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email/campaigns/${id}/reschedule`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: "{}",
+      });
+      if (!res.ok) throw new Error("Failed to reschedule");
+      const updated = await res.json();
+      await fetchCampaigns();
+      if (selectedCampaign?.id === id) setSelectedCampaign(updated);
+    } catch (err) {
+      console.error("Reschedule failed:", err);
+    }
+  };
+
+  // Ask the AI to rebalance the visible week
+  const handleOptimize = async () => {
+    setOptimizing(true);
+    setOptimizeNote(null);
+    try {
+      const res = await fetch("/api/email/campaigns/optimize-week", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ week_start: weekStart }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Optimize failed");
+      const n = data.moved?.length || 0;
+      setOptimizeNote(n === 0 ? "Already balanced" : `Moved ${n} send${n === 1 ? "" : "s"}`);
+      await fetchCampaigns();
+    } catch (err) {
+      setOptimizeNote(err instanceof Error ? err.message : "Optimize failed");
+    } finally {
+      setOptimizing(false);
+      window.setTimeout(() => setOptimizeNote(null), 6000);
+    }
+  };
+
   // ── Counts + partitions ──
   const waiting = campaigns.filter((c) => c.status === "draft" || c.status === "paused");
   const finished = campaigns.filter((c) => c.status === "completed" || c.status === "cancelled");
@@ -243,7 +285,15 @@ function EmailSchedule() {
       {/* Schedule */}
       {!loading && !error && (
         <div>
-          <ScheduleToolbar label={label} onPrev={onPrev} onNext={onNext} onToday={onToday} />
+          <ScheduleToolbar
+            label={label}
+            onPrev={onPrev}
+            onNext={onNext}
+            onToday={onToday}
+            onOptimize={view === "week" ? handleOptimize : undefined}
+            optimizing={optimizing}
+            optimizeNote={optimizeNote}
+          />
           {view === "week" ? (
             <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} onSelect={setSelectedCampaign} />
           ) : (
@@ -276,6 +326,7 @@ function EmailSchedule() {
           onDelete={handleDelete}
           onPause={handlePause}
           onResume={handleResume}
+          onReschedule={handleReschedule}
           onClose={() => setSelectedCampaign(null)}
         />
       )}

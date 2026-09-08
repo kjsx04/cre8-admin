@@ -14,6 +14,8 @@ interface CampaignDetailProps {
   onDelete: (id: string) => Promise<void>;
   onPause: (id: string) => Promise<void>;
   onResume: (id: string) => Promise<void>;
+  /** Ask the AI for a fresh slot (after edits, or when the current one is bad) */
+  onReschedule?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -24,6 +26,7 @@ export default function CampaignDetail({
   onDelete,
   onPause,
   onResume,
+  onReschedule,
   onClose,
 }: CampaignDetailProps) {
   void onUpdate; // reserved for inline edit
@@ -48,6 +51,13 @@ export default function CampaignDetail({
   const handleResume = async () => {
     setActionLoading(true);
     await onResume(campaign.id);
+    setActionLoading(false);
+  };
+
+  const handleReschedule = async () => {
+    if (!onReschedule) return;
+    setActionLoading(true);
+    await onReschedule(campaign.id);
     setActionLoading(false);
   };
 
@@ -178,6 +188,17 @@ export default function CampaignDetail({
                   className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors"
                 >
                   Edit Campaign
+                </button>
+              )}
+
+              {/* Reschedule — AI picks a fresh slot (scheduled/active only) */}
+              {onReschedule && (campaign.status === "scheduled" || campaign.status === "active") && (
+                <button
+                  onClick={handleReschedule}
+                  disabled={actionLoading}
+                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
+                >
+                  {actionLoading ? "Rescheduling..." : "Reschedule (AI picks a new time)"}
                 </button>
               )}
 
