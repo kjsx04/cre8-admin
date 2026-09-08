@@ -224,9 +224,18 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
 
       {/* Swatch — the logo as it will look on the dark header */}
       {previewSrc && (
-        <div className="rounded-card bg-[#1A1A1A] px-5 py-4 flex items-center justify-center min-h-[72px]">
+        <div className="relative rounded-card bg-[#1A1A1A] px-5 py-4 flex items-center justify-center min-h-[72px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={previewSrc} alt="Partner logo" className="max-h-10 max-w-[200px] object-contain" />
+          {/* Small × in the corner — removes the logo (or cancels while adjusting) */}
+          <button
+            type="button"
+            onClick={clear}
+            title={adjusting ? "Cancel" : "Remove logo"}
+            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/15 hover:bg-white/30 text-white text-xs leading-none flex items-center justify-center transition-colors"
+          >
+            &times;
+          </button>
         </div>
       )}
 
@@ -281,9 +290,7 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
           <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray">
             Replace
           </button>
-          <button type="button" onClick={clear} className="px-3 py-1.5 text-sm text-muted-gray hover:text-red-500 rounded-btn">
-            Remove
-          </button>
+          <span className="text-[11px] text-muted-gray">or paste a new one</span>
         </div>
       )}
 
