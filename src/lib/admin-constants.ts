@@ -129,6 +129,7 @@ export interface ListingFieldData {
   "google-maps-link"?: string;
   available?: boolean;
   sold?: boolean;
+  "under-contract"?: boolean;   // Webflow switch field "Under Contract" (slug under-contract)
   featured?: boolean;
   floorplan?: { url: string; alt: string };
   gallery?: { url: string; alt: string }[];
@@ -151,10 +152,13 @@ export interface ListingItem {
 }
 
 // ---- Helper: determine listing status ----
-export function getListingStatus(item: ListingItem): "Live" | "Draft" | "Sold" {
+export type ListingStatus = "Live" | "Draft" | "Sold" | "Under Contract";
+
+export function getListingStatus(item: ListingItem): ListingStatus {
   const fd = item.fieldData || {};
   if (fd.sold) return "Sold";
   if (item.isDraft || !item.lastPublished) return "Draft";
+  if (fd["under-contract"]) return "Under Contract";
   return "Live";
 }
 

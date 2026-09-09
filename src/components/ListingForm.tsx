@@ -206,6 +206,7 @@ const SECTIONS: SectionDef[] = [
     title: "Status",
     fields: [
       { key: "available", label: "Available", type: "toggle", exclusive: "sold" },
+      { key: "under-contract", label: "Under Contract", type: "toggle" },
       { key: "sold", label: "Sold", type: "toggle", exclusive: "available" },
       { key: "featured", label: "Featured", type: "toggle" },
       { key: "drone-hero", label: "Drone Hero", type: "toggle" },
@@ -279,6 +280,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         "spaces-available": fd["spaces-available"] || "",
         available: fd.available !== false, // default ON
         sold: fd.sold || false,
+        "under-contract": fd["under-contract"] || false,
         featured: fd.featured || false,
         "drone-hero": fd["drone-hero"] || false,
       };
@@ -308,6 +310,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       "spaces-available": "",
       available: true,
       sold: false,
+      "under-contract": false,
       featured: false,
       "drone-hero": false,
     };
@@ -642,6 +645,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     // Toggles
     fd.available = fields.available as boolean;
     fd.sold = fields.sold as boolean;
+    fd["under-contract"] = fields["under-contract"] as boolean;
     fd.featured = fields.featured as boolean;
     fd["drone-hero"] = fields["drone-hero"] as boolean;
 
@@ -835,12 +839,18 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           slugManualRef.current = true;
         }
 
-        // Mutual exclusivity: Available ↔ Sold
+        // Mutual exclusivity: Available ↔ Sold. Under Contract is a state of an
+        // available listing: it clears Sold; Sold clears it (and Available).
         if (key === "available" && value === true) {
           next.sold = false;
         }
         if (key === "sold" && value === true) {
           next.available = false;
+          next["under-contract"] = false;
+        }
+        if (key === "under-contract" && value === true) {
+          next.sold = false;
+          next.available = true;
         }
 
         return next;

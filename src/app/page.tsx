@@ -21,7 +21,7 @@ import {
 /* ============================================================
    STATUS TABS — filter by listing status
    ============================================================ */
-const STATUS_TABS = ["All", "Draft", "Live", "Sold"] as const;
+const STATUS_TABS = ["All", "Draft", "Live", "Under Contract", "Sold"] as const;
 type StatusTab = (typeof STATUS_TABS)[number];
 
 /* ============================================================
@@ -237,8 +237,8 @@ export default function DashboardPage() {
       return true;
     })
     .sort((a, b) => {
-      // Sort order: Draft → Live → Sold, then alphabetical by name
-      const order = { Draft: 0, Live: 1, Sold: 2 };
+      // Sort order: Draft → Live → Under Contract → Sold, then alphabetical by name
+      const order = { Draft: 0, Live: 1, "Under Contract": 2, Sold: 3 };
       const sa = order[getListingStatus(a)] ?? 9;
       const sb = order[getListingStatus(b)] ?? 9;
       if (sa !== sb) return sa - sb;
@@ -274,6 +274,7 @@ export default function DashboardPage() {
   const badgeClass = (status: string) => {
     if (status === "Live") return "bg-[#E8F5D4] text-[#4A8C1C]";
     if (status === "Draft") return "bg-[#FFF8E1] text-[#B8860B]";
+    if (status === "Under Contract") return "bg-[#FFF3E0] text-[#C2410C]";
     return "bg-[#FFEAEA] text-[#CC3333]"; // Sold
   };
 
