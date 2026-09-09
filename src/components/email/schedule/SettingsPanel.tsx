@@ -12,12 +12,12 @@ interface SettingsPanelProps {
 
 const INPUT = "border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal focus:outline-none focus:ring-1 focus:ring-green";
 const LABEL = "block text-[11px] font-semibold text-muted-gray uppercase tracking-wide mb-1";
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * Scheduler settings — everything the AI is told, in one place.
- * Cap, gap, send windows (read-only summary), no-send dates, listing spacing +
- * announcement labels, freshness decay thresholds, stale-content alert days.
+ * Cap, gap, no-send dates, listing spacing + announcement labels, freshness
+ * decay thresholds, stale-content alert days. Send windows are fixed (see
+ * DEFAULT_SETTINGS in settings.ts) and learn from tracking data over time.
  */
 export default function SettingsPanel({ userEmail, onClose, onSaved }: SettingsPanelProps) {
   const [s, setS] = useState<EmailSettings>(DEFAULT_SETTINGS);
@@ -89,28 +89,6 @@ export default function SettingsPanel({ userEmail, onClose, onSaved }: SettingsP
                   <div>
                     <label className={LABEL}>Min gap (minutes)</label>
                     <input type="number" min={15} max={240} step={15} value={s.minGapMinutes} onChange={(e) => set("minGapMinutes", Number(e.target.value))} className={`${INPUT} w-24`} />
-                  </div>
-                </div>
-              </section>
-
-              {/* Windows (summary) */}
-              <section>
-                <h4 className="text-xs font-semibold text-charcoal uppercase tracking-wide mb-1">Send windows</h4>
-                <p className="text-[11px] text-muted-gray mb-3">Best windows fill first, rank 1 gets first pick. Once open tracking is on, real open rates reshape these.</p>
-                <div className="space-y-1.5">
-                  {(["best", "good", "ok"] as const).map((tier) => (
-                    <div key={tier} className="flex items-start gap-3 text-sm">
-                      <span className={`w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-center ${
-                        tier === "best" ? "bg-green text-black" : tier === "good" ? "bg-light-gray text-charcoal" : "bg-subtle-gray text-muted-gray"
-                      }`}>{tier}</span>
-                      <span className="text-charcoal">
-                        {s.windows.filter((w) => w.tier === tier).map((w) => `${w.days.map((d) => DAY_NAMES[d]).join("/")} ${w.start}–${w.end}`).join(" · ") || "—"}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="flex items-start gap-3 text-sm">
-                    <span className="w-12 shrink-0 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-center bg-red-50 text-red-600">never</span>
-                    <span className="text-muted-gray">Before 7:30 · 12–1 · after 4:00 · weekends · no-send dates</span>
                   </div>
                 </div>
               </section>

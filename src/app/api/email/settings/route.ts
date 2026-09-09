@@ -31,7 +31,7 @@ export async function PUT(request: NextRequest) {
       };
     }
     if (Number.isFinite(body.staleAlertDays)) clean.staleAlertDays = Math.max(3, Math.min(365, Math.round(body.staleAlertDays)));
-    if (Array.isArray(body.windows)) clean.windows = body.windows;
+    // Send windows are fixed in DEFAULT_SETTINGS (they adapt from tracking data, not from this panel)
     return NextResponse.json(await saveSettings(clean));
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to save settings" }, { status: 500 });
