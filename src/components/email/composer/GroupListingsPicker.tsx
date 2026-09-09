@@ -15,19 +15,24 @@ interface GroupListingsPickerProps {
 }
 
 const INPUT = "w-full border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
+const SEARCH = "w-full border border-border-light rounded-btn pl-9 pr-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"];
 
 /**
- * Section 1 for group emails — pick several listings, order them, tune each card.
+ * Section 2 (group emails) — pick several listings, order them, tune each card.
+ * The search box stays open while you add: type, click a listing, it joins the
+ * list below and the box is ready for the next one.
  * Each card: photo (from the listing's gallery), name, one-line summary, status chip.
  */
 export default function GroupListingsPicker({ listings, loading, cards, onChange, fieldProps }: GroupListingsPickerProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
+  const [highlightIdx, setHighlightIdx] = useState(0);
   const [photoPickerFor, setPhotoPickerFor] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
+  // Listings not yet in the group (sold ones excluded)
   const chosen = new Set(cards.map((c) => c.listing_id));
   const candidates = useMemo(
     () => listings.filter((l) => !l.fieldData.sold && !chosen.has(l.id)),
@@ -45,19 +50,23 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
     });
   }, [candidates, query]);
 
+  // Close the results when clicking anywhere else
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
-    window.setTimeout(() => searchRef.current?.focus(), 0);
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
+  /** Add a listing and keep the search ready for the next one */
   const add = (l: ListingItem) => {
     onChange([...cards, listingToGroupCard(l)]);
     setQuery("");
+    setHighlightIdx(0);
+    inputRef.current?.focus();
+    setOpen(true);
   };
   const update = (id: string, patch: Partial<GroupListing>) => onChange(cards.map((c) => (c.listing_id === id ? { ...c, ...patch } : c)));
   const remove = (id: string) => onChange(cards.filter((c) => c.listing_id !== id));
@@ -70,8 +79,79 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
     onChange(next);
   };
 
+  function onKeyDown(e: React.KeyboardEvent) {
+    if (e.key === "Escape") { setOpen(false); inputRef.current?.blur(); return; }
+    if (filtered.length === 0) return;
+    if (e.key === "ArrowDown") { e.preventDefault(); setOpen(true); setHighlightIdx((i) => (i + 1) % filtered.length); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); setOpen(true); setHighlightIdx((i) => (i - 1 + filtered.length) % filtered.length); }
+    else if (e.key === "Enter" && open) { e.preventDefault(); add(filtered[highlightIdx]); }
+  }
+
+  const needed = Math.max(0, 2 - cards.length);
+
   return (
     <div className="space-y-3">
+      {/* Search + add — stays open so you can keep adding */}
+      <div ref={containerRef} className="relative">
+        <div className="relative">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-gray pointer-events-none">
+            <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
+            <path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          </svg>
+          <input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setHighlightIdx(0); setOpen(true); }}
+            onFocus={() => setOpen(true)}
+            onKeyDown={onKeyDown}
+            placeholder={loading ? "Loading listings…" : cards.length === 0 ? "Search listings — click to add" : "Add another listing"}
+            className={SEARCH}
+          />
+        </div>
+        {open && (
+          <div className="absolute z-30 mt-1 w-full bg-white border border-border-light rounded-card shadow-lg overflow-hidden">
+            <ul className="max-h-72 overflow-y-auto py-1">
+              {loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-muted-gray">Loading…</li>}
+              {!loading && filtered.length === 0 && (
+                <li className="px-3 py-3 text-sm text-muted-gray">{candidates.length === 0 ? "Every listing is already in the group" : "No matches"}</li>
+              )}
+              {filtered.map((l, i) => {
+                const fd = l.fieldData;
+                const t = fd.gallery?.[0]?.url;
+                const sub = [fd["city-county"], fd["list-price"]].filter(Boolean).join(" · ");
+                return (
+                  <li key={l.id}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setHighlightIdx(i)}
+                      onClick={() => add(l)}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === highlightIdx ? "bg-light-gray" : ""}`}
+                    >
+                      <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
+                        {t && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={t} alt="" className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
+                        {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
+                      </div>
+                      <span className="ml-auto text-xs font-medium text-green shrink-0">+ Add</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        )}
+      </div>
+      {needed > 0 && (
+        <p className="text-xs text-muted-gray -mt-1">
+          {cards.length === 0 ? "Pick at least 2 listings." : "1 more needed."}
+        </p>
+      )}
+
       {/* Chosen listings, in email order */}
       {cards.length > 0 && (
         <ol className="space-y-2">
@@ -161,51 +241,6 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
           })}
         </ol>
       )}
-
-      {/* Add a listing */}
-      <div ref={containerRef} className="relative">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          className={`w-full border border-dashed rounded-btn px-3 py-2 text-sm text-left transition-colors ${
-            open ? "border-green text-charcoal" : "border-border-medium text-muted-gray hover:border-muted-gray hover:text-charcoal"
-          }`}
-        >
-          + Add a listing{cards.length < 2 ? ` (${2 - cards.length} more needed)` : ""}
-        </button>
-        {open && (
-          <div className="absolute z-30 mt-1 w-full bg-white border border-border-light rounded-card shadow-lg overflow-hidden">
-            <div className="p-2 border-b border-border-light">
-              <input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search listings" className={INPUT} />
-            </div>
-            <ul className="max-h-72 overflow-y-auto py-1">
-              {loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-muted-gray">Loading…</li>}
-              {!loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-muted-gray">No matches</li>}
-              {filtered.map((l) => {
-                const fd = l.fieldData;
-                const t = fd.gallery?.[0]?.url;
-                const sub = [fd["city-county"], fd["list-price"]].filter(Boolean).join(" · ");
-                return (
-                  <li key={l.id}>
-                    <button type="button" onClick={() => add(l)} className="w-full flex items-center gap-3 px-3 py-2 text-left hover:bg-light-gray">
-                      <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
-                        {t && (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={t} alt="" className="w-full h-full object-cover" />
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
-                        {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
-                      </div>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -22,7 +22,7 @@ export interface HighlightRow {
 }
 
 export interface CampaignDraft {
-  kind: CampaignKind;           // "single" listing email or a "group" of several
+  kind: CampaignKind | "";      // "single" listing email or a "group" of several ("" = not chosen yet)
   groupListings: GroupListing[]; // cards for group emails, in order
   listingId: string;
   listingName: string;
@@ -44,7 +44,7 @@ export interface CampaignDraft {
   pinned: boolean;              // exempt from freshness decay
 }
 
-export type MissingField = "listing" | "group" | "broker" | "partnerLogo";
+export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -104,7 +104,7 @@ function bumpRowIds(draft: CampaignDraft) {
 /** Blank draft for a new campaign — broker defaults to the signed-in user when they're a broker */
 function emptyDraft(userEmail: string): CampaignDraft {
   return {
-    kind: "single",
+    kind: "",  // new campaigns start with the type unchosen
     groupListings: [],
     listingId: "",
     listingName: "",
@@ -265,7 +265,7 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       listing_id: isGroup ? (draft.listingId.startsWith("group:") ? draft.listingId : "") : draft.listingId,
       // Group: the internal name (schedule cards, subject) = big heading, else the eyebrow, else a generic name
       listing_name: isGroup ? (draft.emailLabel.trim() || draft.headingText.trim() || "Group email") : draft.listingName,
-      campaign_kind: draft.kind,
+      campaign_kind: draft.kind || "single",
       group_listings: isGroup ? draft.groupListings : [],
       campaign_type: draft.campaignType,
       // Blank label → the email's default, exactly what the placeholder shows
@@ -298,7 +298,8 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
   // ── Validation: a listing and at least one broker (label defaults to "Just Listed") ──
   const missing: MissingField[] = useMemo(() => {
     const m: MissingField[] = [];
-    if (draft.kind === "group") {
+    if (!draft.kind) m.push("type");
+    else if (draft.kind === "group") {
       if (draft.groupListings.length < 2) m.push("group");
     } else if (!draft.listingId) m.push("listing");
     if (draft.brokerIds.length === 0) m.push("broker");

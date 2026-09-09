@@ -44,6 +44,7 @@ interface EmailComposerProps {
 const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 
 const MISSING_COPY: Record<MissingField, string> = {
+  type: "the email type",
   listing: "a listing",
   group: "at least 2 listings",
   broker: "a broker",
@@ -55,7 +56,7 @@ function missingHint(missing: MissingField[]): string {
   if (missing.length === 0) return "";
   const parts = missing.map((m) => MISSING_COPY[m]);
   const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
-  return `Add ${list}`;
+  return missing[0] === "type" ? "Choose the email type" : `Add ${list}`;
 }
 
 export default function EmailComposer({ mode, campaign, listings, listingsLoading }: EmailComposerProps) {
@@ -212,7 +213,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   const submitting = toastVisible && !toastError;
   const isGroup = draft.kind === "group";
-  const revealed = isGroup ? draft.groupListings.length > 0 : !!draft.listingId;
+  // Everything after "Type" shows as soon as the type is chosen (edit mode: always)
+  const revealed = isEdit || draft.kind !== "";
   const hint = missingHint(missing);
 
   return (
@@ -335,43 +337,40 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             <TestSendControl campaign={formData} disabled={!draft.listingId} />
           </div>
 
-          <Section n={1} title={isGroup ? "Listings" : "Listing"}>
-            <div className="space-y-3">
-              {/* One listing, or a group of several in one email (can't switch after creating) */}
-              {!isEdit && (
-                <Segmented
-                  value={draft.kind}
-                  options={[
-                    { id: "single", label: "One listing" },
-                    { id: "group", label: "Group of listings" },
-                  ]}
-                  onChange={(v) => set("kind", v as "single" | "group")}
-                />
-              )}
-              {isGroup ? (
-                <GroupListingsPicker
-                  listings={listings}
-                  loading={listingsLoading}
-                  cards={draft.groupListings}
-                  onChange={(cards) => set("groupListings", cards)}
-                  fieldProps={fieldProps}
-                />
-              ) : (
-                <ListingPicker
-                  listings={listings}
-                  loading={listingsLoading}
-                  selected={selectedListing}
-                  fallbackName={draft.listingName}
-                  onPick={pickListing}
-                />
-              )}
-            </div>
+          {/* 1 — what kind of email. Everything else appears once this is chosen. */}
+          <Section n={1} title="Type" note={isEdit ? "can't change after creating" : undefined}>
+            {isEdit ? (
+              <p className="text-sm text-charcoal">{isGroup ? "Multiple" : "Single"}</p>
+            ) : (
+              <TypeChoice value={draft.kind} onChange={(v) => set("kind", v)} />
+            )}
           </Section>
 
           {revealed && (
             <div className="space-y-8 composer-reveal">
+              {/* 2 — the listing(s). Search box first; results drop down as you type. */}
+              <Section n={2} title={isGroup ? "Listings" : "Listing"}>
+                {isGroup ? (
+                  <GroupListingsPicker
+                    listings={listings}
+                    loading={listingsLoading}
+                    cards={draft.groupListings}
+                    onChange={(cards) => set("groupListings", cards)}
+                    fieldProps={fieldProps}
+                  />
+                ) : (
+                  <ListingPicker
+                    listings={listings}
+                    loading={listingsLoading}
+                    selected={selectedListing}
+                    fallbackName={draft.listingName}
+                    onPick={pickListing}
+                  />
+                )}
+              </Section>
+
               {/* Same order as the email, top to bottom */}
-              <Section n={2} title="Heading" note={isGroup ? "all optional" : undefined}>
+              <Section n={3} title="Heading" note={isGroup ? "all optional" : undefined}>
                 <div className="space-y-2.5">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
@@ -393,7 +392,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={3} title="Partner Logo" note="optional">
+              <Section n={4} title="Partner Logo" note="optional">
                 <PartnerLogoPicker
                   url={draft.partnerLogoUrl}
                   onPreview={(dataUrl, w, h) => {
@@ -416,7 +415,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {!isGroup && (
-              <Section n={4} title="Photo">
+              <Section n={5} title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
                   photoUrl={draft.photoUrl}
@@ -426,7 +425,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section n={5} title={isGroup ? "Intro" : "Body"}>
+              <Section n={6} title={isGroup ? "Intro" : "Body"}>
                 <textarea
                   {...fieldProps("body")}
                   value={draft.bodyText}
@@ -438,7 +437,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {!isGroup && (
-              <Section n={6} title="Details">
+              <Section n={7} title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
                   chips={chips}
@@ -453,7 +452,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               )}
 
               {!isGroup && (
-              <Section n={7} title="Listing Link">
+              <Section n={8} title="Listing Link">
                 <input
                   {...fieldProps("cta")}
                   value={draft.listingPageUrl}
@@ -465,7 +464,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
               )}
 
-              <Section n={8} title="Broker">
+              <Section n={9} title="Broker">
                 <BrokerPicker
                   brokerIds={draft.brokerIds}
                   onChange={(ids) => set("brokerIds", ids)}
@@ -473,7 +472,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={9} title="Audience">
+              <Section n={10} title="Audience">
                 <Segmented
                   value={draft.segmentId}
                   options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({ id: s.id, label: s.name }))}
@@ -481,7 +480,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={10} title="Frequency">
+              <Section n={11} title="Frequency">
                 <div className="space-y-3">
                   <Segmented
                     value={draft.campaignType}
@@ -525,7 +524,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={11} title="Priority">
+              <Section n={12} title="Priority">
                 <div className="space-y-2">
                   <Segmented
                     value={draft.priority}
@@ -612,6 +611,34 @@ function Section({ n, title, note, children }: { n: number; title: string; note?
       </div>
       {children}
     </section>
+  );
+}
+
+/** First choice on a new campaign: one listing, or a group of several */
+function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onChange: (v: "single" | "group") => void }) {
+  const opts: { id: "single" | "group"; label: string; desc: string }[] = [
+    { id: "single", label: "Single", desc: "One property — hero photo and details" },
+    { id: "group", label: "Multiple", desc: "Several properties as cards under one heading" },
+  ];
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {opts.map((o) => {
+        const on = value === o.id;
+        return (
+          <button
+            key={o.id}
+            type="button"
+            onClick={() => onChange(o.id)}
+            className={`text-left rounded-card border px-3 py-2.5 transition-colors ${
+              on ? "border-green bg-white ring-1 ring-green" : "border-border-light bg-light-gray hover:bg-white hover:border-border-medium"
+            }`}
+          >
+            <div className={`text-sm font-medium ${on ? "text-charcoal" : "text-medium-gray"}`}>{o.label}</div>
+            <div className="text-[11px] text-muted-gray mt-0.5">{o.desc}</div>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
