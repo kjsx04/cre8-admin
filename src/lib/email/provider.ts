@@ -112,6 +112,20 @@ export async function createScheduledSend(
   return data.id as string;
 }
 
+/**
+ * Send a broadcast immediately (no schedule). Used by "Send now".
+ * Returns the Resend broadcast id.
+ */
+export async function sendNow(campaign: CampaignLike): Promise<string> {
+  const body = { ...buildBroadcastBody(campaign, " (sent now)"), send: true };
+  const res = await resendFetch("/broadcasts", { method: "POST", body: JSON.stringify(body) });
+  if (!res.ok) {
+    throw new Error(`Resend send-now failed (${res.status}): ${await res.text()}`);
+  }
+  const data = await res.json();
+  return data.id as string;
+}
+
 /** Cancel a pending broadcast. Safe to call if it's already gone (404 ignored). */
 export async function cancelSend(broadcastId: string | null | undefined): Promise<void> {
   if (!broadcastId || !isProviderConfigured()) return;

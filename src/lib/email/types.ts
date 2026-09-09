@@ -49,7 +49,9 @@ export interface Campaign {
   broker_email: string;
   broker_phone: string | null;
   broker_ids: string[];           // all brokers shown on the email (primary first)
-  priority: CampaignPriority;     // tells the AI scheduler how hard to fight for a slot
+  priority: CampaignPriority;     // composer "Top of list" choice at creation
+  pinned: boolean;                // exempt from freshness decay
+  cadence_changed_at: string | null; // when frequency last changed (decay clock)
   segment_id: string | null;
   segment_name: string;
   frequency: CampaignFrequency | null;
@@ -84,6 +86,7 @@ export interface CampaignFormData {
   broker_phone?: string;
   broker_ids?: string[];          // optional — defaults to [broker_id]
   priority?: CampaignPriority;    // defaults to "normal"
+  pinned?: boolean;
   segment_id?: string;
   segment_name?: string;
   frequency?: CampaignFrequency;

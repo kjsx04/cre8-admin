@@ -15,7 +15,7 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
  */
 export async function POST(request: NextRequest) {
   try {
-    const { week_start, items, notes } = await request.json();
+    const { week_start, items, notes, rules } = await request.json();
     if (!week_start || !Array.isArray(items)) {
       return NextResponse.json({ error: "Missing week_start or items" }, { status: 400 });
     }
@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
 
     const list = items
       .map(
-        (c: { id: string; listing_name: string; email_label: string; scheduled_date: string; campaign_type: string; priority?: string; rank?: number | null; rank_total?: number; movable: boolean }) =>
-          `- ID: ${c.id} | "${c.email_label}: ${c.listing_name}" | Scheduled: ${c.scheduled_date} | Type: ${c.campaign_type} | Rank: ${c.rank != null ? `${c.rank} of ${c.rank_total}` : c.priority === "high" ? "TOP" : "unranked"} | ${c.movable ? "MOVABLE" : "FIXED (projected future send — occupies the slot, cannot move)"}`
+        (c: { id: string; listing_name: string; email_label: string; scheduled_date: string; campaign_type: string; priority?: string; rank?: number | null; rank_total?: number; listing_id?: string; is_announcement?: boolean; movable: boolean }) =>
+          `- ID: ${c.id} | "${c.email_label}: ${c.listing_name}" | Listing: ${c.listing_id || "?"} | Scheduled: ${c.scheduled_date} | Type: ${c.campaign_type}${c.is_announcement ? " | ANNOUNCEMENT" : ""} | Rank: ${c.rank != null ? `${c.rank} of ${c.rank_total}` : c.priority === "high" ? "TOP" : "unranked"} | ${c.movable ? "MOVABLE" : "FIXED (projected future send — occupies the slot, cannot move)"}`
       )
       .join("\n");
 
@@ -38,14 +38,10 @@ export async function POST(request: NextRequest) {
 Your job: look at ONE WEEK of scheduled sends and rebalance it so it satisfies the rules with as few moves as possible.
 
 RULES:
-- Business hours ONLY: 7:00 AM - 5:00 PM MST, Monday through Friday. Never weekends.
-- Maximum ${MAX_SENDS_PER_DAY} sends per day. Minimum 2-hour gap between sends on the same day.
-- Mornings (7-11 AM) > afternoons. Tuesday-Thursday > Monday/Friday.
-- Better-ranked listings (lower rank number; TOP = rank 1) keep the best slots (Tue-Thu mornings). Move the worst-ranked sends first; unranked = bottom.
+${rules || `- Business days only. Max ${MAX_SENDS_PER_DAY} sends per day, 2-hour gap.`}
 - Only move items marked MOVABLE. FIXED items still count toward the per-day cap.
-- Never move a send that is within 2 hours of its scheduled time, and never move anything into the past. Keep every send inside the same week (${week_start} Mon → the following Sun) unless the week is over capacity, in which case push the lowest-priority normal sends to the next week (Mon-Fri).
-- Prefer keeping recurring campaigns on their existing weekday.
-- Two sends at the same time, or under 2 hours apart, on the same day is ALWAYS a violation — fix every one.
+- Never move anything into the past. Keep every send inside the same week (${week_start} Mon → the following Sun) unless the week is over capacity, in which case push the lowest-ranked non-announcement sends to the next week (Mon-Fri).
+- Two sends at the same time, or closer than the minimum gap, on the same day is ALWAYS a violation — fix every one.
 - Minimize the number of moves, but a week with any violation left is a failure. If the week already satisfies the rules, return an empty list.
 
 Current date: ${currentDate}

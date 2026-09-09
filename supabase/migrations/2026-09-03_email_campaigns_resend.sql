@@ -55,3 +55,40 @@ create table if not exists public.listing_priorities (
   updated_at   timestamptz not null default now()
 );
 create index if not exists listing_priorities_rank_idx on public.listing_priorities (rank);
+
+-- 2026-09-08: scheduler settings (single row), alerts, send history, tracking events, pin + cadence tracking
+create table if not exists public.email_settings (
+  id          text primary key default 'default',
+  settings    jsonb not null default '{}'::jsonb,
+  updated_at  timestamptz not null default now()
+);
+alter table public.email_campaigns
+  add column if not exists pinned boolean not null default false,          -- exempt from freshness decay
+  add column if not exists cadence_changed_at timestamptz;                  -- when frequency last changed (decay clock)
+create table if not exists public.email_alerts (
+  id              uuid primary key default gen_random_uuid(),
+  campaign_id     uuid references public.email_campaigns(id) on delete cascade,
+  type            text not null,             -- 'stale' | 'decay'
+  message         text not null,
+  created_at      timestamptz not null default now(),
+  dismissed_until timestamptz,
+  unique (campaign_id, type)
+);
+create table if not exists public.email_sends (
+  broadcast_id  text primary key,            -- Resend broadcast id
+  campaign_id   uuid references public.email_campaigns(id) on delete cascade,
+  scheduled_at  timestamptz,
+  created_at    timestamptz not null default now()
+);
+create table if not exists public.email_events (
+  id            uuid primary key default gen_random_uuid(),
+  event_type    text not null,               -- email.sent | email.delivered | email.opened | email.clicked | email.bounced | email.complained
+  broadcast_id  text,
+  campaign_id   uuid,
+  email_id      text,
+  occurred_at   timestamptz not null,
+  payload       jsonb,
+  created_at    timestamptz not null default now()
+);
+create index if not exists email_events_campaign_idx on public.email_events (campaign_id, event_type);
+create index if not exists email_events_occurred_idx on public.email_events (occurred_at);

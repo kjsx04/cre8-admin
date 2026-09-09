@@ -2,13 +2,13 @@
 
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, monthGridKeys, isWeekend, sameMonth, keyToCivil } from "@/lib/email/schedule-dates";
-import { MAX_SENDS_PER_DAY } from "@/lib/email/constants";
 import { getTypeColor } from "@/lib/email/utils";
 
 interface MonthOverviewProps {
   anchor: DateKey; // any day in the month to show
   itemsByDay: Map<DateKey, ScheduleItem[]>;
   today: DateKey;
+  maxPerDay: number; // the cap from Settings — days above it get the amber chip
   onSelectDay: (key: DateKey) => void;
 }
 
@@ -18,7 +18,7 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
  * Density view: each day shows a send count and up to four label-colored dots.
  * Click any day to open that week in the planner.
  */
-export default function MonthOverview({ anchor, itemsByDay, today, onSelectDay }: MonthOverviewProps) {
+export default function MonthOverview({ anchor, itemsByDay, today, maxPerDay, onSelectDay }: MonthOverviewProps) {
   const keys = monthGridKeys(anchor);
 
   return (
@@ -37,7 +37,7 @@ export default function MonthOverview({ anchor, itemsByDay, today, onSelectDay }
         {keys.map((key) => {
           const items = itemsByDay.get(key) ?? [];
           const count = items.length;
-          const over = count > MAX_SENDS_PER_DAY;
+          const over = count > maxPerDay;
           const inMonth = sameMonth(key, anchor);
           const weekend = isWeekend(key);
           const isToday = key === today;

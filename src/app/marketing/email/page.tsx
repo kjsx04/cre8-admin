@@ -24,6 +24,9 @@ import WeekPlanner from "@/components/email/schedule/WeekPlanner";
 import MonthOverview from "@/components/email/schedule/MonthOverview";
 import OffScheduleSection from "@/components/email/schedule/OffScheduleSection";
 import PriorityPanel from "@/components/email/schedule/PriorityPanel";
+import SettingsPanel from "@/components/email/schedule/SettingsPanel";
+import AlertsStrip from "@/components/email/schedule/AlertsStrip";
+import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
 import CampaignDetail from "@/components/email/CampaignDetail";
 
 type View = "week" | "month";
@@ -56,6 +59,8 @@ function EmailSchedule() {
   const [error, setError] = useState<string | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showPriorities, setShowPriorities] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [settings, setSettings] = useState<EmailSettings>(DEFAULT_SETTINGS);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeNote, setOptimizeNote] = useState<string | null>(null);
 
@@ -75,6 +80,19 @@ function EmailSchedule() {
   useEffect(() => {
     fetchCampaigns();
   }, [fetchCampaigns]);
+
+  // Scheduler settings (the per-day cap drives the amber chips)
+  useEffect(() => {
+    if (!userEmail) return;
+    (async () => {
+      try {
+        const res = await fetch("/api/email/settings", { headers: { "x-user-email": userEmail } });
+        if (res.ok) setSettings(await res.json());
+      } catch {
+        /* defaults stay */
+      }
+    })();
+  }, [userEmail]);
 
   // ── View + anchor live in the URL so refresh / share keep place ──
   const view: View = params.get("view") === "month" ? "month" : "week";
@@ -196,6 +214,23 @@ function EmailSchedule() {
     }
   };
 
+  // Send a campaign right now (skips the AI)
+  const handleSendNow = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email/campaigns/${id}/send-now`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to send");
+      await fetchCampaigns();
+      if (selectedCampaign?.id === id) setSelectedCampaign(data);
+    } catch (err) {
+      console.error("Send now failed:", err);
+      window.alert(err instanceof Error ? err.message : "Failed to send");
+    }
+  };
+
   // Ask the AI to rebalance the visible week
   const handleOptimize = async () => {
     setOptimizing(true);
@@ -255,7 +290,15 @@ function EmailSchedule() {
             ))}
           </div>
 
-          {/* Priorities panel */}
+          {/* Settings + Priorities panels */}
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            className="px-3 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
+            title="Scheduler settings"
+          >
+            Settings
+          </button>
           <button
             type="button"
             onClick={() => setShowPriorities(true)}
@@ -273,6 +316,9 @@ function EmailSchedule() {
           </button>
         </div>
       </div>
+
+      {/* Alerts: stale content, cadence decay */}
+      <AlertsStrip userEmail={userEmail} />
 
       {/* Loading / Error */}
       {loading && (
@@ -295,17 +341,23 @@ function EmailSchedule() {
             optimizeNote={optimizeNote}
           />
           {view === "week" ? (
-            <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} onSelect={setSelectedCampaign} />
+            <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} maxPerDay={settings.maxSendsPerDay} onSelect={setSelectedCampaign} />
           ) : (
             <MonthOverview
               anchor={anchor}
               itemsByDay={itemsByDay}
               today={today}
+              maxPerDay={settings.maxSendsPerDay}
               onSelectDay={(key) => setQuery({ view: "week", date: key })}
             />
           )}
           <OffScheduleSection waiting={waiting} finished={finished} onSelect={setSelectedCampaign} />
         </div>
+      )}
+
+      {/* Settings slide-over */}
+      {showSettings && (
+        <SettingsPanel userEmail={userEmail} onClose={() => setShowSettings(false)} onSaved={setSettings} />
       )}
 
       {/* Priorities slide-over */}
@@ -327,6 +379,7 @@ function EmailSchedule() {
           onPause={handlePause}
           onResume={handleResume}
           onReschedule={handleReschedule}
+          onSendNow={handleSendNow}
           onClose={() => setSelectedCampaign(null)}
         />
       )}

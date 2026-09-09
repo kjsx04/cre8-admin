@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
@@ -16,6 +17,8 @@ interface CampaignDetailProps {
   onResume: (id: string) => Promise<void>;
   /** Ask the AI for a fresh slot (after edits, or when the current one is bad) */
   onReschedule?: (id: string) => Promise<void>;
+  /** Send immediately, skipping the AI */
+  onSendNow?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -27,12 +30,30 @@ export default function CampaignDetail({
   onPause,
   onResume,
   onReschedule,
+  onSendNow,
   onClose,
 }: CampaignDetailProps) {
   void onUpdate; // reserved for inline edit
   const router = useRouter();
+  const { accounts } = useMsal();
+  const userEmail = accounts[0]?.username || "";
+
+  // Delivery stats from Resend webhooks (per recipient, across all sends of this campaign)
+  const [stats, setStats] = useState<{ sends: number; delivered: number; opened: number; clicked: number; bounced: number; unsubscribed: number } | null>(null);
+  useEffect(() => {
+    if (!userEmail) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/email/campaigns/${campaign.id}/stats`, { headers: { "x-user-email": userEmail } });
+        if (res.ok) setStats(await res.json());
+      } catch {
+        /* quiet */
+      }
+    })();
+  }, [campaign.id, userEmail]);
   const [showPreview, setShowPreview] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const color = getTypeColor(campaign.email_label);
@@ -52,6 +73,14 @@ export default function CampaignDetail({
     setActionLoading(true);
     await onResume(campaign.id);
     setActionLoading(false);
+  };
+
+  const handleSendNow = async () => {
+    if (!onSendNow) return;
+    setActionLoading(true);
+    await onSendNow(campaign.id);
+    setActionLoading(false);
+    setShowSendConfirm(false);
   };
 
   const handleReschedule = async () => {
@@ -171,6 +200,32 @@ export default function CampaignDetail({
               </Section>
             )}
 
+            {/* Results */}
+            {stats && stats.sends > 0 && (
+              <Section title="Results">
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    ["Sends", stats.sends],
+                    ["Delivered", stats.delivered],
+                    ["Opened", stats.opened],
+                    ["Clicked", stats.clicked],
+                    ["Bounced", stats.bounced],
+                    ["Unsubscribed", stats.unsubscribed],
+                  ].map(([k, v]) => (
+                    <div key={String(k)} className="rounded-btn bg-light-gray px-2 py-1.5">
+                      <div className="text-[10px] uppercase tracking-wide text-muted-gray">{k}</div>
+                      <div className="text-sm font-semibold text-charcoal">{v}</div>
+                    </div>
+                  ))}
+                </div>
+                {stats.delivered > 0 && (
+                  <p className="text-[11px] text-muted-gray">
+                    Open rate {Math.round((stats.opened / stats.delivered) * 100)}% · click rate {Math.round((stats.clicked / stats.delivered) * 100)}%
+                  </p>
+                )}
+              </Section>
+            )}
+
             {/* Actions */}
             <div className="space-y-2 pt-2">
               {/* Preview button */}
@@ -189,6 +244,32 @@ export default function CampaignDetail({
                 >
                   Edit Campaign
                 </button>
+              )}
+
+              {/* Send now — goes out within a couple of minutes, skips the AI */}
+              {onSendNow && (campaign.status === "draft" || campaign.status === "scheduled" || campaign.status === "active") && (
+                showSendConfirm ? (
+                  <div className="rounded-btn border border-green bg-[#f7fdf0] p-3 space-y-2">
+                    <p className="text-sm text-charcoal">
+                      Send <span className="font-medium">{campaign.email_label}: {campaign.listing_name}</span> to <span className="font-medium">{campaign.segment_name}</span> right now?
+                      {campaign.campaign_type === "recurring" && <span className="text-muted-gray"> The cadence restarts from today.</span>}
+                    </p>
+                    <div className="flex gap-2">
+                      <button onClick={handleSendNow} disabled={actionLoading} className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 disabled:opacity-50">
+                        {actionLoading ? "Sending..." : "Yes, send now"}
+                      </button>
+                      <button onClick={() => setShowSendConfirm(false)} disabled={actionLoading} className="px-3 py-2 text-sm text-muted-gray hover:text-charcoal">Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowSendConfirm(true)}
+                    disabled={actionLoading}
+                    className="w-full px-4 py-2.5 bg-charcoal text-white text-sm font-medium rounded-btn hover:bg-black transition-colors disabled:opacity-50"
+                  >
+                    Send Now
+                  </button>
+                )
               )}
 
               {/* Reschedule — AI picks a fresh slot (scheduled/active only) */}

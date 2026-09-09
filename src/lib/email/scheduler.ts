@@ -10,7 +10,9 @@ import { supabase } from "@/lib/flow/supabase";
 import { syncCampaignToProvider, CampaignLike } from "./provider";
 import { CalendarChange, Campaign } from "./types";
 import { expandOccurrences } from "./occurrences";
-import { MAX_SENDS_PER_DAY } from "./constants";
+import { getSettings } from "./settings-server";
+import { EmailSettings, describeWindows, isAnnouncement, toMinutes } from "./settings";
+import { observedSendTimes } from "./stats";
 import { keyRangeToInstants, addDays, startOfWeekMonday, todayKey, PHOENIX_TZ } from "./schedule-dates";
 import { getRankMap } from "./priorities";
 
@@ -24,6 +26,21 @@ export function phoenixLabel(d: Date): string {
 
 // How far ahead the AI can "see" projected recurring sends when placing a new campaign
 const LOOKAHEAD_DAYS = 56;
+
+/** The rules block shared by the placement prompt and the optimizer prompt */
+export function rulesText(s: EmailSettings): string {
+  return [
+    `- Business days only (Mon–Fri, Phoenix time). Never same-day: at least 24 hours out.`,
+    `- Maximum ${s.maxSendsPerDay} sends per day. Minimum ${s.minGapMinutes} minutes between any two sends on the same day.`,
+    describeWindows(s),
+    `- LISTING SPACING: a listing gets at most one send per ${s.spacingDays} days — EXCEPT announcements (${s.announcementLabels.join(", ")}), which always go out at the best available slot; the listing's recurring send skips that window instead.`,
+    `- LISTING RANK (1 = most important) decides who gets the BEST windows: rank 1 first, then 2, and so on. Ranks 1–3 may bump lower-ranked sends out of a best window. Unranked = bottom.`,
+    `- Tie-breaker within the same rank: Just Listed, then Just Sold, then everything else.`,
+    `- Never move a send that is within 2 hours of going out. Never move a PROJECTED send (not created yet) — it just occupies its slot.`,
+    `- Recurring campaigns keep a consistent weekday and time when possible.`,
+    `- Fill the best windows as full as the cap allows before using good/ok windows; spread across Tue–Thu rather than clustering.`,
+  ].join("\n");
+}
 
 /**
  * Every send on the calendar from today through the lookahead window — including
@@ -87,6 +104,8 @@ export async function requestAiSlot(
   // The whole calendar ahead, projected recurring sends included
   const existing = await calendarContext(campaign.id as string);
   const ranks = await getRankMap();
+  const settings = await getSettings();
+  const observed = await observedSendTimes();
 
   const res = await fetch(`${baseUrl}/api/email/schedule`, {
     method: "POST",
@@ -100,7 +119,9 @@ export async function requestAiSlot(
       priority: campaign.priority || "normal",
       rank: ranks.get(campaign.listing_id as string) ?? null,
       rank_total: ranks.size,
+      is_announcement: isAnnouncement(campaign.email_label as string, settings),
       target_date: targetDate ? phoenixLabel(new Date(targetDate)) : null,
+      rules: rulesText(settings) + (observed ? `\n${observed}` : ""),
       existing_campaigns: existing || [],
     }),
   });
@@ -167,8 +188,53 @@ export async function applySlotAndSync(
       .eq("id", campaignId);
     updated.provider_send_id = sync.provider_send_id;
   }
+  await recordSend(campaignId, sync.provider_send_id, scheduledDate);
 
   return { campaign: updated, sync };
+}
+
+/** Remember which Resend broadcast belongs to which campaign (tracking events arrive by broadcast id) */
+export async function recordSend(campaignId: string, broadcastId: string | null, scheduledAt: string | null): Promise<void> {
+  if (!broadcastId) return;
+  await supabase
+    .from("email_sends")
+    .upsert({ broadcast_id: broadcastId, campaign_id: campaignId, scheduled_at: scheduledAt }, { onConflict: "broadcast_id" });
+}
+
+/**
+ * Listing spacing: after an announcement is placed, push the same listing's other
+ * (non-announcement) sends that fall within the spacing window out by one window,
+ * so a Just Sold on Thursday doesn't sit next to the weekly on Tuesday.
+ */
+export async function enforceListingSpacing(campaign: CampaignLike): Promise<string[]> {
+  const settings = await getSettings();
+  if (!settings.spacingDays || !isAnnouncement(campaign.email_label as string, settings)) return [];
+  const at = new Date(campaign.scheduled_date as string);
+  if (isNaN(at.getTime())) return [];
+  const windowMs = settings.spacingDays * 86_400_000;
+
+  const { data: siblings } = await supabase
+    .from("email_campaigns")
+    .select("*")
+    .eq("listing_id", campaign.listing_id as string)
+    .neq("id", campaign.id as string)
+    .in("status", ["scheduled", "active"]);
+
+  const bumped: string[] = [];
+  for (const sib of (siblings || []) as Campaign[]) {
+    if (isAnnouncement(sib.email_label, settings) || !sib.scheduled_date) continue;
+    const sibAt = new Date(sib.scheduled_date);
+    if (Math.abs(sibAt.getTime() - at.getTime()) >= windowMs) continue;
+    if (sibAt.getTime() < Date.now() + 2 * 3_600_000) continue; // too close to send to touch
+    const pushed = new Date(sibAt.getTime() + windowMs).toISOString();
+    try {
+      await applySlotAndSync(sib.id, pushed, `Pushed a week: "${campaign.email_label}" announcement went out for this listing`);
+      bumped.push(sib.id);
+    } catch (err) {
+      console.error("[spacing] failed to push sibling", sib.id, err);
+    }
+  }
+  return bumped;
 }
 
 /**
@@ -207,6 +273,9 @@ export async function scheduleCampaign(
 
   if (slot.calendarChanges.length > 0) {
     await applyCalendarChanges(slot.calendarChanges);
+  }
+  if (result.campaign) {
+    await enforceListingSpacing(result.campaign);
   }
 
   return result;
@@ -251,6 +320,8 @@ export async function optimizeWeek(
   const campaigns = (rows || []) as Campaign[];
   const items = expandOccurrences(campaigns, start, end).filter((it) => it.state !== "sent");
   const ranks = await getRankMap();
+  const settings = await getSettings();
+  const observed = await observedSendTimes();
 
   const payload = items.map((it) => {
     // Only the stored (next) send can actually be moved; projected ones don't exist yet
@@ -265,6 +336,8 @@ export async function optimizeWeek(
       priority: it.campaign.priority || "normal",
       rank: ranks.get(it.campaign.listing_id) ?? null,
       rank_total: ranks.size,
+      listing_id: it.campaign.listing_id,
+      is_announcement: isAnnouncement(it.campaign.email_label, settings),
       movable,
     };
   });
@@ -284,6 +357,7 @@ export async function optimizeWeek(
     const body = {
       week_start: monday,
       items: payload.map((p) => ({ ...p, scheduled_date: phoenixLabel(times.get(p.id)!) })),
+      rules: rulesText(settings) + (observed ? `\n${observed}` : ""),
       notes,
     };
     const res = await fetch(`${baseUrl}/api/email/schedule/optimize`, {
@@ -306,7 +380,10 @@ export async function optimizeWeek(
       finalMoves.set(mv.id, { newIso, reason: mv.reason || "" });
     }
 
-    const violations = findViolations(payload.map((p) => ({ id: p.id, name: `${p.email_label}: ${p.listing_name}`, at: times.get(p.id)! })));
+    const violations = findViolations(
+      payload.map((p) => ({ id: p.id, name: `${p.email_label}: ${p.listing_name}`, at: times.get(p.id)!, listingId: p.listing_id, announcement: p.is_announcement })),
+      settings
+    );
     if (violations.length === 0) break;
     notes = violations.join("\n");
     if (round === 2) result.errors.push(`still over the rules after 3 rounds: ${violations.length} issue(s)`);
@@ -328,29 +405,61 @@ export async function optimizeWeek(
 }
 
 /**
- * Deterministic rule check: per Phoenix day, more than MAX_SENDS_PER_DAY sends,
- * any two sends under 2 hours apart, weekends, or outside 7:00–17:00.
+ * Deterministic rule check against the settings: per-day cap, minimum gap, weekends,
+ * no-send dates, allowed windows, and listing spacing (announcements exempt).
  * Returns human-readable lines for the AI's next attempt.
  */
-function findViolations(sends: { id: string; name: string; at: Date }[]): string[] {
+export function findViolations(
+  sends: { id: string; name: string; at: Date; listingId?: string; announcement?: boolean }[],
+  s: EmailSettings
+): string[] {
   const out: string[] = [];
-  const byDay = new Map<string, { id: string; name: string; at: Date }[]>();
-  for (const s of sends) {
-    const key = s.at.toLocaleDateString("en-CA", { timeZone: PHOENIX_TZ });
+  const byDay = new Map<string, typeof sends>();
+  const noSend = new Set(s.noSendDates);
+
+  const inWindow = (at: Date) => {
+    const dow = new Date(at.toLocaleString("en-US", { timeZone: PHOENIX_TZ })).getDay();
+    const hh = Number(at.toLocaleTimeString("en-US", { timeZone: PHOENIX_TZ, hour12: false, hour: "2-digit" })) % 24;
+    const mm = Number(at.toLocaleTimeString("en-US", { timeZone: PHOENIX_TZ, minute: "2-digit" }));
+    const mins = hh * 60 + mm;
+    return s.windows.some((w) => w.days.includes(dow) && mins >= toMinutes(w.start) && mins < toMinutes(w.end));
+  };
+
+  for (const x of sends) {
+    const key = x.at.toLocaleDateString("en-CA", { timeZone: PHOENIX_TZ });
     const list = byDay.get(key) || [];
-    list.push(s);
+    list.push(x);
     byDay.set(key, list);
-    const wd = s.at.toLocaleDateString("en-US", { timeZone: PHOENIX_TZ, weekday: "short" });
-    const hour = Number(s.at.toLocaleTimeString("en-US", { timeZone: PHOENIX_TZ, hour12: false, hour: "2-digit" })) % 24;
-    if (wd === "Sat" || wd === "Sun") out.push(`"${s.name}" (${s.id}) is on a weekend (${phoenixLabel(s.at)})`);
-    if (hour < 7 || hour >= 17) out.push(`"${s.name}" (${s.id}) is outside 7:00–17:00 (${phoenixLabel(s.at)})`);
+    const wd = x.at.toLocaleDateString("en-US", { timeZone: PHOENIX_TZ, weekday: "short" });
+    if (wd === "Sat" || wd === "Sun") out.push(`"${x.name}" (${x.id}) is on a weekend (${phoenixLabel(x.at)})`);
+    else if (noSend.has(key)) out.push(`"${x.name}" (${x.id}) is on a no-send date ${key}`);
+    else if (!inWindow(x.at)) out.push(`"${x.name}" (${x.id}) is outside the allowed send windows (${phoenixLabel(x.at)})`);
   }
+
   for (const [day, list] of Array.from(byDay.entries())) {
-    if (list.length > MAX_SENDS_PER_DAY) out.push(`${day} has ${list.length} sends (max ${MAX_SENDS_PER_DAY}): ${list.map((l: { id: string }) => l.id).join(", ")}`);
+    if (list.length > s.maxSendsPerDay) out.push(`${day} has ${list.length} sends (max ${s.maxSendsPerDay}): ${list.map((l) => l.id).join(", ")}`);
     const sorted = [...list].sort((a, b) => a.at.getTime() - b.at.getTime());
     for (let i = 1; i < sorted.length; i++) {
-      const gap = (sorted[i].at.getTime() - sorted[i - 1].at.getTime()) / 3_600_000;
-      if (gap < 2) out.push(`${day}: "${sorted[i - 1].name}" (${sorted[i - 1].id}) and "${sorted[i].name}" (${sorted[i].id}) are ${gap.toFixed(1)}h apart (min 2h)`);
+      const gapMin = (sorted[i].at.getTime() - sorted[i - 1].at.getTime()) / 60_000;
+      if (gapMin < s.minGapMinutes) out.push(`${day}: "${sorted[i - 1].name}" (${sorted[i - 1].id}) and "${sorted[i].name}" (${sorted[i].id}) are ${Math.round(gapMin)} min apart (min ${s.minGapMinutes})`);
+    }
+  }
+
+  // Listing spacing: non-announcement sends of the same listing must be ≥ spacingDays apart
+  if (s.spacingDays > 0) {
+    const byListing = new Map<string, typeof sends>();
+    for (const x of sends) {
+      if (!x.listingId || x.announcement) continue;
+      const list = byListing.get(x.listingId) || [];
+      list.push(x);
+      byListing.set(x.listingId, list);
+    }
+    for (const list of Array.from(byListing.values())) {
+      const sorted = [...list].sort((a, b) => a.at.getTime() - b.at.getTime());
+      for (let i = 1; i < sorted.length; i++) {
+        const days = (sorted[i].at.getTime() - sorted[i - 1].at.getTime()) / 86_400_000;
+        if (days < s.spacingDays) out.push(`Same listing twice within ${s.spacingDays} days: "${sorted[i - 1].name}" (${sorted[i - 1].id}) and "${sorted[i].name}" (${sorted[i].id})`);
+      }
     }
   }
   return out;

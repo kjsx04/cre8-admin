@@ -69,7 +69,11 @@ export async function PATCH(
   if (body.priority !== undefined) updates.priority = body.priority === "high" ? "high" : "normal";
   if (body.segment_id !== undefined) updates.segment_id = body.segment_id || null;
   if (body.segment_name !== undefined) updates.segment_name = body.segment_name;
-  if (body.frequency !== undefined) updates.frequency = body.frequency;
+  if (body.frequency !== undefined) {
+    updates.frequency = body.frequency;
+    updates.cadence_changed_at = new Date().toISOString(); // restarts the decay clock
+  }
+  if (body.pinned !== undefined) updates.pinned = !!body.pinned;
   if (body.scheduled_date !== undefined) updates.scheduled_date = body.scheduled_date;
   if (body.next_send_date !== undefined) updates.next_send_date = body.next_send_date;
   if (body.end_date !== undefined) updates.end_date = body.end_date || null;
@@ -91,6 +95,9 @@ export async function PATCH(
 
   let campaign = data;
   let providerSync = null;
+
+  // An edit is a refresh — clear any stale-content alert for this campaign
+  await supabase.from("email_alerts").delete().eq("campaign_id", params.id).eq("type", "stale");
 
   try {
     if (campaign.status === "draft" && body.auto_schedule) {

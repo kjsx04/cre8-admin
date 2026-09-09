@@ -39,6 +39,7 @@ export interface CampaignDraft {
   segmentId: string;
   frequency: CampaignFrequency; // only used when campaignType === "recurring"
   endDate: string;              // "YYYY-MM-DD" or ""
+  pinned: boolean;              // exempt from freshness decay
 }
 
 export type MissingField = "listing" | "broker" | "partnerLogo";
@@ -118,6 +119,7 @@ function emptyDraft(userEmail: string): CampaignDraft {
     segmentId: "all",
     frequency: "weekly",
     endDate: "",
+    pinned: false,
   };
 }
 
@@ -145,6 +147,7 @@ function fromCampaign(c: Campaign): CampaignDraft {
     segmentId: c.segment_id || "all",
     frequency: c.frequency && c.frequency !== "one-time" ? c.frequency : "weekly",
     endDate: c.end_date ? c.end_date.slice(0, 10) : "",
+    pinned: !!c.pinned,
   };
 }
 
@@ -277,6 +280,7 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       segment_name: segment?.name || "All Contacts",
       frequency: isRecurring ? draft.frequency : "one-time",
       end_date: isRecurring && draft.endDate ? draft.endDate : undefined,
+      pinned: isRecurring ? draft.pinned : false,
     };
   }, [draft]);
 

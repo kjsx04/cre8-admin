@@ -153,6 +153,39 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     runSubmit();
   };
 
+  // ── Send now: save (create or update) without AI scheduling, then fire immediately ──
+  const [sendNowOpen, setSendNowOpen] = useState(false);
+  const [sendingNow, setSendingNow] = useState(false);
+  const [sendNowError, setSendNowError] = useState<string | null>(null);
+
+  const runSendNow = async () => {
+    setSendingNow(true);
+    setSendNowError(null);
+    try {
+      // 1. Save the campaign as-is (no auto_schedule)
+      const saveRes = await fetch(campaign?.id ? `/api/email/campaigns/${campaign.id}` : "/api/email/campaigns", {
+        method: campaign?.id ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ ...formData, auto_schedule: false }),
+      });
+      const saved = await saveRes.json().catch(() => ({}));
+      if (!saveRes.ok) throw new Error(saved.error || "Couldn't save the campaign");
+      // 2. Fire it
+      const sendRes = await fetch(`/api/email/campaigns/${saved.id}/send-now`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
+      const sent = await sendRes.json().catch(() => ({}));
+      if (!sendRes.ok) throw new Error(sent.error || "Send failed");
+      submittedRef.current = true;
+      forgetStored();
+      router.push("/marketing/email");
+    } catch (err) {
+      setSendNowError(err instanceof Error ? err.message : "Send failed");
+      setSendingNow(false);
+    }
+  };
+
   const goBack = () => router.push("/marketing/email");
 
   // ── Unsaved-changes guard ──
@@ -207,14 +240,26 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             <TestSendControl campaign={formData} disabled={!draft.listingId} />
           </div>
           <div className="flex flex-col items-end">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={!isValid || submitting}
-              className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
-            >
-              {isEdit ? "Update" : "Schedule"}
-            </button>
+            <div className="flex items-center gap-2">
+              {/* Send now — skips the AI */}
+              <button
+                type="button"
+                onClick={() => setSendNowOpen(true)}
+                disabled={!isValid || submitting || sendingNow}
+                className="px-4 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black transition disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Send to the audience right now instead of letting the AI pick a time"
+              >
+                Send now
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!isValid || submitting || sendingNow}
+                className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
+              >
+                {isEdit ? "Update" : "Schedule"}
+              </button>
+            </div>
             {hint && <span className="text-[11px] text-muted-gray mt-1">{hint}</span>}
           </div>
         </div>
@@ -413,6 +458,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   />
                   {draft.campaignType === "recurring" && (
                     <div className="space-y-3 composer-reveal">
+                      <label className="flex items-center gap-2 text-xs text-charcoal cursor-pointer">
+                        <input type="checkbox" checked={draft.pinned} onChange={(e) => set("pinned", e.target.checked)} className="accent-[#8CC644]" />
+                        Keep this cadence (don&apos;t slow it down as the listing ages)
+                      </label>
                       <Segmented
                         value={draft.frequency}
                         options={[
@@ -465,6 +514,32 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           )}
         </div>
       </div>
+
+      {/* ── Send now confirm ── */}
+      {sendNowOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/30" onClick={() => !sendingNow && setSendNowOpen(false)} />
+          <div className="relative bg-white rounded-card shadow-lg w-full max-w-md p-6">
+            <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Send now?</h3>
+            <p className="text-sm text-charcoal mt-2">
+              <span className="font-medium">{formData.email_label}: {formData.listing_name}</span> goes to{" "}
+              <span className="font-medium">{formData.segment_name}</span> within a couple of minutes, from {formData.broker_name}.
+            </p>
+            {formData.campaign_type === "recurring" && (
+              <p className="text-xs text-muted-gray mt-2">It&apos;s recurring, so the {formData.frequency} cadence starts from today.</p>
+            )}
+            {sendNowError && <p className="text-xs text-red-500 mt-2">{sendNowError}</p>}
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setSendNowOpen(false)} disabled={sendingNow} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
+                Cancel
+              </button>
+              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-5 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black disabled:opacity-50">
+                {sendingNow ? "Sending…" : "Yes, send now"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Scheduling toast ── */}
       {toastVisible && (

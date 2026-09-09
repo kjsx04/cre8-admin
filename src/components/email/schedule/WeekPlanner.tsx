@@ -3,13 +3,13 @@
 import { Campaign } from "@/lib/email/types";
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, weekKeys, isWeekend, dayParts } from "@/lib/email/schedule-dates";
-import { MAX_SENDS_PER_DAY } from "@/lib/email/constants";
 import SendCard from "./SendCard";
 
 interface WeekPlannerProps {
   weekStart: DateKey; // a Monday
   itemsByDay: Map<DateKey, ScheduleItem[]>;
   today: DateKey;
+  maxPerDay: number; // the cap from Settings — days above it get the amber chip
   onSelect: (campaign: Campaign) => void;
 }
 
@@ -21,7 +21,7 @@ interface WeekPlannerProps {
  *
  * NOTE: no overflow-hidden on the wrapper — it would break the sticky headers.
  */
-export default function WeekPlanner({ weekStart, itemsByDay, today, onSelect }: WeekPlannerProps) {
+export default function WeekPlanner({ weekStart, itemsByDay, today, maxPerDay, onSelect }: WeekPlannerProps) {
   const keys = weekKeys(weekStart);
 
   return (
@@ -35,6 +35,7 @@ export default function WeekPlanner({ weekStart, itemsByDay, today, onSelect }: 
             isToday={key === today}
             isFirst={i === 0}
             isLast={i === keys.length - 1}
+            maxPerDay={maxPerDay}
             onSelect={onSelect}
           />
         ))}
@@ -49,6 +50,7 @@ function DayColumn({
   isToday,
   isFirst,
   isLast,
+  maxPerDay,
   onSelect,
 }: {
   dayKey: DateKey;
@@ -56,12 +58,13 @@ function DayColumn({
   isToday: boolean;
   isFirst: boolean;
   isLast: boolean;
+  maxPerDay: number;
   onSelect: (campaign: Campaign) => void;
 }) {
   const weekend = isWeekend(dayKey);
   const { weekday, dayNum } = dayParts(dayKey);
   const count = items.length;
-  const over = count > MAX_SENDS_PER_DAY;
+  const over = count > maxPerDay;
 
   return (
     <div
@@ -86,7 +89,7 @@ function DayColumn({
             className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
               over ? "bg-amber-100 text-amber-700" : "bg-light-gray text-medium-gray"
             }`}
-            title={over ? `Over the ${MAX_SENDS_PER_DAY}-per-day cap` : `${count} send${count === 1 ? "" : "s"}`}
+            title={over ? `Over the ${maxPerDay}-per-day cap` : `${count} send${count === 1 ? "" : "s"}`}
           >
             {count}
           </span>

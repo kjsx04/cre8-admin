@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useMsal } from "@azure/msal-react";
 
 // Sidebar modules — add more as new marketing features are built
 const MODULES = [
@@ -10,6 +12,29 @@ const MODULES = [
 
 export default function MarketingSidebar() {
   const pathname = usePathname();
+  const { accounts } = useMsal();
+  const userEmail = accounts[0]?.username || "";
+
+  // Open email alerts (stale content / cadence slowed) → badge on the Email module
+  const [alertCount, setAlertCount] = useState(0);
+  useEffect(() => {
+    if (!userEmail) return;
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/email/alerts", { headers: { "x-user-email": userEmail } });
+        if (res.ok && !cancelled) setAlertCount(((await res.json()).alerts || []).length);
+      } catch {
+        /* quiet */
+      }
+    };
+    load();
+    const t = window.setInterval(load, 5 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(t);
+    };
+  }, [userEmail, pathname]);
 
   // The campaign composer wants the whole width — hide the module rail there
   if (/^\/marketing\/email\/(new|[^/]+\/edit)/.test(pathname || "")) return null;
@@ -40,6 +65,14 @@ export default function MarketingSidebar() {
                 {mod.icon}
               </span>
               {mod.label}
+              {mod.href === "/marketing/email" && alertCount > 0 && (
+                <span
+                  className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700"
+                  title={`${alertCount} campaign${alertCount === 1 ? "" : "s"} need attention`}
+                >
+                  {alertCount}
+                </span>
+              )}
             </Link>
           );
         })}

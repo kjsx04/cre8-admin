@@ -83,6 +83,8 @@ export async function POST(request: NextRequest) {
         ? Array.from(new Set([body.broker_id, ...body.broker_ids]))
         : [body.broker_id],
       priority: body.priority === "high" ? "high" : "normal",
+      pinned: !!body.pinned,
+      cadence_changed_at: new Date().toISOString(),
       segment_id: body.segment_id || null,
       segment_name: body.segment_name || "All Contacts",
       frequency: body.frequency || "one-time",

@@ -18,6 +18,8 @@ export async function POST(request: NextRequest) {
       priority,             // "high" | "normal" — the composer's "Top of list" choice
       rank,                 // listing rank (1 = most important) from the Priorities list, or null
       rank_total,
+      is_announcement,      // bypasses listing spacing
+      rules,                // rules block built from the Settings panel (see scheduler.rulesText)
       target_date,          // optional — recurring next occurrence should land near this date
       existing_campaigns,
     } = body;
@@ -49,23 +51,7 @@ export async function POST(request: NextRequest) {
 Your job: pick the optimal send time for a new email campaign and adjust the existing calendar if needed.
 
 RULES:
-- Business hours ONLY: 7:00 AM - 5:00 PM MST, Monday through Friday
-- Time preferences: mornings (7-11 AM) > afternoons (12-5 PM). Tuesday-Thursday > Monday/Friday.
-- Maximum 2 campaigns per day. Minimum 2-hour gap between any two sends on the same day.
-- LISTING RANK (set by the broker in a ranked list; 1 = most important; overrides everything below):
-  - Rank 1-3 (or TOP): a major listing. Give it the single best available slot in the next 1-3 business days (Tue-Thu morning if at all possible). You may shift lower-ranked campaigns to make room.
-  - Lower ranks fit into open slots in rank order. Never displace a better-ranked campaign for a worse-ranked one. Unranked = bottom.
-- Secondary hierarchy when priorities tie (higher = better slot):
-  1. Just Listed
-  2. Just Sold
-  3. Featured
-  4. New (listing < 60 days old)
-  5. Standard (lowest)
-- You CAN shift lower-priority campaigns to make room for higher-priority ones — BUT never shift a campaign that's within 2 hours of its scheduled send time, and never shift a PROJECTED send (they aren't created yet; treat them as occupied slots).
-- The calendar below covers the next 8 weeks including projected recurring sends — avoid days that are already at the cap anywhere in that window.
-- For recurring campaigns: assign a consistent weekly slot (same day/time each week). Use the frequency to compute the slot.
-- Distribute sends evenly across the week. Avoid clustering on one day.
-- Schedule at least 24 hours in the future (never same-day).
+${rules || "- Business days only, Mon–Fri 7:00–17:00 Phoenix time. Max 2 sends per day, 2-hour gap, at least 24 hours out."}
 
 Current date: ${currentDate} (${dayOfWeek})
 Current time: ${currentTime} MST
@@ -81,6 +67,7 @@ NEW CAMPAIGN TO SCHEDULE:
 - Listing: ${listing_name}
 - Frequency: ${frequency || "one-time"}
 - Rank: ${rank != null ? `${rank} of ${rank_total}` : priority === "high" ? "TOP (new, placed at the top of the list)" : "unranked (bottom)"}
+- Announcement: ${is_announcement ? "YES — must go out at the best available slot; listing spacing does not apply to it" : "no"}
 ${target_date ? `- TARGET DATE: this is the next occurrence of a recurring campaign. Schedule it in the same week as ${target_date} (same weekday/time as the previous send when possible). If that date is already in the past, pick the next valid business-hours slot at least 24 hours from now.` : ""}
 
 Return ONLY valid JSON (no markdown, no preamble):

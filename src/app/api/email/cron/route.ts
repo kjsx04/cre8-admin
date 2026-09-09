@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { getSendStatus, cancelSend } from "@/lib/email/provider";
 import { scheduleCampaign, computeNextSendDate, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
+import { getSettings } from "@/lib/email/settings-server";
+import { FREQUENCY_LABELS } from "@/lib/email/constants";
 
 /**
  * GET /api/email/cron — Vercel Cron handler
@@ -141,6 +143,61 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // ── Freshness decay + stale-content alerts ──
+    const housekeeping: string[] = [];
+    try {
+      const settings = await getSettings();
+      const { data: live } = await supabase
+        .from("email_campaigns")
+        .select("*")
+        .in("status", ["scheduled", "active"]);
+
+      for (const c of live || []) {
+        // Decay: recurring campaigns slow down as they age, unless pinned
+        if (settings.decay.enabled && c.campaign_type === "recurring" && !c.pinned) {
+          const since = new Date(c.cadence_changed_at || c.created_at).getTime();
+          const ageDays = (now.getTime() - since) / 86_400_000;
+          let nextFreq: string | null = null;
+          if (c.frequency === "weekly" && ageDays >= settings.decay.weeklyToBiweeklyDays) nextFreq = "bi-weekly";
+          else if (c.frequency === "bi-weekly" && ageDays >= settings.decay.biweeklyToMonthlyDays) nextFreq = "monthly";
+          if (nextFreq) {
+            await supabase
+              .from("email_campaigns")
+              .update({ frequency: nextFreq, cadence_changed_at: now.toISOString(), updated_at: now.toISOString() })
+              .eq("id", c.id);
+            await supabase.from("email_alerts").upsert(
+              {
+                campaign_id: c.id,
+                type: "decay",
+                message: `Slowed from ${FREQUENCY_LABELS[c.frequency] || c.frequency} to ${FREQUENCY_LABELS[nextFreq]} after ${Math.round(ageDays)} days. Pin it in the editor to keep a cadence.`,
+                created_at: now.toISOString(),
+                dismissed_until: null,
+              },
+              { onConflict: "campaign_id,type" }
+            );
+            housekeeping.push(`${c.id}: decayed ${c.frequency} → ${nextFreq}`);
+          }
+        }
+
+        // Stale: nobody has edited the content in N days
+        const editedDays = (now.getTime() - new Date(c.updated_at).getTime()) / 86_400_000;
+        if (editedDays >= settings.staleAlertDays) {
+          await supabase.from("email_alerts").upsert(
+            {
+              campaign_id: c.id,
+              type: "stale",
+              message: `Not updated in ${Math.round(editedDays)} days — refresh the wording or photo?`,
+              created_at: now.toISOString(),
+            },
+            { onConflict: "campaign_id,type", ignoreDuplicates: true }
+          );
+        }
+      }
+    } catch (err) {
+      console.error("[Cron] housekeeping failed:", err);
+      housekeeping.push(`error: ${err instanceof Error ? err.message : "housekeeping failed"}`);
+    }
+
     // ── Nightly rebalance: this week and next, so mornings start under the cap ──
     const rebalance: unknown[] = [];
     try {
@@ -155,6 +212,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       processed: results.length,
       results,
+      housekeeping,
       rebalance,
       timestamp: now.toISOString(),
     });
