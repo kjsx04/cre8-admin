@@ -265,7 +265,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     // Outlook desktop ignores inline-block, so it gets real table cells via the mso comments.
     return `<!--[if mso]><td width="292" valign="top"><![endif]--><div class="group-card" data-field="group-${i}" style="display:inline-block;width:100%;max-width:292px;vertical-align:top;font-size:14px;">
                     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top" style="padding:0 8px 16px 8px;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border:1px solid #333333;border-radius:6px;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border:1px solid #FFFFFF;border-radius:6px;">
                         <tr>
                           <td style="padding:0;line-height:0;font-size:0;border-radius:6px 6px 0 0;overflow:hidden;">
                             <a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${
