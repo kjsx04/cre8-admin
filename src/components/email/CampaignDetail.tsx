@@ -116,7 +116,7 @@ export default function CampaignDetail({
                     className="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded"
                     style={{ color: "#fff", backgroundColor: color }}
                   >
-                    {campaign.email_label}
+                    {campaign.email_label || "Group"}
                   </span>
                   <PriorityBadge priority={priority} />
                   <span
@@ -274,7 +274,7 @@ export default function CampaignDetail({
                 showSendConfirm ? (
                   <div className="rounded-btn border border-green bg-[#f7fdf0] p-3 space-y-2">
                     <p className="text-sm text-charcoal">
-                      Send <span className="font-medium">{campaign.email_label}: {campaign.listing_name}</span> to <span className="font-medium">{campaign.segment_name}</span> right now?
+                      Send <span className="font-medium">{campaign.email_label ? `${campaign.email_label}: ` : ""}{campaign.listing_name}</span> to <span className="font-medium">{campaign.segment_name}</span> right now?
                       {campaign.campaign_type === "recurring" && <span className="text-muted-gray"> The cadence restarts from today.</span>}
                     </p>
                     <div className="flex gap-2">

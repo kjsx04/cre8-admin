@@ -252,7 +252,7 @@ export default function PriorityPanel({ campaigns, userEmail, onClose, onApplied
             {camps.map((c) => (
               <span key={c.id} className="inline-flex items-center gap-1 text-[10px] text-medium-gray" title={formatScheduleDate(c.scheduled_date)}>
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(c.email_label) }} />
-                {c.email_label}
+                {c.email_label || "Group"}
                 {c.campaign_type === "recurring" && c.frequency && (
                   <span className="text-muted-gray">· {FREQUENCY_LABELS[c.frequency] || c.frequency}</span>
                 )}

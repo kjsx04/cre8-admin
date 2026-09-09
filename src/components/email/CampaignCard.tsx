@@ -42,7 +42,7 @@ export default function CampaignCard({ campaign, onClick }: CampaignCardProps) {
                 className="text-xs font-bold uppercase tracking-wide"
                 style={{ color }}
               >
-                {campaign.email_label}
+                {campaign.email_label || "Group"}
               </span>
               <PriorityBadge priority={priority} />
               {campaign.campaign_type === "recurring" && (

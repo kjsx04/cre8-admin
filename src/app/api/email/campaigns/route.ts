@@ -58,12 +58,13 @@ export async function POST(request: NextRequest) {
   if (isGroup) {
     if (groupListings.length < 2) return NextResponse.json({ error: "A group email needs at least 2 listings" }, { status: 400 });
     body.listing_id = body.listing_id && String(body.listing_id).startsWith("group:") ? body.listing_id : `group:${randomUUID()}`;
-    body.listing_name = body.listing_name || body.email_label || "Featured Listings";
+    body.email_label = body.email_label || "";
+    body.listing_name = body.listing_name || body.email_label || body.heading_text || "Group email";
     body.photo_url = body.photo_url || groupListings[0]?.photo_url || null;
   }
 
   // Validate required fields
-  if (!body.listing_id || !body.listing_name || !body.broker_id || !body.email_label) {
+  if (!body.listing_id || !body.listing_name || !body.broker_id || (!body.email_label && !isGroup)) {
     return NextResponse.json(
       { error: "Missing required fields: listing_id, listing_name, broker_id, email_label" },
       { status: 400 }

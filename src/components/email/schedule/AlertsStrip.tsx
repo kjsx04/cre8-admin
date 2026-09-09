@@ -69,7 +69,7 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
             className="min-w-0 flex-1 text-left text-charcoal hover:underline truncate"
             title="Open in the editor"
           >
-            <span className="font-medium">{a.email_label}: {a.listing_name}</span>
+            <span className="font-medium">{a.email_label ? `${a.email_label}: ` : ""}{a.listing_name}</span>
             <span className="text-medium-gray"> — {a.message}</span>
           </button>
           <button type="button" onClick={() => dismiss(a.id)} className="text-muted-gray hover:text-charcoal text-base leading-none shrink-0" title="Dismiss for two weeks">

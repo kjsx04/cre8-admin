@@ -263,12 +263,13 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     return {
       // Groups carry a synthetic listing id (assigned by the API on create) and use the heading as the name
       listing_id: isGroup ? (draft.listingId.startsWith("group:") ? draft.listingId : "") : draft.listingId,
-      listing_name: isGroup ? (draft.emailLabel.trim() || "Featured Listings") : draft.listingName,
+      // Group: the internal name (schedule cards, subject) = big heading, else the eyebrow, else a generic name
+      listing_name: isGroup ? (draft.emailLabel.trim() || draft.headingText.trim() || "Group email") : draft.listingName,
       campaign_kind: draft.kind,
       group_listings: isGroup ? draft.groupListings : [],
       campaign_type: draft.campaignType,
       // Blank label → the email's default, exactly what the placeholder shows
-      email_label: draft.emailLabel.trim() || (isGroup ? "Featured Listings" : "Just Listed"),
+      email_label: isGroup ? draft.emailLabel.trim() : (draft.emailLabel.trim() || "Just Listed"),
       heading_text: draft.headingText || undefined,
       body_text: draft.bodyText || undefined,
       photo_url: isGroup ? draft.groupListings[0]?.photo_url || undefined : draft.photoUrl || undefined,

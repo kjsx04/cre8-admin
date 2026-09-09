@@ -116,9 +116,14 @@ export function buildTemplateVars(
 ): EmailTemplateVars {
   // Lazy import to avoid circular — getTypeColor is in utils.ts which imports from constants
   // Instead, inline the color lookup here since TYPE_COLORS is in this file
-  const label = (data.email_label as string) || "Just Listed";
+  // Group emails show exactly what was typed — a blank line stays blank.
+  // Single-listing emails keep their defaults ("Just Listed" / the listing name).
+  const isGroupData = data.campaign_kind === "group" || (Array.isArray(data.group_listings) && data.group_listings.length > 0);
+  const label = isGroupData ? ((data.email_label as string) || "") : ((data.email_label as string) || "Just Listed");
   const labelColor = TYPE_COLORS[label] || RECURRING_COLOR;
-  const heading = (data.heading_text as string) || (data.listing_name as string) || "Property Listing";
+  const heading = isGroupData
+    ? ((data.heading_text as string) || "")
+    : ((data.heading_text as string) || (data.listing_name as string) || "Property Listing");
   const brokerId = (data.broker_id as string) || "";
 
   // All brokers on the email: broker_ids (primary first) with broker_id guaranteed at the front.
@@ -384,7 +389,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
           <!-- Combined header — Label + Heading on left, CRE8 logo on right -->
           <tr>
-            <td style="background-color:#1A1A1A;padding:28px 32px;">
+            <td style="background-color:#1A1A1A;padding:${isGroup ? "28px 32px 14px 32px" : "28px 32px"};">
               <!--[if mso]>
               <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
               <v:fill type="tile" color="#1A1A1A"/>
@@ -395,17 +400,19 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                   <!-- Left: Label + Heading + Address -->
                   <td valign="top" style="padding-right:16px;">
                     <!-- Top line — the listing name (or a typed override), small green caps -->
+                    ${vars.heading ? `
                     <p data-field="heading" style="margin:0 0 5px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
                       ${escapeHtml(vars.heading.toUpperCase())}
-                    </p>
+                    </p>` : ""}
                     <!-- Heading — Bebas Neue where web fonts load (Apple Mail, iOS).
                          Outlook/Gmail strip web fonts, so the fallback is bold uppercase
                          Helvetica/Arial with tracking — reads as the same display style
                          instead of the cramped Arial Narrow fallback. -->
                     <!-- Big line — the heading typed in the composer ("Just Listed", "Price Reduced", …) -->
+                    ${vars.label ? `
                     <h1 data-field="label" style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.label)}
-                    </h1>
+                    </h1>` : ""}
                     ${vars.propertyAddress ? `
                     <p style="margin:6px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
                       ${escapeHtml(vars.propertyAddress)}
@@ -437,7 +444,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <!-- Body text (optional) -->
           ${vars.bodyText ? `
           <tr>
-            <td style="padding:20px 32px 0 32px;">
+            <td style="padding:${isGroup ? "4px" : "20px"} 32px 0 32px;">
               <p data-field="body" style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
                 ${escapeHtml(vars.bodyText)}
               </p>

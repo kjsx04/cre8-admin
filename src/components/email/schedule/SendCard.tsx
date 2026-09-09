@@ -65,7 +65,7 @@ export default function SendCard({ item, onClick }: SendCardProps) {
           className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded text-white"
           style={{ backgroundColor: color, backgroundImage: isRecurring ? RECURRING_STRIPE : undefined }}
         >
-          {c.email_label}
+          {c.email_label || "Group"}
         </span>
         {c.priority === "high" && (
           <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">

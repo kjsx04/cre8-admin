@@ -90,10 +90,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       input.partner_logo_height = draft.partnerLogoHeight;
     }
     // Before a listing is picked, show the template defaults so the shape reads
-    if (draft.kind === "group") {
-      input.heading_text = draft.headingText || "CRE8 Advisors";
-      input.email_label = draft.emailLabel || "Featured Listings";
-    } else if (!draft.listingId) {
+    // Group emails show exactly what's typed (blank stays blank), so no defaults there
+    if (draft.kind !== "group" && !draft.listingId) {
       input.heading_text = draft.headingText || "Property Name";
     }
     return wrapPreviewHtml(renderEmailHtml(buildTemplateVars(input)));
@@ -373,7 +371,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           {revealed && (
             <div className="space-y-8 composer-reveal">
               {/* Same order as the email, top to bottom */}
-              <Section n={2} title="Heading">
+              <Section n={2} title="Heading" note={isGroup ? "all optional" : undefined}>
                 <div className="space-y-2.5">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
@@ -382,14 +380,14 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     {...fieldProps("heading")}
                     value={draft.headingText}
                     onChange={(e) => set("headingText", e.target.value)}
-                    placeholder={isGroup ? "CRE8 ADVISORS" : (draft.listingName || "Property Name").toUpperCase()}
+                    placeholder={isGroup ? "TYPE OR LOCATION — e.g. LAND · WEST VALLEY" : (draft.listingName || "Property Name").toUpperCase()}
                     className={`${INPUT} text-xs uppercase tracking-wide`}
                   />
                   <input
                     {...fieldProps("label")}
                     value={draft.emailLabel}
                     onChange={(e) => set("emailLabel", e.target.value)}
-                    placeholder={isGroup ? "Featured Listings — e.g. Land Opportunities in the West Valley" : "Just Listed"}
+                    placeholder={isGroup ? "Heading — e.g. West Valley Land & Retail" : "Just Listed"}
                     className={INPUT}
                   />
                 </div>
@@ -559,7 +557,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           <div className="relative bg-white rounded-card shadow-lg w-full max-w-md p-6">
             <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Send now?</h3>
             <p className="text-sm text-charcoal mt-2">
-              <span className="font-medium">{formData.email_label}: {formData.listing_name}</span> goes to{" "}
+              <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
               <span className="font-medium">{formData.segment_name}</span> within a couple of minutes, from {formData.broker_name}.
             </p>
             {formData.campaign_type === "recurring" && (
