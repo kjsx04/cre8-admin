@@ -48,6 +48,12 @@ export async function PATCH(
   if (body.listing_name !== undefined) updates.listing_name = body.listing_name;
   if (body.campaign_type !== undefined) updates.campaign_type = body.campaign_type;
   if (body.email_label !== undefined) updates.email_label = body.email_label;
+  if (body.campaign_kind !== undefined) updates.campaign_kind = body.campaign_kind === "group" ? "group" : "single";
+  if (body.group_listings !== undefined) {
+    updates.group_listings = Array.isArray(body.group_listings) ? body.group_listings : [];
+    // Keep the schedule card's thumbnail in step with the first listing
+    if (!body.photo_url && Array.isArray(body.group_listings) && body.group_listings[0]?.photo_url) updates.photo_url = body.group_listings[0].photo_url;
+  }
   if (body.heading_text !== undefined) updates.heading_text = body.heading_text || null;
   if (body.body_text !== undefined) updates.body_text = body.body_text || null;
   if (body.photo_url !== undefined) updates.photo_url = body.photo_url || null;

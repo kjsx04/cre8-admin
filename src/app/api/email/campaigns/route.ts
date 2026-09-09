@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { scheduleCampaign } from "@/lib/email/scheduler";
 import { placeListing } from "@/lib/email/priorities";
+import { randomUUID } from "crypto";
 
 // GET /api/email/campaigns — list campaigns, optionally filtered by listing_id or status
 export async function GET(request: NextRequest) {
@@ -50,6 +51,17 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json();
 
+  // Group (digest) emails: several listings in one email. They get their own synthetic
+  // listing id so scheduling, spacing and priorities treat the group as one thing.
+  const isGroup = body.campaign_kind === "group";
+  const groupListings = isGroup && Array.isArray(body.group_listings) ? body.group_listings : [];
+  if (isGroup) {
+    if (groupListings.length < 2) return NextResponse.json({ error: "A group email needs at least 2 listings" }, { status: 400 });
+    body.listing_id = body.listing_id && String(body.listing_id).startsWith("group:") ? body.listing_id : `group:${randomUUID()}`;
+    body.listing_name = body.listing_name || body.email_label || "Featured Listings";
+    body.photo_url = body.photo_url || groupListings[0]?.photo_url || null;
+  }
+
   // Validate required fields
   if (!body.listing_id || !body.listing_name || !body.broker_id || !body.email_label) {
     return NextResponse.json(
@@ -65,6 +77,8 @@ export async function POST(request: NextRequest) {
       listing_id: body.listing_id,
       listing_name: body.listing_name,
       campaign_type: body.campaign_type || "one-time",
+      campaign_kind: isGroup ? "group" : "single",
+      group_listings: groupListings,
       email_label: body.email_label,
       heading_text: body.heading_text || null,
       body_text: body.body_text || null,

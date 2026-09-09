@@ -23,7 +23,8 @@ export type PreviewField =
   | "cta"
   | "broker"
   | "partner"
-  | `highlight-${number}`;
+  | `highlight-${number}`
+  | `group-${number}`;
 
 /** CSS class the parent toggles on the active region */
 export const PREVIEW_FOCUS_CLASS = "cre8-focus";

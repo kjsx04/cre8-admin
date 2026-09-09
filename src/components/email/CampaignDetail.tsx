@@ -200,6 +200,29 @@ export default function CampaignDetail({
               </Section>
             )}
 
+            {/* Group listings */}
+            {campaign.campaign_kind === "group" && (campaign.group_listings || []).length > 0 && (
+              <Section title={`Listings (${campaign.group_listings.length})`}>
+                <div className="space-y-1.5">
+                  {campaign.group_listings.map((g, i) => (
+                    <a key={g.listing_id} href={g.url || "#"} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 group">
+                      <span className="text-[10px] w-4 text-muted-gray">{i + 1}</span>
+                      <div className="w-10 h-7 rounded overflow-hidden bg-border-light shrink-0">
+                        {g.photo_url && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={g.photo_url} alt="" className="w-full h-full object-cover" />
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="text-sm text-charcoal truncate group-hover:underline">{g.name}</div>
+                        <div className="text-[11px] text-muted-gray truncate">{[g.chip, g.summary].filter(Boolean).join(" · ")}</div>
+                      </div>
+                    </a>
+                  ))}
+                </div>
+              </Section>
+            )}
+
             {/* Results */}
             {stats && stats.sends > 0 && (
               <Section title="Results">

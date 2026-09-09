@@ -38,8 +38,21 @@ export default function SendCard({ item, onClick }: SendCardProps) {
         {isSent && <span className="text-[10px] font-medium text-green-dark">✓ sent</span>}
       </div>
 
+      {/* Group email: 2×2 mosaic of the first listings + count */}
+      {c.campaign_kind === "group" && !isSent && (
+        <div className="mt-1.5 relative aspect-[16/10] rounded overflow-hidden bg-light-gray grid grid-cols-2 grid-rows-2 gap-0.5">
+          {(c.group_listings || []).slice(0, 4).map((g) => (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img key={g.listing_id} src={g.photo_url} alt="" className="w-full h-full object-cover" loading="lazy" />
+          ))}
+          <span className="absolute bottom-1 right-1 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-black/70 text-white">
+            {(c.group_listings || []).length} listings
+          </span>
+        </div>
+      )}
+
       {/* Listing photo (skipped on sent cards to keep past days compact) */}
-      {c.photo_url && !isSent && (
+      {c.campaign_kind !== "group" && c.photo_url && !isSent && (
         <div className="mt-1.5 aspect-[16/10] rounded overflow-hidden bg-light-gray">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={c.photo_url} alt="" className="w-full h-full object-cover" loading="lazy" />

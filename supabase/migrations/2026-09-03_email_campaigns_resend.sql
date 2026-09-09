@@ -92,3 +92,11 @@ create table if not exists public.email_events (
 );
 create index if not exists email_events_campaign_idx on public.email_events (campaign_id, event_type);
 create index if not exists email_events_occurred_idx on public.email_events (occurred_at);
+
+-- 2026-09-09: group (digest) campaigns — several listings in one email.
+-- campaign_kind 'single' | 'group'. Groups use listing_id = 'group:<uuid>' so every
+-- schedule/priority feature keys off one id, and group_listings holds the ordered cards.
+alter table public.email_campaigns
+  add column if not exists campaign_kind text not null default 'single',
+  add column if not exists group_listings jsonb not null default '[]'::jsonb;
+create index if not exists email_campaigns_group_listings_idx on public.email_campaigns using gin (group_listings);

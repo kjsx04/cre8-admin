@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Campaign, CampaignFormData, CampaignType, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
+import { Campaign, CampaignFormData, CampaignType, CampaignFrequency, CampaignPriority, CampaignKind, GroupListing } from "@/lib/email/types";
 import { EMAIL_SENDERS, EMAIL_SEGMENTS } from "@/lib/email/constants";
 import { BROKERS, BROKER_CONTACTS, brokerIdForEmail, ListingItem } from "@/lib/admin-constants";
 import { buildAutoHighlights, splitHighlight, joinHighlight } from "@/lib/email/utils";
@@ -22,6 +22,8 @@ export interface HighlightRow {
 }
 
 export interface CampaignDraft {
+  kind: CampaignKind;           // "single" listing email or a "group" of several
+  groupListings: GroupListing[]; // cards for group emails, in order
   listingId: string;
   listingName: string;
   campaignType: CampaignType;
@@ -42,7 +44,7 @@ export interface CampaignDraft {
   pinned: boolean;              // exempt from freshness decay
 }
 
-export type MissingField = "listing" | "broker" | "partnerLogo";
+export type MissingField = "listing" | "group" | "broker" | "partnerLogo";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -102,6 +104,8 @@ function bumpRowIds(draft: CampaignDraft) {
 /** Blank draft for a new campaign — broker defaults to the signed-in user when they're a broker */
 function emptyDraft(userEmail: string): CampaignDraft {
   return {
+    kind: "single",
+    groupListings: [],
     listingId: "",
     listingName: "",
     campaignType: "one-time",
@@ -126,6 +130,8 @@ function emptyDraft(userEmail: string): CampaignDraft {
 /** Preload a draft from an existing campaign (edit mode) */
 function fromCampaign(c: Campaign): CampaignDraft {
   return {
+    kind: c.campaign_kind === "group" ? "group" : "single",
+    groupListings: c.campaign_kind === "group" ? c.group_listings || [] : [],
     listingId: c.listing_id || "",
     listingName: c.listing_name || "",
     campaignType: c.campaign_type || "one-time",
@@ -253,15 +259,19 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     const sender = EMAIL_SENDERS.find((s) => s.id === primaryId);
     const segment = EMAIL_SEGMENTS.find((s) => s.id === draft.segmentId);
     const isRecurring = draft.campaignType === "recurring";
+    const isGroup = draft.kind === "group";
     return {
-      listing_id: draft.listingId,
-      listing_name: draft.listingName,
+      // Groups carry a synthetic listing id (assigned by the API on create) and use the heading as the name
+      listing_id: isGroup ? (draft.listingId.startsWith("group:") ? draft.listingId : "") : draft.listingId,
+      listing_name: isGroup ? (draft.emailLabel.trim() || "Featured Listings") : draft.listingName,
+      campaign_kind: draft.kind,
+      group_listings: isGroup ? draft.groupListings : [],
       campaign_type: draft.campaignType,
       // Blank label → the email's default, exactly what the placeholder shows
-      email_label: draft.emailLabel.trim() || "Just Listed",
+      email_label: draft.emailLabel.trim() || (isGroup ? "Featured Listings" : "Just Listed"),
       heading_text: draft.headingText || undefined,
       body_text: draft.bodyText || undefined,
-      photo_url: draft.photoUrl || undefined,
+      photo_url: isGroup ? draft.groupListings[0]?.photo_url || undefined : draft.photoUrl || undefined,
       partner_logo_url: draft.partnerLogoUrl && !draft.partnerLogoUrl.startsWith("data:") ? draft.partnerLogoUrl : undefined,
       partner_logo_width: draft.partnerLogoWidth || undefined,
       partner_logo_height: draft.partnerLogoHeight || undefined,
@@ -287,11 +297,13 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
   // ── Validation: a listing and at least one broker (label defaults to "Just Listed") ──
   const missing: MissingField[] = useMemo(() => {
     const m: MissingField[] = [];
-    if (!draft.listingId) m.push("listing");
+    if (draft.kind === "group") {
+      if (draft.groupListings.length < 2) m.push("group");
+    } else if (!draft.listingId) m.push("listing");
     if (draft.brokerIds.length === 0) m.push("broker");
     if (draft.partnerLogoUrl.startsWith("data:")) m.push("partnerLogo"); // chosen but not applied
     return m;
-  }, [draft.listingId, draft.brokerIds, draft.partnerLogoUrl]);
+  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.partnerLogoUrl]);
 
   const isValid = missing.length === 0;
   const dirty = JSON.stringify(draft) !== initialJsonRef.current;

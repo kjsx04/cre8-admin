@@ -8,6 +8,22 @@
 // Campaign type: one-time send or recurring series
 export type CampaignType = "one-time" | "recurring";
 
+// Single listing email, or a group (digest) of several listings
+export type CampaignKind = "single" | "group";
+
+// Status chip shown on a group card
+export type GroupChip = "" | "Just Listed" | "Price Reduced" | "Under Contract";
+
+// One card in a group email (snapshot of the listing, refreshed by listing-sync)
+export interface GroupListing {
+  listing_id: string;
+  name: string;
+  photo_url: string;
+  url: string;
+  summary: string;   // "Call for Pricing · 76.57 Acres · Buckeye"
+  chip: GroupChip;
+}
+
 // How often recurring campaigns send
 export type CampaignFrequency = "one-time" | "weekly" | "bi-weekly" | "monthly";
 
@@ -35,6 +51,8 @@ export interface Campaign {
   listing_id: string;
   listing_name: string;
   campaign_type: CampaignType;
+  campaign_kind: CampaignKind;    // "single" | "group"
+  group_listings: GroupListing[]; // cards for group emails (empty for single)
   email_label: string;
   heading_text: string | null;
   body_text: string | null;
@@ -71,6 +89,8 @@ export interface CampaignFormData {
   listing_id: string;
   listing_name: string;
   campaign_type: CampaignType;
+  campaign_kind?: CampaignKind;
+  group_listings?: GroupListing[];
   email_label: string;
   heading_text?: string;
   body_text?: string;
@@ -147,6 +167,7 @@ export interface EmailTemplateVars {
   partnerLogoWidth: number;    // natural px (0 when unknown)
   partnerLogoHeight: number;
   brokers: BrokerCardVars[];   // one card per broker, primary first
+  groupListings: GroupListing[]; // when non-empty the email renders as a 2-up grid of listing cards
 }
 
 // One broker contact card in the email

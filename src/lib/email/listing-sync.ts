@@ -13,7 +13,7 @@
 import { supabase } from "@/lib/flow/supabase";
 import { ListingFieldData } from "@/lib/admin-constants";
 import { syncCampaignToProvider } from "./provider";
-import { refreshHighlights } from "./utils";
+import { refreshHighlights, buildGroupSummary } from "./utils";
 
 export type ListingSyncResult = {
   updated: string[];  // campaign ids whose row changed
@@ -93,6 +93,49 @@ export async function syncCampaignsForListing(
       }
       if (sync.ok) result.synced.push(campaign.id);
       else result.errors.push(`${campaign.id}: ${sync.error || sync.action}`);
+    }
+  }
+
+  // Group emails that feature this listing: refresh that card's name / photo / summary / url
+  const { data: groups } = await supabase
+    .from("email_campaigns")
+    .select("*")
+    .eq("campaign_kind", "group")
+    .in("status", ["draft", "scheduled", "active", "paused"])
+    .contains("group_listings", JSON.stringify([{ listing_id: listingId }]));
+
+  for (const g of groups || []) {
+    let changed = false;
+    const cards = (g.group_listings || []).map((card: { listing_id: string; name: string; photo_url: string; url: string; summary: string; chip: string }) => {
+      if (card.listing_id !== listingId) return card;
+      const next = { ...card };
+      if (fieldData.name && fieldData.name !== card.name) next.name = fieldData.name;
+      const hero = fieldData.gallery?.[0]?.url;
+      if (hero && !card.photo_url) next.photo_url = hero; // keep a hand-picked photo, fill an empty one
+      if (fieldData.slug) next.url = `https://cre8advisors.com/listings/${fieldData.slug}`;
+      const summary = buildGroupSummary(fieldData);
+      if (summary && summary !== card.summary) next.summary = summary;
+      if (fieldData["under-contract"] && card.chip !== "Under Contract") next.chip = "Under Contract";
+      if (fieldData["under-contract"] === false && card.chip === "Under Contract") next.chip = "";
+      if (JSON.stringify(next) !== JSON.stringify(card)) changed = true;
+      return next;
+    });
+    if (!changed) continue;
+    const { data: saved } = await supabase
+      .from("email_campaigns")
+      .update({ group_listings: cards, updated_at: new Date().toISOString() })
+      .eq("id", g.id)
+      .select()
+      .single();
+    if (!saved) continue;
+    result.updated.push(g.id);
+    if (saved.status === "scheduled" || saved.status === "active") {
+      const sync = await syncCampaignToProvider(saved);
+      if (sync.provider_send_id !== saved.provider_send_id) {
+        await supabase.from("email_campaigns").update({ provider_send_id: sync.provider_send_id }).eq("id", g.id);
+      }
+      if (sync.ok) result.synced.push(g.id);
+      else result.errors.push(`${g.id}: ${sync.error || sync.action}`);
     }
   }
 

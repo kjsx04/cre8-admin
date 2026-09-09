@@ -7,7 +7,7 @@
  * cre8advisors.com domain can be a sender, so each broker sends as themselves.
  */
 
-import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars } from "./types";
+import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupListing } from "./types";
 
 // ── Broker senders ──
 // Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
@@ -156,6 +156,7 @@ export function buildTemplateVars(
     partnerLogoWidth: Number(data.partner_logo_width) || 0,
     partnerLogoHeight: Number(data.partner_logo_height) || 0,
     brokers,
+    groupListings: data.campaign_kind === "group" && Array.isArray(data.group_listings) ? (data.group_listings as GroupListing[]) : [],
   };
 }
 
@@ -213,7 +214,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   }
 
   // CTA text varies by campaign type
-  const ctaText = vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
+  const ctaText = vars.groupListings.length > 0 ? "VIEW ALL LISTINGS" : vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
 
   // Header logos — CRE8 alone at 30px, or CRE8 + partner both at 23px with a divider.
   const hasPartner = !!vars.partnerLogoUrl;
@@ -244,6 +245,50 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                         </td>` : ""}
                       </tr>
                     </table>`;
+
+  // Group (digest) grid — two listing cards per row, whole card clickable.
+  const isGroup = vars.groupListings.length > 0;
+  const groupChip = (chip: string) => {
+    if (!chip) return "";
+    const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : "#8CC644";
+    return `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${escapeHtml(chip)}</p>`;
+  };
+  const groupCard = (g: GroupListing, i: number) => {
+    const href = g.url || CRE8_SITE_URL + "/listings";
+    return `
+                    <td data-field="group-${i}" width="50%" valign="top" style="padding:0 4px 8px 4px;">
+                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border-radius:6px;">
+                        <tr>
+                          <td style="padding:0;line-height:0;font-size:0;border-radius:6px 6px 0 0;overflow:hidden;">
+                            <a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${
+                              g.photo_url
+                                ? `<img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="264" height="165" style="display:block;width:100%;height:165px;object-fit:cover;border:0;outline:none;text-decoration:none;border-radius:6px 6px 0 0;" />`
+                                : `<div style="width:100%;height:165px;background-color:#222222;border-radius:6px 6px 0 0;"></div>`
+                            }</a>
+                          </td>
+                        </tr>
+                        <tr>
+                          <td style="padding:12px 14px 14px 14px;">
+                            ${groupChip(g.chip)}
+                            <a href="${href}" target="_blank" style="text-decoration:none;">
+                              <p style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">${escapeHtml(g.name)}</p>
+                            </a>
+                            ${g.summary ? `<p style="margin:4px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#BFBFBF;line-height:1.4;">${escapeHtml(g.summary)}</p>` : ""}
+                          </td>
+                        </tr>
+                      </table>
+                    </td>`;
+  };
+  let groupGridHtml = "";
+  if (isGroup) {
+    const rows: string[] = [];
+    for (let i = 0; i < vars.groupListings.length; i += 2) {
+      const a = groupCard(vars.groupListings[i], i);
+      const b = i + 1 < vars.groupListings.length ? groupCard(vars.groupListings[i + 1], i + 1) : `<td width="50%" style="padding:0 4px 8px 4px;"></td>`;
+      rows.push(`<tr>${a}${b}</tr>`);
+    }
+    groupGridHtml = rows.join("");
+  }
 
   // Broker cards — one per broker, 8px apart. Falls back to the single primary broker fields.
   const brokerList: BrokerCardVars[] =
@@ -379,12 +424,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>
 
-          <!-- Hero property photo — full bleed, clickable to listing page -->
-          ${vars.photoUrl ? `
+          <!-- Hero property photo — full bleed, clickable to listing page (single-listing emails only) -->
+          ${vars.photoUrl && !isGroup ? `
           <tr>
             <td data-field="photo" style="padding:0;line-height:0;font-size:0;">
               ${vars.listingUrl
-                ? `<a href="${vars.listingUrl}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;"><img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" /></a>`
+                ? `<a href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;"><img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" /></a>`
                 : `<img src="${vars.photoUrl}" alt="${escapeHtml(vars.heading)}" width="600" style="display:block;width:100%;height:auto;border:0;outline:none;text-decoration:none;" />`}
             </td>
           </tr>` : ""}
@@ -399,8 +444,18 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
+          <!-- Group grid — two listing cards per row -->
+          ${isGroup ? `
+          <tr>
+            <td style="padding:20px 28px 0 28px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${groupGridHtml}
+              </table>
+            </td>
+          </tr>` : ""}
+
           <!-- Stats grid — 2-column layout on #111111 cells -->
-          ${statsGridHtml ? `
+          ${statsGridHtml && !isGroup ? `
           <tr>
             <td style="padding:24px 32px 0 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -410,14 +465,14 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           </tr>` : ""}
 
           <!-- CTA button — dark text on green -->
-          ${vars.listingUrl ? `
+          ${(vars.listingUrl || isGroup) ? `
           <tr>
             <td data-field="cta" style="padding:28px 32px 0 32px;text-align:center;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
                 <tr>
                   <td align="center" style="border-radius:4px;background-color:#8CC644;">
                     <!--[if mso]>
-                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${vars.listingUrl}" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="8%" strokecolor="#8CC644" fillcolor="#8CC644">
+                    <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="8%" strokecolor="#8CC644" fillcolor="#8CC644">
                     <w:anchorlock/>
                     <center style="color:#000000;font-family:'Arial Narrow',Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
                       ${escapeHtml(ctaText)}
@@ -425,7 +480,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <a href="${vars.listingUrl}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
+                    <a href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
                       ${escapeHtml(ctaText)}
                     </a>
                     <!--<![endif]-->

@@ -44,6 +44,8 @@ export function resolveSegmentId(segmentId: unknown): string | null {
 
 /** Subject line: "Just Listed: 6933 N 7th St" */
 export function buildSubject(campaign: CampaignLike): string {
+  // Group emails: the heading IS the subject ("Land Opportunities in the West Valley")
+  if (campaign.campaign_kind === "group") return String(campaign.email_label || campaign.listing_name || "Featured Listings");
   return `${campaign.email_label || "Just Listed"}: ${campaign.listing_name || "Property"}`;
 }
 

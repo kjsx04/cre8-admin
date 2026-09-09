@@ -26,6 +26,7 @@ import SchedulingAnimation from "../SchedulingAnimation";
 import LivePreviewFrame from "./LivePreviewFrame";
 import TestSendControl from "./TestSendControl";
 import ListingPicker from "./ListingPicker";
+import GroupListingsPicker from "./GroupListingsPicker";
 import PhotoPicker from "./PhotoPicker";
 import PartnerLogoPicker from "./PartnerLogoPicker";
 import BrokerPicker from "./BrokerPicker";
@@ -44,6 +45,7 @@ const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm t
 
 const MISSING_COPY: Record<MissingField, string> = {
   listing: "a listing",
+  group: "at least 2 listings",
   broker: "a broker",
   partnerLogo: "the partner logo (click Apply)",
 };
@@ -88,11 +90,14 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       input.partner_logo_height = draft.partnerLogoHeight;
     }
     // Before a listing is picked, show the template defaults so the shape reads
-    if (!draft.listingId) {
+    if (draft.kind === "group") {
+      input.heading_text = draft.headingText || "CRE8 Advisors";
+      input.email_label = draft.emailLabel || "Featured Listings";
+    } else if (!draft.listingId) {
       input.heading_text = draft.headingText || "Property Name";
     }
     return wrapPreviewHtml(renderEmailHtml(buildTemplateVars(input)));
-  }, [formData, draft.listingId, draft.headingText, draft.partnerLogoUrl, draft.partnerLogoWidth, draft.partnerLogoHeight]);
+  }, [formData, draft.kind, draft.listingId, draft.headingText, draft.emailLabel, draft.partnerLogoUrl, draft.partnerLogoWidth, draft.partnerLogoHeight]);
 
   // ── Focus bridge: preview region ⇄ input ──
   const [activeField, setActiveField] = useState<PreviewField | null>(null);
@@ -208,7 +213,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   }, [dirty]);
 
   const submitting = toastVisible && !toastError;
-  const revealed = !!draft.listingId;
+  const isGroup = draft.kind === "group";
+  const revealed = isGroup ? draft.groupListings.length > 0 : !!draft.listingId;
   const hint = missingHint(missing);
 
   return (
@@ -331,14 +337,37 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             <TestSendControl campaign={formData} disabled={!draft.listingId} />
           </div>
 
-          <Section n={1} title="Listing">
-            <ListingPicker
-              listings={listings}
-              loading={listingsLoading}
-              selected={selectedListing}
-              fallbackName={draft.listingName}
-              onPick={pickListing}
-            />
+          <Section n={1} title={isGroup ? "Listings" : "Listing"}>
+            <div className="space-y-3">
+              {/* One listing, or a group of several in one email (can't switch after creating) */}
+              {!isEdit && (
+                <Segmented
+                  value={draft.kind}
+                  options={[
+                    { id: "single", label: "One listing" },
+                    { id: "group", label: "Group of listings" },
+                  ]}
+                  onChange={(v) => set("kind", v as "single" | "group")}
+                />
+              )}
+              {isGroup ? (
+                <GroupListingsPicker
+                  listings={listings}
+                  loading={listingsLoading}
+                  cards={draft.groupListings}
+                  onChange={(cards) => set("groupListings", cards)}
+                  fieldProps={fieldProps}
+                />
+              ) : (
+                <ListingPicker
+                  listings={listings}
+                  loading={listingsLoading}
+                  selected={selectedListing}
+                  fallbackName={draft.listingName}
+                  onPick={pickListing}
+                />
+              )}
+            </div>
           </Section>
 
           {revealed && (
@@ -353,14 +382,14 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     {...fieldProps("heading")}
                     value={draft.headingText}
                     onChange={(e) => set("headingText", e.target.value)}
-                    placeholder={(draft.listingName || "Property Name").toUpperCase()}
+                    placeholder={isGroup ? "CRE8 ADVISORS" : (draft.listingName || "Property Name").toUpperCase()}
                     className={`${INPUT} text-xs uppercase tracking-wide`}
                   />
                   <input
                     {...fieldProps("label")}
                     value={draft.emailLabel}
                     onChange={(e) => set("emailLabel", e.target.value)}
-                    placeholder="Just Listed"
+                    placeholder={isGroup ? "Featured Listings — e.g. Land Opportunities in the West Valley" : "Just Listed"}
                     className={INPUT}
                   />
                 </div>
@@ -388,6 +417,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
+              {!isGroup && (
               <Section n={4} title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
@@ -396,18 +426,20 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   fieldProps={fieldProps}
                 />
               </Section>
+              )}
 
-              <Section n={5} title="Body">
+              <Section n={5} title={isGroup ? "Intro" : "Body"}>
                 <textarea
                   {...fieldProps("body")}
                   value={draft.bodyText}
                   onChange={(e) => set("bodyText", e.target.value)}
-                  placeholder="Optional — a short paragraph under the photo"
+                  placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
                   rows={4}
                   className={`${INPUT} resize-y`}
                 />
               </Section>
 
+              {!isGroup && (
               <Section n={6} title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
@@ -420,6 +452,9 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
+              )}
+
+              {!isGroup && (
               <Section n={7} title="Listing Link">
                 <input
                   {...fieldProps("cta")}
@@ -429,6 +464,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   className={`${INPUT} text-xs`}
                 />
               </Section>
+
+              )}
 
               <Section n={8} title="Broker">
                 <BrokerPicker

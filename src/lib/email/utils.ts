@@ -121,6 +121,41 @@ export function joinHighlight(title: string, value: string): string {
   return t ? `${t}: ${v}` : v;
 }
 
+// ── Group (digest) card helpers ──
+import type { ListingItem } from "@/lib/admin-constants";
+import type { GroupChip, GroupListing } from "./types";
+
+/** "Call for Pricing · 76.57 Acres · Buckeye" — the one-liner under a group card's name */
+export function buildGroupSummary(fd: Partial<ListingFieldData>): string {
+  const parts: string[] = [];
+  if (fd["list-price"]) parts.push(String(fd["list-price"]));
+  if (fd["square-feet"]) parts.push(`${fd["square-feet"]} Acres`);
+  else if (fd["building-sqft"]) parts.push(`${Number(fd["building-sqft"]).toLocaleString()} SF`);
+  if (fd["city-county"]) parts.push(String(fd["city-county"]).split(",")[0].trim());
+  return parts.join(" · ");
+}
+
+/** Default chip: Under Contract from the CMS, Just Listed if published in the last 30 days */
+export function autoGroupChip(item: ListingItem): GroupChip {
+  const fd = item.fieldData || {};
+  if (fd["under-contract"]) return "Under Contract";
+  if (item.lastPublished && Date.now() - new Date(item.lastPublished).getTime() < 30 * 86_400_000) return "Just Listed";
+  return "";
+}
+
+/** Snapshot a listing into a group card */
+export function listingToGroupCard(item: ListingItem): GroupListing {
+  const fd = item.fieldData || {};
+  return {
+    listing_id: item.id,
+    name: fd.name || "",
+    photo_url: fd.gallery?.[0]?.url || "",
+    url: fd.slug ? `https://cre8advisors.com/listings/${fd.slug}` : "",
+    summary: buildGroupSummary(fd),
+    chip: autoGroupChip(item),
+  };
+}
+
 /** Format a date string for display (e.g., "Mar 2, 2026 at 8:30 AM") */
 export function formatScheduleDate(isoStr: string | null): string {
   if (!isoStr) return "\u2014";

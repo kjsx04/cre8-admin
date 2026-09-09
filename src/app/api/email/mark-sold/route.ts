@@ -94,8 +94,40 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Group emails that include this listing: drop the card (pause the group if it falls under 2)
+  const groupsTouched: string[] = [];
+  const { data: groups } = await supabase
+    .from("email_campaigns")
+    .select("*")
+    .eq("campaign_kind", "group")
+    .in("status", ["scheduled", "active", "draft", "paused"])
+    .contains("group_listings", JSON.stringify([{ listing_id }]));
+  for (const g of groups || []) {
+    const remaining = (g.group_listings || []).filter((x: { listing_id: string }) => x.listing_id !== listing_id);
+    const updates: Record<string, unknown> = { group_listings: remaining, updated_at: new Date().toISOString() };
+    if (remaining.length < 2 && (g.status === "scheduled" || g.status === "active")) {
+      await cancelSend(g.provider_send_id);
+      updates.status = "paused";
+      updates.provider_send_id = null;
+    }
+    await supabase.from("email_campaigns").update(updates).eq("id", g.id);
+    groupsTouched.push(g.id);
+  }
+  // Re-sync groups that are still live so the sold listing disappears from the pending email
+  for (const g of groups || []) {
+    const { data: fresh } = await supabase.from("email_campaigns").select("*").eq("id", g.id).single();
+    if (fresh && (fresh.status === "scheduled" || fresh.status === "active")) {
+      const { syncCampaignToProvider } = await import("@/lib/email/provider");
+      const sync = await syncCampaignToProvider(fresh);
+      if (sync.provider_send_id !== fresh.provider_send_id) {
+        await supabase.from("email_campaigns").update({ provider_send_id: sync.provider_send_id }).eq("id", g.id);
+      }
+    }
+  }
+
   return NextResponse.json({
     stopped_campaigns: stopped,
+    groups_updated: groupsTouched,
     announcement,
   });
 }
