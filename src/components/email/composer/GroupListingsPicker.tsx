@@ -104,7 +104,7 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                       {...binding}
                       value={c.summary}
                       onChange={(e) => update(c.listing_id, { summary: e.target.value })}
-                      placeholder="Price · Acres · City"
+                      placeholder="Acres · City"
                       className={`${INPUT} text-xs`}
                     />
                     <div className="flex items-center gap-1.5">

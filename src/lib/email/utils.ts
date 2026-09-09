@@ -125,13 +125,14 @@ export function joinHighlight(title: string, value: string): string {
 import type { ListingItem } from "@/lib/admin-constants";
 import type { GroupChip, GroupListing } from "./types";
 
-/** "Call for Pricing · 76.57 Acres · Buckeye" — the one-liner under a group card's name */
+/** "76.57 Acres · Buckeye" — the one-liner under a group card's name.
+ *  Deliberately no price: less on the card = more reason to click through to the listing. */
 export function buildGroupSummary(fd: Partial<ListingFieldData>): string {
   const parts: string[] = [];
-  if (fd["list-price"]) parts.push(String(fd["list-price"]));
   if (fd["square-feet"]) parts.push(`${fd["square-feet"]} Acres`);
   else if (fd["building-sqft"]) parts.push(`${Number(fd["building-sqft"]).toLocaleString()} SF`);
-  if (fd["city-county"]) parts.push(String(fd["city-county"]).split(",")[0].trim());
+  // "Queen Creek / Maricopa" or "Phoenix, AZ" → just the city
+  if (fd["city-county"]) parts.push(String(fd["city-county"]).split(/[,/]/)[0].trim());
   return parts.join(" · ");
 }
 
