@@ -139,6 +139,15 @@ export interface EmailSegment {
   enabled: boolean;
 }
 
+// ── Audience size for a segment (from GET /api/email/audience) ──
+export interface AudienceCount {
+  id: string;            // internal segment id ("all", "test", …)
+  name: string;          // display name ("All Contacts")
+  total: number;         // every contact in the Resend segment
+  subscribed: number;    // will actually receive the send
+  unsubscribed: number;  // opted out — skipped by Resend
+}
+
 // ── Broker sender config ──
 export interface EmailSender {
   id: string;          // Webflow team collection item ID

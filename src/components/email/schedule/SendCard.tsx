@@ -5,6 +5,7 @@ import { ScheduleItem } from "@/lib/email/occurrences";
 import { getTypeColor } from "@/lib/email/utils";
 import { FREQUENCY_LABELS, RECURRING_STRIPE } from "@/lib/email/constants";
 import BrokerAvatarStack from "./BrokerAvatarStack";
+import { useAudienceCounts, formatCount } from "@/lib/email/audience-client";
 
 interface SendCardProps {
   item: ScheduleItem;
@@ -22,6 +23,9 @@ export default function SendCard({ item, onClick }: SendCardProps) {
   const color = getTypeColor(c.email_label);
   const isSent = state === "sent";
   const isProjected = state === "projected";
+  // Audience size chip ("860") — one shared fetch for every card on the page
+  const audience = useAudienceCounts();
+  const count = audience[c.segment_id || "all"];
 
   return (
     <button
@@ -80,11 +84,21 @@ export default function SendCard({ item, onClick }: SendCardProps) {
       {/* Brokers + cadence */}
       <div className="mt-1.5 flex items-center justify-between">
         <BrokerAvatarStack brokerIds={c.broker_ids || []} primaryId={c.broker_id} />
-        {isRecurring && frequency && (
-          <span className="text-[10px] text-muted-gray" title="Recurring">
-            ↻ {FREQUENCY_LABELS[frequency] || frequency}
-          </span>
-        )}
+        <span className="flex items-center gap-1.5">
+          {isRecurring && frequency && (
+            <span className="text-[10px] text-muted-gray" title="Recurring">
+              ↻ {FREQUENCY_LABELS[frequency] || frequency}
+            </span>
+          )}
+          {count && (
+            <span
+              className="text-[10px] font-medium tabular-nums px-1.5 py-0.5 rounded bg-light-gray text-medium-gray"
+              title={`${count.name} · ${formatCount(count.subscribed)} recipients`}
+            >
+              {formatCount(count.subscribed)}
+            </span>
+          )}
+        </span>
       </div>
     </button>
   );

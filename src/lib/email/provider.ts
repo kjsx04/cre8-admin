@@ -17,6 +17,10 @@
  *   RESEND_API_KEY         — API key
  *   RESEND_SEGMENT_ID_ALL  — Resend segment id that holds every CRE8 contact
  *   RESEND_SEGMENT_ID_TEST — Resend segment id with just the brokers (for test blasts)
+ *
+ * Audience sizes: countSegmentContacts() pages a segment's contacts and counts
+ * them (Resend's metrics endpoint isn't available on this plan). audience.ts
+ * caches the result so the UI can show "All Contacts · 860".
  */
 
 import { buildTemplateVars, renderEmailHtml } from "./constants";
@@ -193,6 +197,38 @@ export async function sendTest(recipientEmail: string, campaign: CampaignLike): 
 }
 
 // ── High-level sync ──
+
+/** Contact counts for one Resend segment */
+export type SegmentCount = {
+  total: number;         // every contact in the segment
+  subscribed: number;    // will receive broadcasts
+  unsubscribed: number;  // opted out — Resend skips them automatically
+};
+
+/**
+ * Count the contacts in a segment by paging through GET /segments/{id}/contacts.
+ * 100 per page, so a 1,000-contact list is ~10 quick calls. Callers should cache
+ * the result (see audience.ts) — this is not meant to run on every render.
+ */
+export async function countSegmentContacts(segmentId: string): Promise<SegmentCount> {
+  const out: SegmentCount = { total: 0, subscribed: 0, unsubscribed: 0 };
+  let after: string | null = null;
+  for (let page = 0; page < 200; page++) {
+    const qs = `limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`;
+    const res = await resendFetch(`/segments/${segmentId}/contacts?${qs}`);
+    if (!res.ok) throw new Error(`Resend segment contacts failed (${res.status}): ${await res.text()}`);
+    const body = (await res.json()) as { data?: { id: string; unsubscribed?: boolean }[]; has_more?: boolean };
+    const rows = body.data || [];
+    for (const c of rows) {
+      out.total += 1;
+      if (c.unsubscribed) out.unsubscribed += 1;
+      else out.subscribed += 1;
+    }
+    if (!body.has_more || rows.length === 0) break;
+    after = rows[rows.length - 1].id;
+  }
+  return out;
+}
 
 export type SyncResult = {
   ok: boolean;

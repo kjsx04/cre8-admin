@@ -19,6 +19,7 @@ import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml, EMAIL_SEGMENTS } from "@/lib/email/constants";
+import { useAudienceCounts, formatCount, recipientLine } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
 import { submitCampaign } from "@/lib/email/submit";
@@ -100,6 +101,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   // ── Focus bridge: preview region ⇄ input ──
   const [activeField, setActiveField] = useState<PreviewField | null>(null);
+  // Who each audience goes to and how many — shown on the audience buttons + confirm dialogs
+  const audience = useAudienceCounts();
   const fieldEls = useRef(new Map<PreviewField, HTMLElement>());
   const bindings = useRef(new Map<PreviewField, FieldBinding>());
 
@@ -475,9 +478,18 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               <Section n={10} title="Audience">
                 <Segmented
                   value={draft.segmentId}
-                  options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({ id: s.id, label: s.name }))}
+                  options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({
+                    id: s.id,
+                    label: s.name,
+                    // count badge appears once /api/email/audience has answered
+                    badge: audience[s.id] ? formatCount(audience[s.id].subscribed) : undefined,
+                  }))}
                   onChange={(v) => set("segmentId", v)}
                 />
+                {/* "860 recipients · 2 unsubscribed won't receive it" */}
+                <p className="mt-2 text-xs text-muted-gray min-h-[1rem]">
+                  {audience[draft.segmentId] ? recipientLine(audience[draft.segmentId]) : "Counting recipients…"}
+                </p>
               </Section>
 
               <Section n={11} title="Frequency">
@@ -557,7 +569,11 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Send now?</h3>
             <p className="text-sm text-charcoal mt-2">
               <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
-              <span className="font-medium">{formData.segment_name}</span> within a couple of minutes, from {formData.broker_name}.
+              <span className="font-medium">
+                {formData.segment_name}
+                {audience[draft.segmentId] ? ` (${formatCount(audience[draft.segmentId].subscribed)} people)` : ""}
+              </span>{" "}
+              within a couple of minutes, from {formData.broker_name}.
             </p>
             {formData.campaign_type === "recurring" && (
               <p className="text-xs text-muted-gray mt-2">It&apos;s recurring, so the {formData.frequency} cadence starts from today.</p>
@@ -649,7 +665,7 @@ function Segmented({
   onChange,
 }: {
   value: string;
-  options: { id: string; label: string }[];
+  options: { id: string; label: string; badge?: string }[]; // badge = small count after the label ("860")
   onChange: (id: string) => void;
 }) {
   return (
@@ -666,6 +682,11 @@ function Segmented({
           }`}
         >
           {o.label}
+          {o.badge !== undefined && (
+            <span className={`ml-1.5 text-xs tabular-nums ${value === o.id ? "text-muted-gray" : "text-medium-gray/70"}`}>
+              · {o.badge}
+            </span>
+          )}
         </button>
       ))}
     </div>
