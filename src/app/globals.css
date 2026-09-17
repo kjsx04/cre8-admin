@@ -16,7 +16,7 @@
 
 /* Base styles */
 body {
-  font-family: "DM Sans", sans-serif;
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   background: #FFFFFF;
   color: #1A1A1A;
   margin: 0;
@@ -74,4 +74,13 @@ select:focus {
 .docx-preview-container .docx-wrapper > section.docx {
   box-shadow: none !important;
   margin-bottom: 0 !important;
+}
+
+/* ── Font trial (Sep 2026): headings that used Bebas Neue ──
+   Bebas is a condensed all-caps display face; Inter is not. So every `font-bebas`
+   heading becomes Inter semibold with tight letter-spacing (overriding the
+   `tracking-wide` those headings carry for Bebas). Delete this block to revert. */
+.font-bebas {
+  font-weight: 600;
+  letter-spacing: -0.01em !important;
 }
