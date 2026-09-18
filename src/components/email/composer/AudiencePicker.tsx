@@ -10,6 +10,7 @@ import { EMAIL_RE } from "@/lib/email/audience-tokens";
 import { contactChipLabel, formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
 import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
+import { COMPOSER_FIELD, COMPOSER_PILL, COMPOSER_PILL_OFF, COMPOSER_PILL_ON } from "./composer-ui";
 
 interface AudiencePickerProps {
   list: AudienceCount[];
@@ -132,11 +133,7 @@ export default function AudiencePicker({
                 key={s.id}
                 type="button"
                 onClick={() => toggle(s.id)}
-                className={`px-3.5 py-1.5 rounded-card text-sm font-medium transition-colors duration-150 ${
-                  on
-                    ? "bg-green/10 text-charcoal border border-green/40"
-                    : "bg-white text-medium-gray hover:text-charcoal border border-transparent"
-                }`}
+                className={`${COMPOSER_PILL} ${on ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
               >
                 {s.name}
                 <span className={`ml-1.5 text-xs tabular-nums ${on ? "text-muted-gray" : "text-medium-gray/70"}`}>
@@ -162,10 +159,10 @@ export default function AudiencePicker({
             }
           }}
           placeholder="Search or type an email"
-          className="mt-1.5 w-full border border-border-light bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25"
+          className={`mt-1.5 ${COMPOSER_FIELD}`}
         />
         {(searching || searchError || hits.length > 0 || (query.trim() && EMAIL_RE.test(query.trim()))) && (
-          <div className="mt-1.5 border border-border-light rounded-card bg-white overflow-hidden">
+          <div className="mt-1.5 rounded-card bg-white overflow-hidden shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)]">
             {searching && <p className="px-3 py-2 text-xs text-muted-gray">Searching…</p>}
             {searchError && <p className="px-3 py-2 text-xs text-red-500">{searchError}</p>}
             {hits.map((h) => {
@@ -213,7 +210,7 @@ export default function AudiencePicker({
                 <span
                   key={email}
                   title={email}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white border border-border-light text-xs text-charcoal"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs text-charcoal"
                 >
                   {label}
                   <button type="button" onClick={() => removeEmail(email)} className="text-muted-gray hover:text-charcoal" aria-label={`Remove ${label}`}>

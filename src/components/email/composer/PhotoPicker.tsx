@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { FieldProps } from "./fieldProps";
+import { COMPOSER_FIELD } from "./composer-ui";
 
 interface PhotoPickerProps {
   /** Listing gallery (may be empty when the listing isn't in the CMS) */
@@ -11,7 +12,7 @@ interface PhotoPickerProps {
   fieldProps: FieldProps;
 }
 
-const INPUT = "w-full border border-border-light bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
+const INPUT = COMPOSER_FIELD;
 
 /**
  * Hero photo — 2-up grid of the listing's gallery, click to choose.

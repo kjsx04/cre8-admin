@@ -75,7 +75,7 @@ export default function BodyAiControl({
             setError(null);
             setOpen((v) => !v);
           }}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-card border border-border-light bg-white text-[12px] font-medium text-medium-gray hover:text-charcoal hover:border-green/40 hover:bg-green/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white text-[12px] font-medium text-medium-gray hover:text-charcoal hover:bg-green/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           title={blocked ? "Pick a listing first" : "Draft body copy from the listing"}
         >
           {loading ? (
@@ -94,7 +94,7 @@ export default function BodyAiControl({
                 key={o.id}
                 type="button"
                 onClick={() => generate(o.id)}
-                className="px-2.5 py-1 rounded-card border border-transparent bg-white text-[12px] font-medium text-medium-gray hover:text-charcoal hover:border-green/40 hover:bg-green/10 transition-colors"
+                className="px-2.5 py-1 rounded-full bg-white text-[12px] font-medium text-medium-gray hover:text-charcoal hover:bg-green/10 transition-colors"
               >
                 {o.label}
               </button>
