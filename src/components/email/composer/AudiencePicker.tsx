@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { EMAIL_RE } from "@/lib/email/audience-tokens";
+import { formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
 import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
 
@@ -27,6 +28,7 @@ type ContactHit = {
   first_name?: string | null;
   last_name?: string | null;
   unsubscribed?: boolean;
+  company?: string | null;
 };
 
 export default function AudiencePicker({
@@ -158,8 +160,15 @@ export default function AudiencePicker({
             {searching && <p className="px-3 py-2 text-xs text-muted-gray">Searching…</p>}
             {searchError && <p className="px-3 py-2 text-xs text-red-500">{searchError}</p>}
             {hits.map((h) => {
-              const name = [h.first_name, h.last_name].filter(Boolean).join(" ");
+              const primary = formatContactPrimaryLine({
+                id: h.id,
+                email: h.email,
+                first_name: h.first_name,
+                last_name: h.last_name,
+                company: h.company || "",
+              });
               const already = extraEmails.includes(h.email.toLowerCase());
+              const showEmail = primary.toLowerCase() !== h.email.toLowerCase();
               return (
                 <button
                   key={h.id || h.email}
@@ -168,9 +177,11 @@ export default function AudiencePicker({
                   onClick={() => addEmail(h.email)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray disabled:opacity-40"
                 >
-                  <span className="text-charcoal">{name || h.email}</span>
-                  {name && <span className="ml-2 text-xs text-muted-gray">{h.email}</span>}
-                  {h.unsubscribed && <span className="ml-2 text-[10px] uppercase text-red-500">unsubscribed</span>}
+                  <span className="block text-charcoal">{primary}</span>
+                  {showEmail && <span className="block text-xs text-muted-gray">{h.email}</span>}
+                  {h.unsubscribed && (
+                    <span className="block text-[10px] uppercase text-red-500">unsubscribed</span>
+                  )}
                 </button>
               );
             })}

@@ -2,10 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
 import { getAudienceCounts } from "@/lib/email/audience";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /**
  * GET /api/email/audience — live Resend segments + contact counts
  *   [{ id: "<resend-uuid>", name: "Buyers", total: 120, subscribed: 118, unsubscribed: 2 }, …]
- * Cached server-side for 10 minutes. Add ?refresh=1 to force a recount.
+ * Chips show `subscribed`. Cached 10 minutes. Add ?refresh=1 to force a recount.
  */
 export async function GET(request: NextRequest) {
   const auth = requireUser(request);

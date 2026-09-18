@@ -2,12 +2,12 @@
  * Audience sizes — server side.
  *
  * Lists every live Resend segment (GET /segments) and counts the contacts in
- * each one. Counting pages the segment (see provider.ts), so the result is
- * cached in memory for 10 minutes per server instance. Contacts are imported
- * rarely, so a slightly stale number is fine.
+ * each one via GET /contacts?segment_id= (full pagination). Resend has no
+ * segment.total field. Composer chips show `subscribed` (broadcast recipients);
+ * `total` includes unsubscribed. Cached 10 minutes; ?refresh=1 forces a recount.
  */
 
-import { listSegments, countSegmentContacts, isProviderConfigured } from "./provider";
+import { listSegments, countSegmentContacts, isProviderConfigured, invalidateContactCaches } from "./provider";
 import { AudienceCount } from "./types";
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
@@ -31,12 +31,16 @@ function sortSegments<T extends { name: string }>(rows: T[]): T[] {
 export async function getAudienceCounts(force = false): Promise<AudienceCount[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.data;
   if (!isProviderConfigured()) return [];
+  if (force) {
+    cache = null;
+    invalidateContactCaches();
+  }
 
   const segments = sortSegments(await listSegments());
   const data = await Promise.all(
     segments.map(async (seg): Promise<AudienceCount> => {
       try {
-        const c = await countSegmentContacts(seg.id);
+        const c = await countSegmentContacts(seg.id, force);
         return { id: seg.id, name: seg.name, ...c };
       } catch (err) {
         // One bad segment shouldn't blank the others — report zero and log it
@@ -46,6 +50,12 @@ export async function getAudienceCounts(force = false): Promise<AudienceCount[]>
     })
   );
 
-  cache = { at: Date.now(), data };
+  // Don't cache an all-zero result — that's almost always a failed Resend read
+  const allZero = data.length > 0 && data.every((d) => d.total === 0 && d.subscribed === 0);
+  if (allZero) {
+    console.error("[audience] all segment counts were zero — not caching");
+  } else {
+    cache = { at: Date.now(), data };
+  }
   return data;
 }
