@@ -131,7 +131,7 @@ export default function AudiencePicker({
               >
                 {s.name}
                 <span className={`ml-1.5 text-xs tabular-nums ${on ? "text-muted-gray" : "text-medium-gray/70"}`}>
-                  · {formatCount(s.subscribed)}
+                  · {formatCount(s.subscribed || s.total)}
                 </span>
               </button>
             );

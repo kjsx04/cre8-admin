@@ -11,6 +11,14 @@ const nextConfig = {
     config.resolve.alias.canvas = false;
     return config;
   },
+  async headers() {
+    return [
+      {
+        source: "/api/email/:path*",
+        headers: [{ key: "Cache-Control", value: "no-store, no-cache, must-revalidate" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
