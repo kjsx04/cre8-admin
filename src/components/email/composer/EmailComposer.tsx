@@ -32,6 +32,7 @@ import PhotoPicker from "./PhotoPicker";
 import PartnerLogoPicker from "./PartnerLogoPicker";
 import BrokerPicker from "./BrokerPicker";
 import AudiencePicker from "./AudiencePicker";
+import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
@@ -141,6 +142,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   }, []);
 
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+  const [bodyUndo, setBodyUndo] = useState<string | null>(null);
 
   const handleFieldClick = useCallback((field: PreviewField) => {
     setMobileTab("edit");
@@ -455,14 +457,34 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               )}
 
               <Section n={6} title={isGroup ? "Intro" : "Body"}>
-                <textarea
-                  {...fieldProps("body")}
-                  value={draft.bodyText}
-                  onChange={(e) => set("bodyText", e.target.value)}
-                  placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
-                  rows={4}
-                  className={`${INPUT} resize-y`}
-                />
+                <div className="space-y-2.5">
+                  <BodyAiControl
+                    listingIds={isGroup ? draft.groupListings.map((c) => c.listing_id) : draft.listingId ? [draft.listingId] : []}
+                    kind={isGroup ? "group" : "single"}
+                    userEmail={userEmail}
+                    onInsert={(text) => {
+                      setBodyUndo(draft.bodyText);
+                      set("bodyText", text);
+                    }}
+                    onUndo={() => {
+                      if (bodyUndo == null) return;
+                      set("bodyText", bodyUndo);
+                      setBodyUndo(null);
+                    }}
+                    canUndo={bodyUndo != null}
+                  />
+                  <textarea
+                    {...fieldProps("body")}
+                    value={draft.bodyText}
+                    onChange={(e) => {
+                      setBodyUndo(null);
+                      set("bodyText", e.target.value);
+                    }}
+                    placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
+                    rows={4}
+                    className={`${INPUT} resize-y`}
+                  />
+                </div>
               </Section>
 
               {!isGroup && (
