@@ -202,12 +202,12 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
             if (f) handleFile(f);
           }}
           onClick={() => inputRef.current?.click()}
-          className={`cursor-pointer rounded-btn border border-dashed px-4 py-5 text-center transition-colors ${
-            dragOver ? "border-green bg-[#F0F9E5]" : "border-border-medium hover:border-muted-gray"
+          className={`cursor-pointer rounded-card border border-dashed px-4 py-8 text-center transition-colors ${
+            dragOver ? "border-green bg-green/10" : "border-border-medium/80 bg-white hover:border-green/40"
           }`}
         >
           <p className="text-sm text-charcoal">{fetching ? "Fetching…" : "Drop, paste, or click to choose a logo"}</p>
-          <p className="text-[11px] text-muted-gray mt-0.5">Paste a copied image or an image link · optional · goes next to the CRE8 logo</p>
+          <p className="text-[11px] text-muted-gray mt-1">Paste an image or link · optional</p>
         </div>
       )}
       <input
@@ -270,11 +270,11 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
               type="button"
               onClick={apply}
               disabled={uploading}
-              className="px-4 py-1.5 bg-green text-black text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-50"
+              className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card hover:brightness-110 transition disabled:opacity-50"
             >
               {uploading ? "Uploading…" : "Apply"}
             </button>
-            <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal hover:bg-light-gray rounded-btn">
+            <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal hover:bg-white rounded-card">
               Choose another
             </button>
             <button type="button" onClick={clear} className="px-3 py-1.5 text-sm text-muted-gray hover:text-charcoal rounded-btn">
@@ -287,7 +287,7 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
       {/* Saved state */}
       {hasSaved && !adjusting && (
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray">
+          <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal bg-white border border-border-light rounded-card hover:bg-subtle-gray">
             Replace
           </button>
           <span className="text-[11px] text-muted-gray">or paste a new one</span>

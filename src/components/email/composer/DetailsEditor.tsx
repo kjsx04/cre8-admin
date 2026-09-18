@@ -54,7 +54,7 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
       {rows.map((row, i) => {
         const binding = fieldProps(`highlight-${i}`);
         return (
-          <div key={row.id} className="flex items-center gap-1.5 bg-light-gray rounded-btn px-2 py-1.5">
+          <div key={row.id} className="flex items-center gap-1.5 bg-white border border-border-light rounded-card px-2.5 py-2">
             <input
               ref={(el) => {
                 binding.ref(el);
@@ -115,7 +115,7 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
             key={chip.key}
             type="button"
             onClick={() => addFromChip(chip)}
-            className="px-2.5 py-1 rounded-full text-xs bg-light-gray text-charcoal hover:bg-charcoal hover:text-white transition-colors"
+            className="px-2.5 py-1 rounded-full text-xs bg-white border border-border-light text-charcoal hover:border-green/40 hover:bg-green/10 transition-colors"
           >
             + {chip.label}
           </button>

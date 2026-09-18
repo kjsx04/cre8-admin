@@ -11,7 +11,7 @@ interface PhotoPickerProps {
   fieldProps: FieldProps;
 }
 
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
+const INPUT = "w-full border border-border-light bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
 
 /**
  * Hero photo — 2-up grid of the listing's gallery, click to choose.
@@ -31,17 +31,17 @@ export default function PhotoPicker({ gallery, photoUrl, onChange, fieldProps }:
                 key={i}
                 type="button"
                 onClick={() => onChange(img.url)}
-                className={`relative aspect-[4/3] rounded-md overflow-hidden transition-all duration-150 ${
+                className={`relative aspect-[4/3] rounded-card overflow-hidden transition-all duration-150 ${
                   active
-                    ? "ring-[3px] ring-green ring-offset-2 opacity-100"
-                    : "opacity-75 hover:opacity-100 ring-1 ring-border-light"
+                    ? "ring-2 ring-green/70 ring-offset-2 ring-offset-subtle-gray opacity-100"
+                    : "opacity-70 hover:opacity-100 ring-1 ring-border-light"
                 }`}
                 title={img.alt || `Photo ${i + 1}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={img.url} alt={img.alt || `Listing photo ${i + 1}`} className="w-full h-full object-cover" />
                 {active && (
-                  <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-green text-black flex items-center justify-center shadow">
+                  <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-green text-charcoal flex items-center justify-center">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                       <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
