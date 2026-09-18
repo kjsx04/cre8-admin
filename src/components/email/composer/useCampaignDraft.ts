@@ -11,9 +11,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Campaign, CampaignFormData, CampaignType, CampaignFrequency, CampaignPriority, CampaignKind, GroupListing } from "@/lib/email/types";
-import { EMAIL_SENDERS, EMAIL_SEGMENTS } from "@/lib/email/constants";
+import { EMAIL_SENDERS } from "@/lib/email/constants";
 import { BROKERS, BROKER_CONTACTS, brokerIdForEmail, ListingItem } from "@/lib/admin-constants";
 import { buildAutoHighlights, splitHighlight, joinHighlight } from "@/lib/email/utils";
+import { parseAudienceTokens, serializeAudienceTokens } from "@/lib/email/audience-tokens";
 
 export interface HighlightRow {
   id: number;
@@ -38,13 +39,14 @@ export interface CampaignDraft {
   highlights: HighlightRow[];
   brokerIds: string[];          // ordered — the first one is the sender
   priority: CampaignPriority;   // "high" = fight for a great slot, "normal" = fit anywhere
-  segmentId: string;
+  segmentIds: string[];         // live Resend segment UUIDs (multi-select)
+  extraEmails: string[];        // optional extra recipients
   frequency: CampaignFrequency; // only used when campaignType === "recurring"
   endDate: string;              // "YYYY-MM-DD" or ""
   pinned: boolean;              // exempt from freshness decay
 }
 
-export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo";
+export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo" | "audience";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -61,6 +63,12 @@ interface StoredDraft {
   savedAt: string; // ISO
 }
 
+function normalizeDraft(draft: CampaignDraft & { segmentId?: string }): CampaignDraft {
+  if (Array.isArray(draft.segmentIds) && Array.isArray(draft.extraEmails)) return draft;
+  const parsed = parseAudienceTokens(draft.segmentId || "");
+  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails };
+}
+
 function readStoredDraft(campaignId?: string | null): StoredDraft | null {
   if (typeof window === "undefined") return null;
   try {
@@ -68,7 +76,7 @@ function readStoredDraft(campaignId?: string | null): StoredDraft | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as StoredDraft;
     if (!parsed?.draft || !parsed.savedAt) return null;
-    return parsed;
+    return { ...parsed, draft: normalizeDraft(parsed.draft) };
   } catch {
     return null;
   }
@@ -120,7 +128,8 @@ function emptyDraft(userEmail: string): CampaignDraft {
     highlights: [],
     brokerIds: [brokerIdForEmail(userEmail) || EMAIL_SENDERS[0]?.id || ""].filter(Boolean),
     priority: "normal",
-    segmentId: "all",
+    segmentIds: [],
+    extraEmails: [],
     frequency: "weekly",
     endDate: "",
     pinned: false,
@@ -150,7 +159,8 @@ function fromCampaign(c: Campaign): CampaignDraft {
     // Primary first, then any extra brokers stored on the campaign
     brokerIds: Array.from(new Set([c.broker_id, ...(c.broker_ids || [])].filter(Boolean))),
     priority: c.priority === "high" ? "high" : "normal",
-    segmentId: c.segment_id || "all",
+    segmentIds: parseAudienceTokens(c.segment_id).segmentIds,
+    extraEmails: parseAudienceTokens(c.segment_id).extraEmails,
     frequency: c.frequency && c.frequency !== "one-time" ? c.frequency : "weekly",
     endDate: c.end_date ? c.end_date.slice(0, 10) : "",
     pinned: !!c.pinned,
@@ -257,7 +267,6 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
   const formData: CampaignFormData = useMemo(() => {
     const primaryId = draft.brokerIds[0] || "";
     const sender = EMAIL_SENDERS.find((s) => s.id === primaryId);
-    const segment = EMAIL_SEGMENTS.find((s) => s.id === draft.segmentId);
     const isRecurring = draft.campaignType === "recurring";
     const isGroup = draft.kind === "group";
     return {
@@ -287,8 +296,16 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       broker_phone: sender?.phone || BROKER_CONTACTS[primaryId]?.phone || "",
       broker_ids: draft.brokerIds,
       priority: draft.priority,
-      segment_id: draft.segmentId,
-      segment_name: segment?.name || "All Contacts",
+      segment_id: serializeAudienceTokens(draft.segmentIds, draft.extraEmails) || undefined,
+      segment_name: [
+        ...draft.segmentIds,
+        ...draft.extraEmails,
+      ].length
+        ? [
+            ...(draft.segmentIds.length ? [`${draft.segmentIds.length} list${draft.segmentIds.length === 1 ? "" : "s"}`] : []),
+            ...(draft.extraEmails.length ? [`${draft.extraEmails.length} contact${draft.extraEmails.length === 1 ? "" : "s"}`] : []),
+          ].join(" + ")
+        : "",
       frequency: isRecurring ? draft.frequency : "one-time",
       end_date: isRecurring && draft.endDate ? draft.endDate : undefined,
       pinned: isRecurring ? draft.pinned : false,
@@ -303,9 +320,10 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       if (draft.groupListings.length < 2) m.push("group");
     } else if (!draft.listingId) m.push("listing");
     if (draft.brokerIds.length === 0) m.push("broker");
+    if (draft.segmentIds.length === 0 && draft.extraEmails.length === 0) m.push("audience");
     if (draft.partnerLogoUrl.startsWith("data:")) m.push("partnerLogo"); // chosen but not applied
     return m;
-  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.partnerLogoUrl]);
+  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl]);
 
   const isValid = missing.length === 0;
   const dirty = JSON.stringify(draft) !== initialJsonRef.current;

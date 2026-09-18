@@ -70,8 +70,8 @@ export interface Campaign {
   priority: CampaignPriority;     // composer "Top of list" choice at creation
   pinned: boolean;                // exempt from freshness decay
   cadence_changed_at: string | null; // when frequency last changed (decay clock)
-  segment_id: string | null;
-  segment_name: string;
+  segment_id: string | null;   // comma-separated Resend segment UUIDs and/or extra emails
+  segment_name: string;        // display label ("Buyers, Sellers")
   frequency: CampaignFrequency | null;
   scheduled_date: string | null;       // ISO timestamp of the pending (or last) send
   provider_send_id: string | null;     // Resend broadcast id for the pending send (null once sent/cancelled)
@@ -107,7 +107,7 @@ export interface CampaignFormData {
   broker_ids?: string[];          // optional — defaults to [broker_id]
   priority?: CampaignPriority;    // defaults to "normal"
   pinned?: boolean;
-  segment_id?: string;
+  segment_id?: string;         // comma-separated Resend segment UUIDs and/or extra emails
   segment_name?: string;
   frequency?: CampaignFrequency;
   end_date?: string;
@@ -132,7 +132,7 @@ export interface ScheduleResult {
   calendar_changes: CalendarChange[];
 }
 
-// ── Email segment (maps to a Resend segment via env vars — see provider.ts) ──
+// ── Email segment (legacy hardcoded list — live lists come from GET /api/email/audience) ──
 export interface EmailSegment {
   id: string;
   name: string;
@@ -141,8 +141,8 @@ export interface EmailSegment {
 
 // ── Audience size for a segment (from GET /api/email/audience) ──
 export interface AudienceCount {
-  id: string;            // internal segment id ("all", "test", …)
-  name: string;          // display name ("All Contacts")
+  id: string;            // Resend segment UUID
+  name: string;          // display name ("Buyers")
   total: number;         // every contact in the Resend segment
   subscribed: number;    // will actually receive the send
   unsubscribed: number;  // opted out — skipped by Resend

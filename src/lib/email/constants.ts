@@ -20,17 +20,9 @@ export const EMAIL_SENDERS: EmailSender[] = [
 ];
 
 // ── Contact segments ──
-// Internal ids ("all", "test") are stored on the campaign. provider.ts maps them to real
-// Resend segment ids via RESEND_SEGMENT_ID_ALL / RESEND_SEGMENT_ID_TEST env vars.
-// Others stay disabled until those segments exist in Resend (add an env var + enable here).
-export const EMAIL_SEGMENTS: EmailSegment[] = [
-  { id: "all",       name: "All Contacts",  enabled: true  },
-  { id: "test",      name: "Test",          enabled: true  },
-  { id: "brokers",   name: "Brokers",       enabled: false },
-  { id: "investors", name: "Investors",     enabled: false },
-  { id: "owners",    name: "Owners",        enabled: false },
-  { id: "land",      name: "Land Buyers",   enabled: false },
-];
+// Live lists (Brokers / Buyers / Sellers, …) come from Resend via GET /api/email/audience.
+// This array is a leftover fallback only — do not add new hardcoded names here.
+export const EMAIL_SEGMENTS: EmailSegment[] = [];
 
 // ── Email labels (campaign type badges) ──
 export const EMAIL_LABELS = ["Just Listed", "Just Sold"] as const;
