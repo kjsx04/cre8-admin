@@ -21,10 +21,11 @@ function allZero(list: AudienceCount[]): boolean {
 }
 
 async function fetchAudience(userEmail: string, refresh = false): Promise<AudienceCount[]> {
-  const qs = refresh ? "?refresh=1" : "";
+  // v=3 busts browsers that cached the old all-zero JSON at /api/email/audience
+  const qs = refresh ? "?refresh=1&v=3" : "?v=3";
   const res = await fetch(`/api/email/audience${qs}`, {
     cache: "no-store",
-    headers: { "x-user-email": userEmail, "Cache-Control": "no-cache" },
+    headers: { "x-user-email": userEmail, "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   if (!res.ok) throw new Error(`audience ${res.status}`);
   const body = (await res.json()) as { data: AudienceCount[] };

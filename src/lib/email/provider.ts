@@ -407,35 +407,16 @@ async function fetchContactsPage(opts: {
     : `/contacts${suffix}`;
 
   const res = await resendFetch(path);
-  if (res.ok) return parseContactListBody(await res.json());
-
-  // Older keys/docs used GET /contacts?segment_id= — only trust it if the
-  // first page is actually different from the unfiltered global list.
-  if (opts.segmentId && (res.status === 404 || res.status === 400)) {
-    const altQs = new URLSearchParams(qs);
-    altQs.set("segment_id", opts.segmentId);
-    const alt = await resendFetch(`/contacts?${altQs}`);
-    if (!alt.ok) {
-      throw new Error(`Resend list contacts failed (${alt.status}): ${await alt.text()}`);
-    }
-    const parsed = parseContactListBody(await alt.json());
-    if (!opts.after && parsed.rows.length > 0) {
-      const global = await fetchContactsPage({ limit: opts.limit || CONTACT_PAGE });
-      if (global.rows[0]?.id && global.rows[0].id === parsed.rows[0]?.id) {
-        throw new Error(
-          `Resend GET /segments/${opts.segmentId}/contacts returned ${res.status} and ?segment_id= ignored the filter`
-        );
-      }
-    }
-    return parsed;
+  if (!res.ok) {
+    throw new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
   }
-
-  throw new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
+  return parseContactListBody(await res.json());
 }
 
-/** Page every contact, optionally filtered to one segment. */
+/** Page every contact, optionally filtered to one segment. Dedupes by id. */
 export async function listAllContacts(segmentId?: string): Promise<ResendContact[]> {
   const out: ResendContact[] = [];
+  const seen = new Set<string>();
   let after: string | null = null;
   for (let page = 0; page < CONTACT_MAX_PAGES; page++) {
     const { rows, hasMore } = await fetchContactsPage({
@@ -443,10 +424,19 @@ export async function listAllContacts(segmentId?: string): Promise<ResendContact
       after,
       limit: CONTACT_PAGE,
     });
-    out.push(...rows);
+    let added = 0;
+    for (const row of rows) {
+      const key = row.id || row.email;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      out.push(row);
+      added += 1;
+    }
     if (!hasMore || rows.length === 0) break;
-    after = rows[rows.length - 1]?.id || null;
-    if (!after) break;
+    const next = rows[rows.length - 1]?.id || null;
+    // Cursor didn't advance, or this page was all duplicates — stop.
+    if (!next || next === after || added === 0) break;
+    after = next;
   }
   return out;
 }
@@ -525,6 +515,22 @@ export async function searchContacts(query: string): Promise<ResendContact[]> {
     seen.add(key);
     matches.push(c);
   }
+  const needle = q.toLowerCase();
+  const toHydrate = matches
+    .filter((c) => {
+      const first = (c.first_name || "").trim().toLowerCase();
+      const last = (c.last_name || "").trim().toLowerCase();
+      return !c.company && (first === needle || last === needle || `${first} ${last}` === needle);
+    })
+    .slice(0, 20);
+  if (toHydrate.length) {
+    const filled = await hydrateCompanies(toHydrate);
+    const byEmail = new Map(filled.map((c) => [c.email.toLowerCase(), c]));
+    for (let i = 0; i < matches.length; i++) {
+      const swap = byEmail.get(matches[i].email.toLowerCase());
+      if (swap) matches[i] = swap;
+    }
+  }
   matches.sort((a, b) => contactSearchScore(b, q) - contactSearchScore(a, q));
   return hydrateCompanies(matches.slice(0, SEARCH_LIMIT));
 }
@@ -533,8 +539,8 @@ export async function searchContacts(query: string): Promise<ResendContact[]> {
 
 /**
  * Count every contact in a Resend segment (full pagination).
- * Prefers GET /contacts?segment_id=; falls back to /segments/{id}/contacts.
- * Resend does not expose a segment.total field — this is the official count.
+ * Official path only: GET /segments/{id}/contacts with limit/after/has_more.
+ * Never uses GET /contacts?segment_id= (that returns the global list).
  * Chips show `subscribed` (broadcast recipients). `total` includes unsubscribed.
  */
 export async function countSegmentContacts(segmentId: string, force = false): Promise<SegmentCount> {
