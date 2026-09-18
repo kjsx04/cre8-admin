@@ -49,7 +49,11 @@ assert(formatContactPrimaryLine(noCompany!) === "Ada Lovelace", "primary line om
 
 assert(extractCompany({ properties: { company: "CBRE" } }) === "CBRE", "string company property");
 assert(extractCompany({ company: "Colliers" }) === "Colliers", "top-level company");
-assert(extractCompany({ properties: { brokerage: { value: "JLL" } } }) === "JLL", "brokerage key");
+assert(
+  extractCompany({ properties: { "4022ee71-be02-4ed5-9947-3e21e32897d0": { value: "JLL" } } }) === "JLL",
+  "company property by official id"
+);
+assert(extractCompany({ properties: { brokerage: { value: "Lee & Associates" } } }) === "Lee & Associates", "fallback brokerage key");
 assert(extractCompany({}) === "", "no invented company");
 
 assert(isUnsubscribed(false) === false, "bool false is subscribed");

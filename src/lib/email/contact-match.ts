@@ -3,7 +3,11 @@
  * Kept free of fetch so we can unit-test shapes without an API key.
  */
 
-export const COMPANY_PROPERTY_KEYS = ["company", "brokerage", "firm", "organization", "company_name"] as const;
+/** Official Resend custom property for brokerage / firm (string). */
+export const COMPANY_PROPERTY_KEY = "company";
+export const COMPANY_PROPERTY_ID = "4022ee71-be02-4ed5-9947-3e21e32897d0";
+
+const FALLBACK_COMPANY_KEYS = ["brokerage", "firm", "organization", "company_name"] as const;
 
 export type MatchedContact = {
   id: string;
@@ -35,21 +39,31 @@ export function propertyValue(value: unknown): string {
   return asString(obj.value);
 }
 
-/** Company / brokerage from a known Resend property key. Empty when none is set. */
+/** Company / brokerage from Resend `company` (id 4022ee71-…). Empty when unset. */
 export function extractCompany(row: unknown): string {
   const obj = asRecord(row);
   if (!obj) return "";
   const props = asRecord(obj.properties);
   if (props) {
-    for (const key of COMPANY_PROPERTY_KEYS) {
+    const official = propertyValue(props[COMPANY_PROPERTY_KEY]) || propertyValue(props[COMPANY_PROPERTY_ID]);
+    if (official) return official;
+    for (const value of Object.values(props)) {
+      const rec = asRecord(value);
+      if (!rec) continue;
+      const key = asString(rec.key);
+      const id = asString(rec.id);
+      if (key === COMPANY_PROPERTY_KEY || id === COMPANY_PROPERTY_ID) {
+        const v = propertyValue(rec);
+        if (v) return v;
+      }
+    }
+    for (const key of FALLBACK_COMPANY_KEYS) {
       const v = propertyValue(props[key]);
       if (v) return v;
     }
   }
-  for (const key of COMPANY_PROPERTY_KEYS) {
-    const v = propertyValue(obj[key]);
-    if (v) return v;
-  }
+  const top = propertyValue(obj[COMPANY_PROPERTY_KEY]);
+  if (top) return top;
   return "";
 }
 

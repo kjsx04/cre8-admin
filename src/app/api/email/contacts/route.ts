@@ -21,7 +21,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const data = await searchContacts(q);
-    return NextResponse.json({ data });
+    return NextResponse.json(
+      { data },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Failed to search contacts" },
