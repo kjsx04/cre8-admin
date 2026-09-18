@@ -43,7 +43,7 @@ assert(!contactMatchesQuery(kevin!, "colliers"), "no false company match");
 assert(
   contactSearchScore(kevin!, "kevin") >
     contactSearchScore({ id: "x", email: "kevin.x@example.com", first_name: "Kevin", last_name: "Manship" }, "kevin"),
-  "company-filled Kevin ranks above email-only Kevin"
+  "kevin@… ranks above kevin.x@… "
 );
 
 const noCompany = unwrapContact({

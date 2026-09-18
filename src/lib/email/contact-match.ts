@@ -108,6 +108,7 @@ export function contactSearchScore(c: MatchedContact, query: string): number {
   const company = (c.company || "").trim().toLowerCase();
   let score = 0;
   if (email === needle) score += 1000;
+  if (email.startsWith(`${needle}@`)) score += 400;
   if (name === needle) score += 500;
   if (first === needle || last === needle) score += 200;
   if (name.startsWith(needle)) score += 80;
