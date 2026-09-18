@@ -32,6 +32,7 @@ import PhotoPicker from "./PhotoPicker";
 import PartnerLogoPicker from "./PartnerLogoPicker";
 import BrokerPicker from "./BrokerPicker";
 import AudiencePicker from "./AudiencePicker";
+import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
@@ -43,7 +44,8 @@ interface EmailComposerProps {
   listingsLoading: boolean;
 }
 
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
+const INPUT =
+  "w-full border border-border-light bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
 
 const MISSING_COPY: Record<MissingField, string> = {
   type: "the email type",
@@ -140,6 +142,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   }, []);
 
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+  const [bodyUndo, setBodyUndo] = useState<string | null>(null);
 
   const handleFieldClick = useCallback((field: PreviewField) => {
     setMobileTab("edit");
@@ -254,7 +257,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             type="button"
             onClick={handleBack}
             disabled={submitting}
-            className="w-8 h-8 flex items-center justify-center rounded-btn border border-border-light text-charcoal hover:bg-light-gray transition-colors disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-card border border-border-light text-charcoal hover:bg-subtle-gray transition-colors disabled:opacity-40"
             title="Back to campaigns"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -280,7 +283,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 bg-white border border-border-light text-charcoal text-sm font-medium rounded-card hover:bg-subtle-gray transition disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of letting the AI pick a time"
               >
                 Send now
@@ -289,7 +292,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={handleSubmit}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                className="px-4 py-2 bg-green text-charcoal text-sm font-medium rounded-card hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
               >
                 {isEdit ? "Update" : "Schedule"}
               </button>
@@ -354,9 +357,9 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           )}
         </div>
 
-        {/* Right: controls */}
+        {/* Right: light tool surface */}
         <div
-          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light px-6 lg:px-8 py-6 space-y-8 ${
+          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light bg-subtle-gray px-6 lg:px-8 py-8 space-y-10 ${
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
@@ -375,7 +378,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </Section>
 
           {revealed && (
-            <div className="space-y-8 composer-reveal">
+            <div className="space-y-10 composer-reveal">
               {/* 2 — the listing(s). Search box first; results drop down as you type. */}
               <Section n={2} title={isGroup ? "Listings" : "Listing"}>
                 {isGroup ? (
@@ -454,14 +457,34 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               )}
 
               <Section n={6} title={isGroup ? "Intro" : "Body"}>
-                <textarea
-                  {...fieldProps("body")}
-                  value={draft.bodyText}
-                  onChange={(e) => set("bodyText", e.target.value)}
-                  placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
-                  rows={4}
-                  className={`${INPUT} resize-y`}
-                />
+                <div className="space-y-2.5">
+                  <BodyAiControl
+                    listingIds={isGroup ? draft.groupListings.map((c) => c.listing_id) : draft.listingId ? [draft.listingId] : []}
+                    kind={isGroup ? "group" : "single"}
+                    userEmail={userEmail}
+                    onInsert={(text) => {
+                      setBodyUndo(draft.bodyText);
+                      set("bodyText", text);
+                    }}
+                    onUndo={() => {
+                      if (bodyUndo == null) return;
+                      set("bodyText", bodyUndo);
+                      setBodyUndo(null);
+                    }}
+                    canUndo={bodyUndo != null}
+                  />
+                  <textarea
+                    {...fieldProps("body")}
+                    value={draft.bodyText}
+                    onChange={(e) => {
+                      setBodyUndo(null);
+                      set("bodyText", e.target.value);
+                    }}
+                    placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
+                    rows={4}
+                    className={`${INPUT} resize-y`}
+                  />
+                </div>
               </Section>
 
               {!isGroup && (
@@ -543,7 +566,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                         onChange={(v) => set("frequency", v as CampaignFrequency)}
                       />
                       <div className="flex items-center gap-3">
-                        <label className="text-[11px] font-semibold text-muted-gray uppercase tracking-wide">Ends</label>
+                        <label className="text-[12px] font-medium text-medium-gray">Ends</label>
                         <input
                           type="date"
                           value={draft.endDate}
@@ -608,7 +631,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               <button type="button" onClick={() => setSendNowOpen(false)} disabled={sendingNow} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
                 Cancel
               </button>
-              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-5 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black disabled:opacity-50">
+              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-5 py-2 bg-charcoal text-white text-sm font-medium rounded-card hover:bg-black disabled:opacity-50">
                 {sendingNow ? "Sending…" : "Yes, send now"}
               </button>
             </div>
@@ -639,16 +662,16 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   );
 }
 
-/** Numbered section: badge + two-word title */
+/** Numbered section: quiet badge + calm title */
 function Section({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
   return (
     <section>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="w-5 h-5 rounded-full bg-charcoal text-white text-[10px] font-bold flex items-center justify-center">
+      <div className="flex items-baseline gap-2.5 mb-3.5">
+        <span className="w-[18px] h-[18px] rounded-full border border-border-medium bg-white text-[10px] font-medium text-medium-gray flex items-center justify-center shrink-0 translate-y-[1px]">
           {n}
         </span>
-        <h2 className="text-xs font-semibold text-muted-gray uppercase tracking-wide">{title}</h2>
-        {note && <span className="text-[11px] text-muted-gray/70 normal-case tracking-normal">· {note}</span>}
+        <h2 className="text-[13px] font-medium text-charcoal">{title}</h2>
+        {note && <span className="text-[11px] text-muted-gray font-normal">· {note}</span>}
       </div>
       {children}
     </section>
@@ -657,9 +680,9 @@ function Section({ n, title, note, children }: { n: number; title: string; note?
 
 /** First choice on a new campaign: one listing, or a group of several */
 function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onChange: (v: "single" | "group") => void }) {
-  const opts: { id: "single" | "group"; label: string; desc: string }[] = [
-    { id: "single", label: "Single", desc: "One property — hero photo and details" },
-    { id: "group", label: "Multiple", desc: "Several properties as cards under one heading" },
+  const opts: { id: "single" | "group"; label: string }[] = [
+    { id: "single", label: "Single" },
+    { id: "group", label: "Multiple" },
   ];
   return (
     <div className="grid grid-cols-2 gap-2">
@@ -670,12 +693,13 @@ function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onCha
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            className={`text-left rounded-card border px-3 py-2.5 transition-colors ${
-              on ? "border-green bg-white ring-1 ring-green" : "border-border-light bg-light-gray hover:bg-white hover:border-border-medium"
+            className={`rounded-card border px-3 py-2.5 text-sm font-medium text-center transition-colors ${
+              on
+                ? "border-green/50 bg-green/10 text-charcoal"
+                : "border-transparent bg-white text-medium-gray hover:border-border-light hover:text-charcoal"
             }`}
           >
-            <div className={`text-sm font-medium ${on ? "text-charcoal" : "text-medium-gray"}`}>{o.label}</div>
-            <div className="text-[11px] text-muted-gray mt-0.5">{o.desc}</div>
+            {o.label}
           </button>
         );
       })}
@@ -700,10 +724,10 @@ function Segmented({
           key={o.id}
           type="button"
           onClick={() => onChange(o.id)}
-          className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150 ${
+          className={`px-4 py-1.5 rounded-card text-sm font-medium transition-colors duration-150 ${
             value === o.id
-              ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-              : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
+              ? "bg-green/10 text-charcoal border border-green/40"
+              : "bg-white text-medium-gray hover:text-charcoal border border-transparent"
           }`}
         >
           {o.label}

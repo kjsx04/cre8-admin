@@ -14,8 +14,8 @@ interface GroupListingsPickerProps {
   fieldProps: FieldProps;
 }
 
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
-const SEARCH = "w-full border border-border-light rounded-btn pl-9 pr-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
+const INPUT = "w-full border border-border-light bg-white rounded-card px-3 py-1.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
+const SEARCH = "w-full border border-border-light bg-white rounded-card pl-9 pr-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
 const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"];
 
 /**
@@ -177,7 +177,7 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
 
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-charcoal text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="w-[18px] h-[18px] rounded-full border border-border-medium bg-white text-[10px] font-medium text-medium-gray flex items-center justify-center shrink-0">{i + 1}</span>
                       <span className="text-sm font-medium text-charcoal truncate">{c.name}</span>
                     </div>
                     <input
@@ -193,10 +193,10 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                           key={chip || "none"}
                           type="button"
                           onClick={() => update(c.listing_id, { chip })}
-                          className={`px-2 py-0.5 rounded-btn text-[11px] font-medium transition-colors ${
+                          className={`px-2 py-0.5 rounded-card text-[11px] font-medium transition-colors ${
                             c.chip === chip
-                              ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-                              : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
+                              ? "bg-green/10 text-charcoal border border-green/40"
+                              : "bg-subtle-gray text-medium-gray hover:text-charcoal border border-transparent"
                           }`}
                         >
                           {chip || "No chip"}

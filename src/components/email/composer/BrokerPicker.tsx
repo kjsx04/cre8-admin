@@ -53,7 +53,7 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
                   : `${s.name} — click to add, double-click to send from`
               }
               className={`relative w-12 h-12 rounded-full transition-all duration-150 ${
-                active ? "ring-[3px] ring-green ring-offset-2 opacity-100" : "opacity-50 hover:opacity-90"
+                active ? "ring-2 ring-green/70 ring-offset-2 ring-offset-subtle-gray opacity-100" : "opacity-45 hover:opacity-85"
               }`}
             >
               <span className="block w-full h-full rounded-full overflow-hidden">
@@ -68,7 +68,7 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
               </span>
               {/* "From" tag on the sender */}
               {idx === 0 && (
-                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-full bg-green text-black text-[9px] font-bold uppercase tracking-wide shadow">
+                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-full bg-green text-charcoal text-[9px] font-semibold">
                   From
                 </span>
               )}

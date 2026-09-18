@@ -13,7 +13,7 @@ interface ListingPickerProps {
   onPick: (listing: ListingItem) => void;
 }
 
-const INPUT = "w-full border border-border-light rounded-btn pl-9 pr-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
+const INPUT = "w-full border border-border-light bg-white rounded-card pl-9 pr-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
 
 /**
  * Section 2 (single emails) — pick the listing.
@@ -146,7 +146,7 @@ export default function ListingPicker({
 
       {/* The chosen listing */}
       {hasSelection && (
-        <div className="flex items-center gap-3 border border-green rounded-btn px-3 py-2 bg-white">
+        <div className="flex items-center gap-3 border border-green/40 rounded-card px-3 py-2 bg-green/10">
           <div className="w-11 h-8 rounded overflow-hidden bg-border-light shrink-0">
             {thumb && (
               // eslint-disable-next-line @next/next/no-img-element
