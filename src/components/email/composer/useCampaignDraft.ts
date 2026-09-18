@@ -41,6 +41,7 @@ export interface CampaignDraft {
   priority: CampaignPriority;   // "high" = fight for a great slot, "normal" = fit anywhere
   segmentIds: string[];         // live Resend segment UUIDs (multi-select)
   extraEmails: string[];        // optional extra recipients
+  extraContactNames: Record<string, string>; // email → display name for selected chips
   frequency: CampaignFrequency; // only used when campaignType === "recurring"
   endDate: string;              // "YYYY-MM-DD" or ""
   pinned: boolean;              // exempt from freshness decay
@@ -64,9 +65,15 @@ interface StoredDraft {
 }
 
 function normalizeDraft(draft: CampaignDraft & { segmentId?: string }): CampaignDraft {
-  if (Array.isArray(draft.segmentIds) && Array.isArray(draft.extraEmails)) return draft;
+  const names =
+    draft.extraContactNames && typeof draft.extraContactNames === "object" && !Array.isArray(draft.extraContactNames)
+      ? draft.extraContactNames
+      : {};
+  if (Array.isArray(draft.segmentIds) && Array.isArray(draft.extraEmails)) {
+    return { ...draft, extraContactNames: names };
+  }
   const parsed = parseAudienceTokens(draft.segmentId || "");
-  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails };
+  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails, extraContactNames: names };
 }
 
 function readStoredDraft(campaignId?: string | null): StoredDraft | null {
@@ -130,6 +137,7 @@ function emptyDraft(userEmail: string): CampaignDraft {
     priority: "normal",
     segmentIds: [],
     extraEmails: [],
+    extraContactNames: {},
     frequency: "weekly",
     endDate: "",
     pinned: false,
@@ -161,6 +169,7 @@ function fromCampaign(c: Campaign): CampaignDraft {
     priority: c.priority === "high" ? "high" : "normal",
     segmentIds: parseAudienceTokens(c.segment_id).segmentIds,
     extraEmails: parseAudienceTokens(c.segment_id).extraEmails,
+    extraContactNames: {},
     frequency: c.frequency && c.frequency !== "one-time" ? c.frequency : "weekly",
     endDate: c.end_date ? c.end_date.slice(0, 10) : "",
     pinned: !!c.pinned,

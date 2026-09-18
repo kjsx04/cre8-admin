@@ -508,8 +508,12 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   error={audience.error}
                   segmentIds={draft.segmentIds}
                   extraEmails={draft.extraEmails}
+                  extraContactNames={draft.extraContactNames}
                   onSegmentsChange={(ids) => set("segmentIds", ids)}
-                  onEmailsChange={(emails) => set("extraEmails", emails)}
+                  onEmailsChange={(emails, names) => {
+                    set("extraEmails", emails);
+                    if (names) set("extraContactNames", names);
+                  }}
                 />
               </Section>
 

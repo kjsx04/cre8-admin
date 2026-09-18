@@ -74,6 +74,11 @@ export function contactFullName(c: Pick<MatchedContact, "first_name" | "last_nam
     .join(" ");
 }
 
+/** Selected-contact chip: `First Last`. Email only when name is empty. Company stays off the pill. */
+export function contactChipLabel(c: Pick<MatchedContact, "email" | "first_name" | "last_name">): string {
+  return contactFullName(c) || (c.email || "").trim();
+}
+
 /** Primary search-result line: `Full Name, Company` (company omitted when missing). */
 export function formatContactPrimaryLine(c: MatchedContact): string {
   const name = contactFullName(c);

@@ -7,6 +7,7 @@ import {
   contactMatchesQuery,
   contactSearchScore,
   extractCompany,
+  contactChipLabel,
   formatContactPrimaryLine,
   isUnsubscribed,
   parseContactListBody,
@@ -35,6 +36,15 @@ const kevin = unwrapContact({
 assert(kevin?.email === "kevin@cre8advisors.com", "unwrap email");
 assert(kevin?.company === "CRE8 Advisors", "unwrap nested company property");
 assert(formatContactPrimaryLine(kevin!) === "Kevin Smith, CRE8 Advisors", "primary line with company");
+assert(contactChipLabel(kevin!) === "Kevin Smith", "chip shows name not email or company");
+assert(
+  contactChipLabel({ email: "solo@x.com", first_name: "", last_name: null }) === "solo@x.com",
+  "chip falls back to email when name is empty"
+);
+assert(
+  contactChipLabel({ email: "pat@x.com", first_name: "Pat", last_name: "" }) === "Pat",
+  "chip uses first name when last is empty"
+);
 assert(contactMatchesQuery(kevin!, "kevin"), "match first name");
 assert(contactMatchesQuery(kevin!, "SMITH"), "match last name case-insensitive");
 assert(contactMatchesQuery(kevin!, "cre8"), "match company partial");
