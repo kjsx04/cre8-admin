@@ -25,6 +25,13 @@
 
 import { buildTemplateVars, renderEmailHtml } from "./constants";
 import { EMAIL_RE, parseAudienceTokens, splitProviderIds } from "./audience-tokens";
+import {
+  contactMatchesQuery,
+  isUnsubscribed,
+  parseContactListBody,
+  unwrapContact,
+  type MatchedContact,
+} from "./contact-match";
 
 const RESEND_API = "https://api.resend.com";
 
@@ -127,14 +134,24 @@ export function renderCampaignHtml(campaign: CampaignLike): string {
 async function resendFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("RESEND_API_KEY not configured");
-  return fetch(`${RESEND_API}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      ...(init.headers || {}),
-    },
-  });
+  let last: Response | null = null;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    // Next.js 14 caches GET fetch by default — never cache Resend reads
+    // (a failed/empty first page would otherwise stick as 0 counts).
+    const res = await fetch(`${RESEND_API}${path}`, {
+      ...init,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+        ...(init.headers || {}),
+      },
+    });
+    last = res;
+    if (res.status !== 429) return res;
+    await new Promise((r) => setTimeout(r, Math.min(8000, 400 * 2 ** attempt)));
+  }
+  return last!;
 }
 
 /** Build the broadcast payload for one Resend segment */
@@ -331,79 +348,190 @@ async function sendToRecipient(
   return data.id || "";
 }
 
-export type ResendContact = {
-  id: string;
-  email: string;
-  first_name?: string | null;
-  last_name?: string | null;
-  unsubscribed?: boolean;
-};
-
-/** Look up contacts by email (exact) or a name/email substring on a small page. */
-export async function searchContacts(query: string): Promise<ResendContact[]> {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
-
-  // Exact email → one GET, no paging
-  if (EMAIL_RE.test(q)) {
-    const res = await resendFetch(`/contacts/${encodeURIComponent(q)}`);
-    if (res.status === 404) return [];
-    if (!res.ok) throw new Error(`Resend contact lookup failed (${res.status}): ${await res.text()}`);
-    const row = (await res.json()) as ResendContact;
-    return row?.email ? [row] : [];
-  }
-
-  const matches: ResendContact[] = [];
-  let after: string | null = null;
-  for (let page = 0; page < 3 && matches.length < 8; page++) {
-    const qs = `limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`;
-    const res = await resendFetch(`/contacts?${qs}`);
-    if (!res.ok) throw new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
-    const body = (await res.json()) as { data?: ResendContact[]; has_more?: boolean };
-    const rows = body.data || [];
-    for (const c of rows) {
-      const hay = `${c.email || ""} ${c.first_name || ""} ${c.last_name || ""}`.toLowerCase();
-      if (hay.includes(q)) matches.push(c);
-      if (matches.length >= 8) break;
-    }
-    if (!body.has_more || rows.length === 0) break;
-    after = rows[rows.length - 1].id;
-  }
-  return matches;
-}
-
-// ── High-level sync ──
+export type ResendContact = MatchedContact;
 
 /** Contact counts for one Resend segment */
 export type SegmentCount = {
   total: number;         // every contact in the segment
-  subscribed: number;    // will receive broadcasts
+  subscribed: number;    // will receive broadcasts (what the composer chips show)
   unsubscribed: number;  // opted out — Resend skips them automatically
 };
 
-/**
- * Count the contacts in a segment by paging through GET /segments/{id}/contacts.
- * 100 per page, so a 1,000-contact list is ~10 quick calls. Callers should cache
- * the result (see audience.ts) — this is not meant to run on every render.
- */
-export async function countSegmentContacts(segmentId: string): Promise<SegmentCount> {
+const CONTACT_PAGE = 100;
+const CONTACT_MAX_PAGES = 200;
+const CONTACT_CACHE_TTL_MS = 10 * 60 * 1000;
+const SEARCH_LIMIT = 12;
+
+type ContactListCache = { at: number; rows: ResendContact[] };
+
+let allContactsCache: ContactListCache | null = null;
+const segmentContactsCache = new Map<string, ContactListCache>();
+
+/** Drop in-memory contact lists (used by ?refresh=1). */
+export function invalidateContactCaches(): void {
+  allContactsCache = null;
+  segmentContactsCache.clear();
+}
+
+function countFromRows(rows: ResendContact[]): SegmentCount {
   const out: SegmentCount = { total: 0, subscribed: 0, unsubscribed: 0 };
-  let after: string | null = null;
-  for (let page = 0; page < 200; page++) {
-    const qs = `limit=100${after ? `&after=${encodeURIComponent(after)}` : ""}`;
-    const res = await resendFetch(`/segments/${segmentId}/contacts?${qs}`);
-    if (!res.ok) throw new Error(`Resend segment contacts failed (${res.status}): ${await res.text()}`);
-    const body = (await res.json()) as { data?: { id: string; unsubscribed?: boolean }[]; has_more?: boolean };
-    const rows = body.data || [];
-    for (const c of rows) {
-      out.total += 1;
-      if (c.unsubscribed) out.unsubscribed += 1;
-      else out.subscribed += 1;
-    }
-    if (!body.has_more || rows.length === 0) break;
-    after = rows[rows.length - 1].id;
+  for (const c of rows) {
+    out.total += 1;
+    if (isUnsubscribed(c.unsubscribed)) out.unsubscribed += 1;
+    else out.subscribed += 1;
   }
   return out;
+}
+
+/**
+ * One page of contacts.
+ * Segment filter: GET /contacts?segment_id= (the path Resend MCP uses) first,
+ * then GET /segments/{id}/contacts (Node SDK path) if that 404s or comes back empty.
+ */
+async function fetchContactsPage(opts: {
+  segmentId?: string;
+  after?: string | null;
+  limit?: number;
+}): Promise<{ rows: ResendContact[]; hasMore: boolean }> {
+  const qs = new URLSearchParams();
+  if (opts.limit) qs.set("limit", String(opts.limit));
+  if (opts.after) qs.set("after", opts.after);
+
+  const paths: string[] = [];
+  if (opts.segmentId) {
+    const withSeg = new URLSearchParams(qs);
+    withSeg.set("segment_id", opts.segmentId);
+    paths.push(`/contacts?${withSeg}`);
+    paths.push(`/segments/${opts.segmentId}/contacts${qs.toString() ? `?${qs}` : ""}`);
+  } else {
+    paths.push(`/contacts${qs.toString() ? `?${qs}` : ""}`);
+  }
+
+  let lastErr: Error | null = null;
+  for (let i = 0; i < paths.length; i++) {
+    const path = paths[i];
+    const res = await resendFetch(path);
+    if (!res.ok) {
+      lastErr = new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
+      if (res.status === 404 || res.status === 400) continue;
+      throw lastErr;
+    }
+    const parsed = parseContactListBody(await res.json());
+    // First page empty + another path left → try the fallback (don't trust a 404-as-200)
+    if (parsed.rows.length === 0 && !opts.after && i < paths.length - 1) continue;
+    return parsed;
+  }
+  throw lastErr || new Error("Resend list contacts failed");
+}
+
+/** Page every contact, optionally filtered to one segment. */
+export async function listAllContacts(segmentId?: string): Promise<ResendContact[]> {
+  const out: ResendContact[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < CONTACT_MAX_PAGES; page++) {
+    const { rows, hasMore } = await fetchContactsPage({
+      segmentId,
+      after,
+      limit: CONTACT_PAGE,
+    });
+    out.push(...rows);
+    if (!hasMore || rows.length === 0) break;
+    after = rows[rows.length - 1]?.id || null;
+    if (!after) break;
+  }
+  return out;
+}
+
+async function cachedContactList(segmentId?: string, force = false): Promise<ResendContact[]> {
+  const now = Date.now();
+  if (!segmentId) {
+    if (!force && allContactsCache && now - allContactsCache.at < CONTACT_CACHE_TTL_MS) {
+      return allContactsCache.rows;
+    }
+    const rows = await listAllContacts();
+    allContactsCache = { at: now, rows };
+    return rows;
+  }
+  const hit = segmentContactsCache.get(segmentId);
+  if (!force && hit && now - hit.at < CONTACT_CACHE_TTL_MS) return hit.rows;
+  const rows = await listAllContacts(segmentId);
+  segmentContactsCache.set(segmentId, { at: now, rows });
+  return rows;
+}
+
+async function hydrateCompanies(rows: ResendContact[]): Promise<ResendContact[]> {
+  const need = rows.filter((r) => !r.company && r.email);
+  if (need.length === 0) return rows;
+  const got = await Promise.all(
+    need.map(async (c) => {
+      try {
+        const res = await resendFetch(`/contacts/${encodeURIComponent(c.email)}`);
+        if (!res.ok) return c;
+        return unwrapContact(await res.json()) || c;
+      } catch {
+        return c;
+      }
+    })
+  );
+  const byEmail = new Map(got.map((g) => [g.email.toLowerCase(), g]));
+  return rows.map((r) => byEmail.get(r.email.toLowerCase()) || r);
+}
+
+/**
+ * Search Resend contacts by email, name, or company/brokerage (case-insensitive
+ * partial match). Pages the live contact list (cached 10 min) so matches are
+ * not limited to the first few hundred rows.
+ */
+export async function searchContacts(query: string): Promise<ResendContact[]> {
+  const q = query.trim();
+  if (!q) return [];
+
+  const exact: ResendContact[] = [];
+  if (EMAIL_RE.test(q.toLowerCase())) {
+    const res = await resendFetch(`/contacts/${encodeURIComponent(q.toLowerCase())}`);
+    if (res.ok) {
+      const row = unwrapContact(await res.json());
+      if (row) exact.push(row);
+    } else if (res.status !== 404) {
+      throw new Error(`Resend contact lookup failed (${res.status}): ${await res.text()}`);
+    }
+  }
+
+  let rows: ResendContact[] = [];
+  try {
+    rows = await cachedContactList();
+  } catch (err) {
+    // Global list failed — still return an exact email hit if we have one
+    console.error("[Resend] contact list for search failed:", err);
+    if (exact.length) return exact;
+    throw err;
+  }
+
+  const seen = new Set(exact.map((c) => c.email.toLowerCase()));
+  const matches = [...exact];
+  for (const c of rows) {
+    if (!contactMatchesQuery(c, q)) continue;
+    const key = c.email.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    matches.push(c);
+    if (matches.length >= SEARCH_LIMIT) break;
+  }
+
+  return hydrateCompanies(matches);
+}
+
+// ── High-level sync ──
+
+/**
+ * Count every contact in a Resend segment (full pagination).
+ * Prefers GET /contacts?segment_id=; falls back to /segments/{id}/contacts.
+ * Resend does not expose a segment.total field — this is the official count.
+ * Chips show `subscribed` (broadcast recipients). `total` includes unsubscribed.
+ */
+export async function countSegmentContacts(segmentId: string, force = false): Promise<SegmentCount> {
+  const rows = await cachedContactList(segmentId, force);
+  return countFromRows(rows);
 }
 
 export type SyncResult = {

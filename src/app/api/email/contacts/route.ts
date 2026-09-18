@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
 import { isProviderConfigured, searchContacts } from "@/lib/email/provider";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 /**
- * GET /api/email/contacts?q= — search Resend contacts by email or name.
- * Exact emails use a single lookup; other queries scan the first few pages.
+ * GET /api/email/contacts?q= — search Resend contacts by email, name, or company.
+ * Case-insensitive partial match against the live (cached) contact list.
  */
 export async function GET(request: NextRequest) {
   const auth = requireUser(request);
