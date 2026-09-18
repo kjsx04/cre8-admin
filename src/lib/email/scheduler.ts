@@ -8,6 +8,7 @@
 
 import { supabase } from "@/lib/flow/supabase";
 import { syncCampaignToProvider, CampaignLike } from "./provider";
+import { splitProviderIds } from "./audience-tokens";
 import { CalendarChange, Campaign } from "./types";
 import { expandOccurrences } from "./occurrences";
 import { getSettings } from "./settings-server";
@@ -196,9 +197,12 @@ export async function applySlotAndSync(
 /** Remember which Resend broadcast belongs to which campaign (tracking events arrive by broadcast id) */
 export async function recordSend(campaignId: string, broadcastId: string | null, scheduledAt: string | null): Promise<void> {
   if (!broadcastId) return;
-  await supabase
-    .from("email_sends")
-    .upsert({ broadcast_id: broadcastId, campaign_id: campaignId, scheduled_at: scheduledAt }, { onConflict: "broadcast_id" });
+  const ids = splitProviderIds(broadcastId);
+  for (const id of ids) {
+    await supabase
+      .from("email_sends")
+      .upsert({ broadcast_id: id, campaign_id: campaignId, scheduled_at: scheduledAt }, { onConflict: "broadcast_id" });
+  }
 }
 
 /**

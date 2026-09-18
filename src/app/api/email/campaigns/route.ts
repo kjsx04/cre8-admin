@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
+  if (!body.segment_id) {
+    return NextResponse.json({ error: "Pick at least one audience list or contact" }, { status: 400 });
+  }
 
   // Insert campaign as draft
   const { data: campaign, error: insertErr } = await supabase
@@ -101,7 +104,7 @@ export async function POST(request: NextRequest) {
       pinned: !!body.pinned,
       cadence_changed_at: new Date().toISOString(),
       segment_id: body.segment_id || null,
-      segment_name: body.segment_name || "All Contacts",
+      segment_name: body.segment_name || "No audience",
       frequency: body.frequency || "one-time",
       end_date: body.end_date || null,
       status: "draft",

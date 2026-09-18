@@ -8,7 +8,7 @@ import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause,
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
 import PriorityBadge from "./PriorityBadge";
 import EmailPreview from "./EmailPreview";
-import { useAudienceCounts, formatCount, recipientLine } from "@/lib/email/audience-client";
+import { useAudienceCounts, formatCount, recipientLine, audienceForCampaign, audienceLabel } from "@/lib/email/audience-client";
 
 interface CampaignDetailProps {
   campaign: Campaign;
@@ -40,7 +40,8 @@ export default function CampaignDetail({
   const userEmail = accounts[0]?.username || "";
   // Audience size for the "Audience" row + send-now confirm
   const audience = useAudienceCounts();
-  const audienceCount = audience[campaign.segment_id || "all"];
+  const audienceCount = audienceForCampaign(audience, campaign.segment_id);
+  const audienceName = audienceLabel(audience, campaign.segment_id, campaign.segment_name);
 
   // Delivery stats from Resend webhooks (per recipient, across all sends of this campaign)
   const [stats, setStats] = useState<{ sends: number; delivered: number; opened: number; clicked: number; bounced: number; unsubscribed: number } | null>(null);
@@ -165,7 +166,7 @@ export default function CampaignDetail({
               <InfoRow label="Type" value={campaign.campaign_type === "recurring" ? "Recurring" : "One-Time"} />
               <InfoRow
                 label="Audience"
-                value={audienceCount ? `${campaign.segment_name} · ${formatCount(audienceCount.subscribed)}` : campaign.segment_name}
+                value={audienceCount ? `${audienceName} · ${formatCount(audienceCount.subscribed)}` : audienceName}
                 sub={audienceCount && audienceCount.unsubscribed > 0 ? recipientLine(audienceCount) : undefined}
               />
             </Section>
@@ -282,7 +283,7 @@ export default function CampaignDetail({
                 showSendConfirm ? (
                   <div className="rounded-btn border border-green bg-[#f7fdf0] p-3 space-y-2">
                     <p className="text-sm text-charcoal">
-                      Send <span className="font-medium">{campaign.email_label ? `${campaign.email_label}: ` : ""}{campaign.listing_name}</span> to <span className="font-medium">{campaign.segment_name}{audienceCount ? ` (${formatCount(audienceCount.subscribed)} people)` : ""}</span> right now?
+                      Send <span className="font-medium">{campaign.email_label ? `${campaign.email_label}: ` : ""}{campaign.listing_name}</span> to <span className="font-medium">{audienceName}{audienceCount ? ` (${formatCount(audienceCount.subscribed)} people)` : ""}</span> right now?
                       {campaign.campaign_type === "recurring" && <span className="text-muted-gray"> The cadence restarts from today.</span>}
                     </p>
                     <div className="flex gap-2">

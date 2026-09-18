@@ -5,7 +5,7 @@ import { ScheduleItem } from "@/lib/email/occurrences";
 import { getTypeColor } from "@/lib/email/utils";
 import { FREQUENCY_LABELS, RECURRING_STRIPE } from "@/lib/email/constants";
 import BrokerAvatarStack from "./BrokerAvatarStack";
-import { useAudienceCounts, formatCount } from "@/lib/email/audience-client";
+import { useAudienceCounts, formatCount, audienceForCampaign } from "@/lib/email/audience-client";
 
 interface SendCardProps {
   item: ScheduleItem;
@@ -25,7 +25,7 @@ export default function SendCard({ item, onClick }: SendCardProps) {
   const isProjected = state === "projected";
   // Audience size chip ("860") — one shared fetch for every card on the page
   const audience = useAudienceCounts();
-  const count = audience[c.segment_id || "all"];
+  const count = audienceForCampaign(audience, c.segment_id);
 
   return (
     <button

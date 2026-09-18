@@ -18,8 +18,8 @@ import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
-import { buildTemplateVars, renderEmailHtml, EMAIL_SEGMENTS } from "@/lib/email/constants";
-import { useAudienceCounts, formatCount, recipientLine } from "@/lib/email/audience-client";
+import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
+import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
 import { submitCampaign } from "@/lib/email/submit";
@@ -31,6 +31,7 @@ import GroupListingsPicker from "./GroupListingsPicker";
 import PhotoPicker from "./PhotoPicker";
 import PartnerLogoPicker from "./PartnerLogoPicker";
 import BrokerPicker from "./BrokerPicker";
+import AudiencePicker from "./AudiencePicker";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
@@ -50,6 +51,7 @@ const MISSING_COPY: Record<MissingField, string> = {
   group: "at least 2 listings",
   broker: "a broker",
   partnerLogo: "the partner logo (click Apply)",
+  audience: "an audience",
 };
 
 /** "Add a listing, a broker and a label" */
@@ -101,8 +103,23 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   // ── Focus bridge: preview region ⇄ input ──
   const [activeField, setActiveField] = useState<PreviewField | null>(null);
-  // Who each audience goes to and how many — shown on the audience buttons + confirm dialogs
-  const audience = useAudienceCounts();
+  // Live Resend lists + counts — shown on the audience buttons + confirm dialogs
+  const audience = useAudience();
+  const selectedAudience = combineAudience(audience.map, draft.segmentIds, draft.extraEmails.length);
+  const selectedAudienceName = audienceLabel(
+    audience.map,
+    formData.segment_id,
+    formData.segment_name || "the selected audience"
+  );
+
+  // Old campaigns stored "test" (renamed to Brokers). Once live lists load, pick Brokers.
+  useEffect(() => {
+    if (!audience.loaded || draft.segmentIds.length > 0 || draft.extraEmails.length > 0) return;
+    const raw = campaign?.segment_id || "";
+    if (!/(^|[,;\s])test([,;\s]|$)/i.test(raw)) return;
+    const brokers = audience.list.find((s) => /^(brokers|test)$/i.test(s.name));
+    if (brokers) set("segmentIds", [brokers.id]);
+  }, [audience.loaded, audience.list, campaign?.segment_id, draft.segmentIds.length, draft.extraEmails.length, set]);
   const fieldEls = useRef(new Map<PreviewField, HTMLElement>());
   const bindings = useRef(new Map<PreviewField, FieldBinding>());
 
@@ -140,6 +157,14 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const submittedRef = useRef(false);
   const lastPayloadRef = useRef(formData);
 
+  const withAudienceNames = useCallback(
+    (data: typeof formData) => ({
+      ...data,
+      segment_name: audienceLabel(audience.map, data.segment_id, data.segment_name || selectedAudienceName),
+    }),
+    [audience.map, selectedAudienceName]
+  );
+
   const runSubmit = useCallback(async () => {
     setToastVisible(true);
     setToastDone(false);
@@ -156,7 +181,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   const handleSubmit = () => {
     if (!isValid || (toastVisible && !toastError)) return;
-    lastPayloadRef.current = formData;
+    lastPayloadRef.current = withAudienceNames(formData);
     runSubmit();
   };
 
@@ -173,7 +198,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       const saveRes = await fetch(campaign?.id ? `/api/email/campaigns/${campaign.id}` : "/api/email/campaigns", {
         method: campaign?.id ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json", "x-user-email": userEmail },
-        body: JSON.stringify({ ...formData, auto_schedule: false }),
+        body: JSON.stringify({ ...withAudienceNames(formData), auto_schedule: false }),
       });
       const saved = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) throw new Error(saved.error || "Couldn't save the campaign");
@@ -475,21 +500,17 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={10} title="Audience">
-                <Segmented
-                  value={draft.segmentId}
-                  options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({
-                    id: s.id,
-                    label: s.name,
-                    // count badge appears once /api/email/audience has answered
-                    badge: audience[s.id] ? formatCount(audience[s.id].subscribed) : undefined,
-                  }))}
-                  onChange={(v) => set("segmentId", v)}
+              <Section n={10} title="Audience" note="pick one or more lists">
+                <AudiencePicker
+                  list={audience.list}
+                  map={audience.map}
+                  loaded={audience.loaded}
+                  error={audience.error}
+                  segmentIds={draft.segmentIds}
+                  extraEmails={draft.extraEmails}
+                  onSegmentsChange={(ids) => set("segmentIds", ids)}
+                  onEmailsChange={(emails) => set("extraEmails", emails)}
                 />
-                {/* "860 recipients · 2 unsubscribed won't receive it" */}
-                <p className="mt-2 text-xs text-muted-gray min-h-[1rem]">
-                  {audience[draft.segmentId] ? recipientLine(audience[draft.segmentId]) : "Counting recipients…"}
-                </p>
               </Section>
 
               <Section n={11} title="Frequency">
@@ -570,8 +591,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             <p className="text-sm text-charcoal mt-2">
               <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
               <span className="font-medium">
-                {formData.segment_name}
-                {audience[draft.segmentId] ? ` (${formatCount(audience[draft.segmentId].subscribed)} people)` : ""}
+                {selectedAudienceName}
+                {selectedAudience ? ` (${formatCount(selectedAudience.subscribed)} people)` : ""}
               </span>{" "}
               within a couple of minutes, from {formData.broker_name}.
             </p>
