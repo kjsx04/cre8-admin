@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { EMAIL_RE } from "@/lib/email/audience-tokens";
-import { formatContactPrimaryLine } from "@/lib/email/contact-match";
+import { contactChipLabel, formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
 import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
 
@@ -18,8 +18,9 @@ interface AudiencePickerProps {
   error: boolean;
   segmentIds: string[];
   extraEmails: string[];
+  extraContactNames?: Record<string, string>;
   onSegmentsChange: (ids: string[]) => void;
-  onEmailsChange: (emails: string[]) => void;
+  onEmailsChange: (emails: string[], names?: Record<string, string>) => void;
 }
 
 type ContactHit = {
@@ -38,6 +39,7 @@ export default function AudiencePicker({
   error,
   segmentIds,
   extraEmails,
+  extraContactNames = {},
   onSegmentsChange,
   onEmailsChange,
 }: AudiencePickerProps) {
@@ -58,17 +60,24 @@ export default function AudiencePicker({
     else onSegmentsChange([...segmentIds, id]);
   };
 
-  const addEmail = (raw: string) => {
+  const addContact = (raw: string, label?: string) => {
     const email = raw.trim().toLowerCase();
     if (!EMAIL_RE.test(email)) return false;
-    if (!extraEmails.includes(email)) onEmailsChange([...extraEmails, email]);
+    const chip = (label || "").trim() || email;
+    const names = { ...extraContactNames, [email]: chip };
+    if (!extraEmails.includes(email)) onEmailsChange([...extraEmails, email], names);
+    else onEmailsChange(extraEmails, names);
     setQuery("");
     setHits([]);
     return true;
   };
 
+  const addHit = (hit: ContactHit) => addContact(hit.email, contactChipLabel(hit));
+
   const removeEmail = (email: string) => {
-    onEmailsChange(extraEmails.filter((e) => e !== email));
+    const names = { ...extraContactNames };
+    delete names[email];
+    onEmailsChange(extraEmails.filter((e) => e !== email), names);
   };
 
   useEffect(() => {
@@ -148,8 +157,8 @@ export default function AudiencePicker({
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               e.preventDefault();
-              if (hits[0]) addEmail(hits[0].email);
-              else addEmail(query);
+              if (hits[0]) addHit(hits[0]);
+              else addContact(query);
             }
           }}
           placeholder="Search or type an email"
@@ -174,7 +183,7 @@ export default function AudiencePicker({
                   key={h.id || h.email}
                   type="button"
                   disabled={already}
-                  onClick={() => addEmail(h.email)}
+                  onClick={() => addHit(h)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray disabled:opacity-40"
                 >
                   <span className="block text-charcoal">{primary}</span>
@@ -188,7 +197,7 @@ export default function AudiencePicker({
             {!searching && hits.length === 0 && EMAIL_RE.test(query.trim()) && (
               <button
                 type="button"
-                onClick={() => addEmail(query)}
+                onClick={() => addContact(query)}
                 className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray"
               >
                 Add <span className="font-medium">{query.trim().toLowerCase()}</span>
@@ -198,14 +207,21 @@ export default function AudiencePicker({
         )}
         {extraEmails.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {extraEmails.map((email) => (
-              <span key={email} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-light-gray text-xs text-charcoal">
-                {email}
-                <button type="button" onClick={() => removeEmail(email)} className="text-muted-gray hover:text-charcoal" aria-label={`Remove ${email}`}>
-                  ×
-                </button>
-              </span>
-            ))}
+            {extraEmails.map((email) => {
+              const label = extraContactNames[email] || email;
+              return (
+                <span
+                  key={email}
+                  title={email}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-light-gray text-xs text-charcoal"
+                >
+                  {label}
+                  <button type="button" onClick={() => removeEmail(email)} className="text-muted-gray hover:text-charcoal" aria-label={`Remove ${label}`}>
+                    ×
+                  </button>
+                </span>
+              );
+            })}
           </div>
         )}
       </div>
