@@ -16,7 +16,10 @@ export async function GET(request: NextRequest) {
   try {
     const force = request.nextUrl.searchParams.get("refresh") === "1";
     const data = await getAudienceCounts(force);
-    return NextResponse.json({ data, fetched_at: new Date().toISOString() });
+    return NextResponse.json(
+      { data, fetched_at: new Date().toISOString() },
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+    );
   } catch (err) {
     return NextResponse.json({ error: err instanceof Error ? err.message : "Failed to count audience" }, { status: 500 });
   }

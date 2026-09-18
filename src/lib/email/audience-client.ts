@@ -16,11 +16,26 @@ import { parseAudienceTokens } from "./audience-tokens";
 let shared: Promise<AudienceCount[]> | null = null;
 let sharedFor = ""; // the user email the shared promise was made with
 
-async function load(userEmail: string): Promise<AudienceCount[]> {
-  const res = await fetch("/api/email/audience", { headers: { "x-user-email": userEmail } });
+function allZero(list: AudienceCount[]): boolean {
+  return list.length > 0 && list.every((s) => !s.total && !s.subscribed);
+}
+
+async function fetchAudience(userEmail: string, refresh = false): Promise<AudienceCount[]> {
+  const qs = refresh ? "?refresh=1" : "";
+  const res = await fetch(`/api/email/audience${qs}`, {
+    cache: "no-store",
+    headers: { "x-user-email": userEmail, "Cache-Control": "no-cache" },
+  });
   if (!res.ok) throw new Error(`audience ${res.status}`);
   const body = (await res.json()) as { data: AudienceCount[] };
   return body.data || [];
+}
+
+async function load(userEmail: string): Promise<AudienceCount[]> {
+  const first = await fetchAudience(userEmail, false);
+  if (!allZero(first)) return first;
+  // Stale/cached zeros from a bad count — force a live recount
+  return fetchAudience(userEmail, true);
 }
 
 export type AudienceState = {
@@ -40,11 +55,16 @@ export function useAudience(): AudienceState {
     if (!userEmail) return;
     if (!shared || sharedFor !== userEmail) {
       sharedFor = userEmail;
-      shared = load(userEmail).catch((err) => {
-        shared = null; // let the next mount retry
-        console.error("[audience] load failed:", err);
-        throw err;
-      });
+      shared = load(userEmail)
+        .then((list) => {
+          if (allZero(list)) shared = null;
+          return list;
+        })
+        .catch((err) => {
+          shared = null; // let the next mount retry
+          console.error("[audience] load failed:", err);
+          throw err;
+        });
     }
     let alive = true;
     shared
