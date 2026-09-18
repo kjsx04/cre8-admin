@@ -27,6 +27,7 @@ import { buildTemplateVars, renderEmailHtml } from "./constants";
 import { EMAIL_RE, parseAudienceTokens, splitProviderIds } from "./audience-tokens";
 import {
   contactMatchesQuery,
+  contactSearchScore,
   isUnsubscribed,
   parseContactListBody,
   unwrapContact,
@@ -523,10 +524,9 @@ export async function searchContacts(query: string): Promise<ResendContact[]> {
     if (seen.has(key)) continue;
     seen.add(key);
     matches.push(c);
-    if (matches.length >= SEARCH_LIMIT) break;
   }
-
-  return hydrateCompanies(matches);
+  matches.sort((a, b) => contactSearchScore(b, q) - contactSearchScore(a, q));
+  return hydrateCompanies(matches.slice(0, SEARCH_LIMIT));
 }
 
 // ── High-level sync ──

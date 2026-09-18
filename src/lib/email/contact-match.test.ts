@@ -5,6 +5,7 @@
 
 import {
   contactMatchesQuery,
+  contactSearchScore,
   extractCompany,
   formatContactPrimaryLine,
   isUnsubscribed,
@@ -39,6 +40,11 @@ assert(contactMatchesQuery(kevin!, "SMITH"), "match last name case-insensitive")
 assert(contactMatchesQuery(kevin!, "cre8"), "match company partial");
 assert(contactMatchesQuery(kevin!, "kevin@cre8advisors.com"), "match email");
 assert(!contactMatchesQuery(kevin!, "colliers"), "no false company match");
+assert(
+  contactSearchScore(kevin!, "kevin") >
+    contactSearchScore({ id: "x", email: "kevin.x@example.com", first_name: "Kevin", last_name: "Manship" }, "kevin"),
+  "company-filled Kevin ranks above email-only Kevin"
+);
 
 const noCompany = unwrapContact({
   email: "a@b.com",

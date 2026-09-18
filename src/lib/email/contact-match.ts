@@ -97,6 +97,27 @@ export function contactMatchesQuery(c: MatchedContact, query: string): boolean {
   return hay.includes(needle);
 }
 
+/** Higher = better Add-contacts hit. Prefers exact name/email and a filled `company`. */
+export function contactSearchScore(c: MatchedContact, query: string): number {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return 0;
+  const first = (c.first_name || "").trim().toLowerCase();
+  const last = (c.last_name || "").trim().toLowerCase();
+  const name = contactFullName(c).toLowerCase();
+  const email = (c.email || "").toLowerCase();
+  const company = (c.company || "").trim().toLowerCase();
+  let score = 0;
+  if (email === needle) score += 1000;
+  if (name === needle) score += 500;
+  if (first === needle || last === needle) score += 200;
+  if (name.startsWith(needle)) score += 80;
+  if (company === needle) score += 150;
+  if (company.includes(needle)) score += 60;
+  if (email.includes(needle)) score += 40;
+  if (company) score += 25;
+  return score;
+}
+
 export function unwrapContact(body: unknown): MatchedContact | null {
   const obj = asRecord(body);
   if (!obj) return null;
