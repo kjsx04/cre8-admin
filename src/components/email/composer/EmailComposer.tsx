@@ -36,6 +36,7 @@ import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
+import { COMPOSER_FIELD, COMPOSER_PILL, COMPOSER_PILL_OFF, COMPOSER_PILL_ON } from "./composer-ui";
 
 interface EmailComposerProps {
   mode: "create" | "edit";
@@ -44,8 +45,7 @@ interface EmailComposerProps {
   listingsLoading: boolean;
 }
 
-const INPUT =
-  "w-full border border-border-light bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
+const INPUT = COMPOSER_FIELD;
 
 const MISSING_COPY: Record<MissingField, string> = {
   type: "the email type",
@@ -251,21 +251,21 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   return (
     <div className="flex flex-col h-full bg-white">
       {/* ── Header ── */}
-      <div className="shrink-0 flex items-center justify-between gap-4 px-5 py-3 border-b border-border-light">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="shrink-0 flex items-center justify-between gap-4 px-5 py-2.5 border-b border-black/[0.04]">
+        <div className="flex items-center gap-2.5 min-w-0">
           <button
             type="button"
             onClick={handleBack}
             disabled={submitting}
-            className="w-8 h-8 flex items-center justify-center rounded-card border border-border-light text-charcoal hover:bg-subtle-gray transition-colors disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-full text-medium-gray hover:text-charcoal hover:bg-subtle-gray transition-colors disabled:opacity-40"
             title="Back to campaigns"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
               <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </button>
-          <h1 className="font-bebas text-2xl tracking-wide text-charcoal whitespace-nowrap">
-            {isEdit ? "Edit Campaign" : "New Campaign"}
+          <h1 className="text-[17px] font-medium text-charcoal whitespace-nowrap">
+            {isEdit ? "Edit campaign" : "New campaign"}
           </h1>
           {isEdit && draft.listingName && (
             <span className="text-sm text-muted-gray truncate hidden sm:inline">{draft.listingName}</span>
@@ -283,7 +283,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-3.5 py-2 bg-white border border-border-light text-charcoal text-sm font-medium rounded-card hover:bg-subtle-gray transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of letting the AI pick a time"
               >
                 Send now
@@ -292,7 +292,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={handleSubmit}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-2 bg-green text-charcoal text-sm font-medium rounded-card hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-full hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
               >
                 {isEdit ? "Update" : "Schedule"}
               </button>
@@ -320,7 +320,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
       {/* Restored-draft notice */}
       {restored && (
-        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-2 bg-[#f0fce8] border-b border-border-light text-xs text-charcoal">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-2 bg-green/[0.08] text-xs text-charcoal">
           <span>
             Restored your unsaved work
             {restoredAt && <span className="text-muted-gray"> from {new Date(restoredAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
@@ -359,7 +359,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
         {/* Right: light tool surface */}
         <div
-          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light bg-subtle-gray px-6 lg:px-8 py-8 space-y-10 ${
+          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-black/[0.04] bg-subtle-gray px-7 lg:px-9 py-10 space-y-9 ${
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
@@ -369,7 +369,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </div>
 
           {/* 1 — what kind of email. Everything else appears once this is chosen. */}
-          <Section n={1} title="Type" note={isEdit ? "can't change after creating" : undefined}>
+          <Section title="Type" note={isEdit ? "can't change after creating" : undefined}>
             {isEdit ? (
               <p className="text-sm text-charcoal">{isGroup ? "Multiple" : "Single"}</p>
             ) : (
@@ -378,9 +378,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </Section>
 
           {revealed && (
-            <div className="space-y-10 composer-reveal">
-              {/* 2 — the listing(s). Search box first; results drop down as you type. */}
-              <Section n={2} title={isGroup ? "Listings" : "Listing"}>
+            <div className="space-y-8 composer-reveal">
+              <Section title={isGroup ? "Listings" : "Listing"}>
                 {isGroup ? (
                   <GroupListingsPicker
                     listings={listings}
@@ -401,7 +400,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {/* Same order as the email, top to bottom */}
-              <Section n={3} title="Heading" note={isGroup ? "all optional" : undefined}>
+              <Section title="Heading" note={isGroup ? "all optional" : undefined}>
                 <div className="space-y-2.5">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
@@ -423,7 +422,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={4} title="Partner Logo" note="optional">
+              <Section title="Partner logo" note="optional">
                 <PartnerLogoPicker
                   url={draft.partnerLogoUrl}
                   onPreview={(dataUrl, w, h) => {
@@ -446,7 +445,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {!isGroup && (
-              <Section n={5} title="Photo">
+              <Section title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
                   photoUrl={draft.photoUrl}
@@ -456,7 +455,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section n={6} title={isGroup ? "Intro" : "Body"}>
+              <Section title={isGroup ? "Intro" : "Body"}>
                 <div className="space-y-2.5">
                   <BodyAiControl
                     listingIds={isGroup ? draft.groupListings.map((c) => c.listing_id) : draft.listingId ? [draft.listingId] : []}
@@ -488,7 +487,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {!isGroup && (
-              <Section n={7} title="Details">
+              <Section title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
                   chips={chips}
@@ -503,7 +502,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               )}
 
               {!isGroup && (
-              <Section n={8} title="Listing Link">
+              <Section title="Listing link">
                 <input
                   {...fieldProps("cta")}
                   value={draft.listingPageUrl}
@@ -515,15 +514,19 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
               )}
 
-              <Section n={9} title="Broker">
+              <Section title="Broker">
                 <BrokerPicker
                   brokerIds={draft.brokerIds}
                   onChange={(ids) => set("brokerIds", ids)}
                   fieldProps={fieldProps}
                 />
               </Section>
+            </div>
+          )}
 
-              <Section n={10} title="Audience" note="pick one or more lists">
+          {revealed && (
+            <div className="pt-8 border-t border-black/[0.05] space-y-8 composer-reveal">
+              <Section title="Audience">
                 <AudiencePicker
                   list={audience.list}
                   map={audience.map}
@@ -540,7 +543,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={11} title="Frequency">
+              <Section title="Frequency">
                 <div className="space-y-3">
                   <Segmented
                     value={draft.campaignType}
@@ -584,7 +587,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 </div>
               </Section>
 
-              <Section n={12} title="Priority">
+              <Section title="Priority">
                 <div className="space-y-2">
                   <Segmented
                     value={draft.priority}
@@ -614,7 +617,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/30" onClick={() => !sendingNow && setSendNowOpen(false)} />
           <div className="relative bg-white rounded-card shadow-lg w-full max-w-md p-6">
-            <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Send now?</h3>
+            <h3 className="text-lg font-medium text-charcoal">Send now?</h3>
             <p className="text-sm text-charcoal mt-2">
               <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
               <span className="font-medium">
@@ -631,7 +634,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               <button type="button" onClick={() => setSendNowOpen(false)} disabled={sendingNow} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
                 Cancel
               </button>
-              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-5 py-2 bg-charcoal text-white text-sm font-medium rounded-card hover:bg-black disabled:opacity-50">
+              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-4 py-1.5 bg-charcoal text-white text-sm font-medium rounded-full hover:bg-black disabled:opacity-50">
                 {sendingNow ? "Sending…" : "Yes, send now"}
               </button>
             </div>
@@ -662,16 +665,13 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   );
 }
 
-/** Numbered section: quiet badge + calm title */
-function Section({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
+/** Calm label — no numbered chrome */
+function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
     <section>
-      <div className="flex items-baseline gap-2.5 mb-3.5">
-        <span className="w-[18px] h-[18px] rounded-full border border-border-medium bg-white text-[10px] font-medium text-medium-gray flex items-center justify-center shrink-0 translate-y-[1px]">
-          {n}
-        </span>
-        <h2 className="text-[13px] font-medium text-charcoal">{title}</h2>
-        {note && <span className="text-[11px] text-muted-gray font-normal">· {note}</span>}
+      <div className="flex items-baseline gap-2 mb-2.5">
+        <h2 className="text-[12px] font-medium text-medium-gray">{title}</h2>
+        {note && <span className="text-[11px] text-muted-gray">{note}</span>}
       </div>
       {children}
     </section>
@@ -685,7 +685,7 @@ function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onCha
     { id: "group", label: "Multiple" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {opts.map((o) => {
         const on = value === o.id;
         return (
@@ -693,11 +693,7 @@ function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onCha
             key={o.id}
             type="button"
             onClick={() => onChange(o.id)}
-            className={`rounded-card border px-3 py-2.5 text-sm font-medium text-center transition-colors ${
-              on
-                ? "border-green/50 bg-green/10 text-charcoal"
-                : "border-transparent bg-white text-medium-gray hover:border-border-light hover:text-charcoal"
-            }`}
+            className={`${COMPOSER_PILL} ${on ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
           >
             {o.label}
           </button>
@@ -718,17 +714,13 @@ function Segmented({
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="flex gap-2">
+    <div className="flex flex-wrap gap-1.5">
       {options.map((o) => (
         <button
           key={o.id}
           type="button"
           onClick={() => onChange(o.id)}
-          className={`px-4 py-1.5 rounded-card text-sm font-medium transition-colors duration-150 ${
-            value === o.id
-              ? "bg-green/10 text-charcoal border border-green/40"
-              : "bg-white text-medium-gray hover:text-charcoal border border-transparent"
-          }`}
+          className={`${COMPOSER_PILL} ${value === o.id ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
         >
           {o.label}
           {o.badge !== undefined && (

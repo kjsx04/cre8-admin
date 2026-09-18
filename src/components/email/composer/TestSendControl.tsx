@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
+import { COMPOSER_FIELD } from "./composer-ui";
 
 interface TestSendControlProps {
   /** The campaign fields to render and send */
@@ -76,7 +77,7 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
         }}
         placeholder="you@cre8advisors.com"
         disabled={disabled}
-        className="w-48 border border-border-light bg-white rounded-card px-3 py-1.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25 disabled:opacity-50"
+        className={`w-48 ${COMPOSER_FIELD} py-1.5 disabled:opacity-50`}
       />
       {sent ? (
         <span className="flex items-center gap-1.5 text-sm font-medium text-green whitespace-nowrap">
@@ -96,7 +97,7 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
         <button
           onClick={handleSend}
           disabled={disabled || sending || !recipientValid}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-card hover:bg-subtle-gray transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {sending ? (
             <>

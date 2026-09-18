@@ -5,6 +5,7 @@ import { ListingItem } from "@/lib/admin-constants";
 import { GroupListing, GroupChip } from "@/lib/email/types";
 import { listingToGroupCard } from "@/lib/email/utils";
 import { FieldProps } from "./fieldProps";
+import { COMPOSER_FIELD, COMPOSER_FIELD_SEARCH, COMPOSER_PILL_ON } from "./composer-ui";
 
 interface GroupListingsPickerProps {
   listings: ListingItem[];
@@ -14,8 +15,8 @@ interface GroupListingsPickerProps {
   fieldProps: FieldProps;
 }
 
-const INPUT = "w-full border border-border-light bg-white rounded-card px-3 py-1.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
-const SEARCH = "w-full border border-border-light bg-white rounded-card pl-9 pr-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
+const INPUT = `${COMPOSER_FIELD} py-1.5`;
+const SEARCH = COMPOSER_FIELD_SEARCH;
 const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"];
 
 /**
@@ -177,7 +178,7 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
 
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex items-center gap-2">
-                      <span className="w-[18px] h-[18px] rounded-full border border-border-medium bg-white text-[10px] font-medium text-medium-gray flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="text-[11px] tabular-nums text-muted-gray w-4 shrink-0">{i + 1}</span>
                       <span className="text-sm font-medium text-charcoal truncate">{c.name}</span>
                     </div>
                     <input
@@ -193,10 +194,8 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                           key={chip || "none"}
                           type="button"
                           onClick={() => update(c.listing_id, { chip })}
-                          className={`px-2 py-0.5 rounded-card text-[11px] font-medium transition-colors ${
-                            c.chip === chip
-                              ? "bg-green/10 text-charcoal border border-green/40"
-                              : "bg-subtle-gray text-medium-gray hover:text-charcoal border border-transparent"
+                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
+                            c.chip === chip ? COMPOSER_PILL_ON : "bg-white text-medium-gray hover:text-charcoal"
                           }`}
                         >
                           {chip || "No chip"}

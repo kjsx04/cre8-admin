@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListingItem } from "@/lib/admin-constants";
+import { COMPOSER_FIELD_SEARCH } from "./composer-ui";
 
 interface ListingPickerProps {
   listings: ListingItem[];
@@ -13,7 +14,7 @@ interface ListingPickerProps {
   onPick: (listing: ListingItem) => void;
 }
 
-const INPUT = "w-full border border-border-light bg-white rounded-card pl-9 pr-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/80 focus:outline-none focus:border-green focus:ring-1 focus:ring-green/25";
+const INPUT = COMPOSER_FIELD_SEARCH;
 
 /**
  * Section 2 (single emails) — pick the listing.
@@ -133,8 +134,8 @@ export default function ListingPicker({
                         <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
                         {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
                       </div>
-                      {isCurrent && <span className="ml-auto text-[10px] uppercase tracking-wide text-green shrink-0">Selected</span>}
-                      {!isCurrent && l.isDraft && <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-gray shrink-0">Draft</span>}
+                      {isCurrent && <span className="ml-auto text-[11px] text-green shrink-0">Selected</span>}
+                      {!isCurrent && l.isDraft && <span className="ml-auto text-[11px] text-muted-gray shrink-0">Draft</span>}
                     </button>
                   </li>
                 );
@@ -146,7 +147,7 @@ export default function ListingPicker({
 
       {/* The chosen listing */}
       {hasSelection && (
-        <div className="flex items-center gap-3 border border-green/40 rounded-card px-3 py-2 bg-green/10">
+        <div className="flex items-center gap-3 rounded-card px-3 py-2 bg-green/10">
           <div className="w-11 h-8 rounded overflow-hidden bg-border-light shrink-0">
             {thumb && (
               // eslint-disable-next-line @next/next/no-img-element
