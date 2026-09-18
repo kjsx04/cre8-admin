@@ -385,8 +385,11 @@ function countFromRows(rows: ResendContact[]): SegmentCount {
 
 /**
  * One page of contacts.
- * Segment filter: GET /contacts?segment_id= (the path Resend MCP uses) first,
- * then GET /segments/{id}/contacts (Node SDK path) if that 404s or comes back empty.
+ *
+ * Segment lists MUST use GET /segments/{id}/contacts — that keeps `after`
+ * inside the segment. GET /contacts?segment_id= is undocumented and Resend
+ * ignores the filter (production returned the same 5,210 global contacts on
+ * Brokers, Buyers, and Sellers).
  */
 async function fetchContactsPage(opts: {
   segmentId?: string;
@@ -396,32 +399,37 @@ async function fetchContactsPage(opts: {
   const qs = new URLSearchParams();
   if (opts.limit) qs.set("limit", String(opts.limit));
   if (opts.after) qs.set("after", opts.after);
+  const suffix = qs.toString() ? `?${qs}` : "";
 
-  const paths: string[] = [];
-  if (opts.segmentId) {
-    const withSeg = new URLSearchParams(qs);
-    withSeg.set("segment_id", opts.segmentId);
-    paths.push(`/contacts?${withSeg}`);
-    paths.push(`/segments/${opts.segmentId}/contacts${qs.toString() ? `?${qs}` : ""}`);
-  } else {
-    paths.push(`/contacts${qs.toString() ? `?${qs}` : ""}`);
-  }
+  const path = opts.segmentId
+    ? `/segments/${opts.segmentId}/contacts${suffix}`
+    : `/contacts${suffix}`;
 
-  let lastErr: Error | null = null;
-  for (let i = 0; i < paths.length; i++) {
-    const path = paths[i];
-    const res = await resendFetch(path);
-    if (!res.ok) {
-      lastErr = new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
-      if (res.status === 404 || res.status === 400) continue;
-      throw lastErr;
+  const res = await resendFetch(path);
+  if (res.ok) return parseContactListBody(await res.json());
+
+  // Older keys/docs used GET /contacts?segment_id= — only trust it if the
+  // first page is actually different from the unfiltered global list.
+  if (opts.segmentId && (res.status === 404 || res.status === 400)) {
+    const altQs = new URLSearchParams(qs);
+    altQs.set("segment_id", opts.segmentId);
+    const alt = await resendFetch(`/contacts?${altQs}`);
+    if (!alt.ok) {
+      throw new Error(`Resend list contacts failed (${alt.status}): ${await alt.text()}`);
     }
-    const parsed = parseContactListBody(await res.json());
-    // First page empty + another path left → try the fallback (don't trust a 404-as-200)
-    if (parsed.rows.length === 0 && !opts.after && i < paths.length - 1) continue;
+    const parsed = parseContactListBody(await alt.json());
+    if (!opts.after && parsed.rows.length > 0) {
+      const global = await fetchContactsPage({ limit: opts.limit || CONTACT_PAGE });
+      if (global.rows[0]?.id && global.rows[0].id === parsed.rows[0]?.id) {
+        throw new Error(
+          `Resend GET /segments/${opts.segmentId}/contacts returned ${res.status} and ?segment_id= ignored the filter`
+        );
+      }
+    }
     return parsed;
   }
-  throw lastErr || new Error("Resend list contacts failed");
+
+  throw new Error(`Resend list contacts failed (${res.status}): ${await res.text()}`);
 }
 
 /** Page every contact, optionally filtered to one segment. */
