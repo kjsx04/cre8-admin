@@ -2,7 +2,7 @@
  * Audience sizes — server side.
  *
  * Lists every live Resend segment (GET /segments) and counts the contacts in
- * each one via GET /contacts?segment_id= (full pagination). Resend has no
+ * each one via GET /segments/{id}/contacts (full pagination). Resend has no
  * segment.total field. Composer chips show `subscribed` (broadcast recipients);
  * `total` includes unsubscribed. Cached 10 minutes; ?refresh=1 forces a recount.
  */
