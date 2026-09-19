@@ -52,7 +52,7 @@ const PREVIEW_STYLE = `
      table-layout:fixed + clamped title/meta keep every card the same size. */
   .group-grid { width: 100% !important; table-layout: fixed !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
-  .group-card { height: 100% !important; }
+  .group-card { height: 100% !important; border-radius: 3px !important; overflow: hidden !important; }
   .group-title {
     display: -webkit-box !important;
     -webkit-line-clamp: 2;

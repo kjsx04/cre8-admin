@@ -65,8 +65,13 @@ assert((html.match(/position:relative;width:100%;height:0;padding-bottom:75%/g) 
 assert(html.includes("max-width: 480px"), "mobile stacks below 480px, not 600");
 assert(!html.includes("@media only screen and (max-width: 600px)"), "600px no longer stacks group cards");
 assert(html.includes("padding:20px 32px 0 32px"), "grid inset matches heading/intro 32px");
-assert(html.includes("padding:0 16px 32px 0"), "left card gutter 16+16=32 between cards");
-assert(html.includes("padding:0 0 32px 16px"), "right card gutter matches left");
+assert(html.includes("padding:0 6px 12px 0"), "left card gutter 6+6=12 between cards");
+assert(html.includes("padding:0 0 12px 6px"), "right card gutter matches left");
+assert(html.includes("border-radius:3px"), "card corners are a few pixels, not pill");
+assert(html.includes("padding:6px 6px 0 6px"), "few pixels between border and photo");
+assert(html.includes("padding:6px 6px 6px 6px"), "meta padding is a few pixels");
+assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");
+assert(!html.includes("padding:12px 14px 14px 14px"), "old 12/14 card padding is gone");
 
 const withPhotos = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -83,7 +88,7 @@ const withPhotos = renderEmailHtml(buildTemplateVars({
 assert(withPhotos.includes("padding-bottom:75%"), "photo cards use 4:3 box");
 assert(withPhotos.includes("object-fit:cover"), "cover crop, not letterbox");
 assert(withPhotos.includes("object-position:center center"), "cover is centered");
-assert(withPhotos.includes('width="252"') && withPhotos.includes('height="189"'), "Outlook 4:3 fallback 252×189");
+assert(withPhotos.includes('width="250"') && withPhotos.includes('height="188"'), "Outlook 4:3 fallback 250×188");
 
 const four = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -125,7 +130,7 @@ assert((mixed.match(/class="group-title"/g) || []).length === 3, "every card has
 assert((mixed.match(/class="group-summary"/g) || []).length === 3, "every card has the same summary slot");
 assert((mixed.match(/class="group-chip"/g) || []).length === 3, "every card has the same chip slot");
 assert((mixed.match(/padding-bottom:75%/g) || []).length >= 3, "every card photo box is 4:3 including placeholders");
-assert(mixed.includes('width="252"') && mixed.includes('height="189"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 252×189 box");
+assert(mixed.includes('width="250"') && mixed.includes('height="188"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 250×188 box");
 assert(mixed.includes("VIEW ALL LISTINGS"), "group CTA unchanged");
 
 const single = renderEmailHtml(buildTemplateVars({
