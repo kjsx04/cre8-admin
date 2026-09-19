@@ -12,7 +12,7 @@ interface OffScheduleSectionProps {
 
 /** Campaigns that aren't on the grid: drafts and paused (collapsed), plus finished behind a link */
 export default function OffScheduleSection({ waiting, finished, onSelect }: OffScheduleSectionProps) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(waiting.length > 0);
   const [showFinished, setShowFinished] = useState(false);
 
   if (waiting.length === 0 && finished.length === 0) return null;

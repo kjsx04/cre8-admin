@@ -8,9 +8,11 @@
  * (Listing → Heading → Photo → Body → Details → Listing Link → Broker),
  * then Audience → Frequency → Priority for the send itself.
  * Click a region in the email and its input focuses; focus an input and the
- * region lights up. One button: Schedule (create) or Update (edit).
+ * region lights up.
  *
- * The payload and API calls are identical to the old modal — only the UI changed.
+ * Toolbar: test (CRE8 brokers) + Save campaign (draft, not live).
+ * Bottom of the settings column: Send now or Schedule — that's when it goes
+ * on the calendar. Save ≠ Schedule.
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,7 +25,7 @@ import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
-import { submitCampaign } from "@/lib/email/submit";
+import { saveCampaignDraft, submitCampaign } from "@/lib/email/submit";
 import SchedulingAnimation from "../SchedulingAnimation";
 import LivePreviewFrame from "./LivePreviewFrame";
 import TestSendControl from "./TestSendControl";
@@ -73,7 +75,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const {
     draft, set, pickListing,
     addHighlight, updateHighlight, moveHighlight, removeHighlight,
-    formData, missing, isValid, dirty,
+    formData, missing, isValid, canSave, dirty,
     restored, restoredAt, discardRestored, forgetStored,
   } = useCampaignDraft({ campaign, userEmail });
 
@@ -199,6 +201,25 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     runSubmit();
   };
 
+  // ── Save campaign: persist a draft. Not live / not on the calendar. ──
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const handleSave = async () => {
+    if (!canSave || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await saveCampaignDraft(withAudienceNames(formData), userEmail, campaign?.id);
+      submittedRef.current = true;
+      forgetStored();
+      router.push("/marketing/email");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Couldn't save");
+      setSaving(false);
+    }
+  };
+
   // ── Send now: save (create or update) without AI scheduling, then fire immediately ──
   const [sendNowOpen, setSendNowOpen] = useState(false);
   const [sendingNow, setSendingNow] = useState(false);
@@ -283,33 +304,25 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           )}
         </div>
 
-        <div className="flex items-center gap-4 shrink-0">
-          <div className="hidden md:flex">
-            <TestSendControl campaign={formData} disabled={!draft.listingId} />
-          </div>
-          <div className="flex flex-col items-end">
-            <div className="flex items-center gap-2">
-              {/* Send now — skips the AI */}
-              <button
-                type="button"
-                onClick={() => setSendNowOpen(true)}
-                disabled={!isValid || submitting || sendingNow}
-                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Send to the audience right now instead of letting the AI pick a time"
-              >
-                Send now
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {isEdit ? "Update" : "Schedule"}
-              </button>
-            </div>
-            {hint && <span className="text-[11px] text-muted-gray mt-1">{hint}</span>}
-          </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <TestSendControl
+            campaign={formData}
+            disabled={isGroup ? draft.groupListings.length < 2 : !draft.listingId}
+          />
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={!canSave || saving || submitting || sendingNow}
+            className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            title={canSave ? "Save a draft — not live until Schedule or Send now" : "Add a listing and a broker to save"}
+          >
+            {saving ? "Saving…" : "Save campaign"}
+          </button>
+          {saveError && (
+            <span className="text-[11px] text-red-500 max-w-[160px] truncate" title={saveError}>
+              {saveError}
+            </span>
+          )}
         </div>
       </div>
 
@@ -374,11 +387,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
-          {/* Test send lives here on small screens */}
-          <div className="md:hidden">
-            <TestSendControl campaign={formData} disabled={!draft.listingId} />
-          </div>
-
           {/* 1 — what kind of email. Everything else appears once this is chosen. */}
           <Section title="Type" note={isEdit ? "can't change after creating" : undefined}>
             {isEdit ? (
@@ -620,6 +628,30 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
             </div>
           )}
+
+          {/* Send now / Schedule — go live. Save campaign (toolbar) only persists a draft. */}
+          <div className="pt-8 border-t border-black/[0.05] space-y-2">
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSendNowOpen(true)}
+                disabled={!isValid || submitting || sendingNow || saving}
+                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Send to the audience right now instead of letting the AI pick a time"
+              >
+                Send now
+              </button>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={!isValid || submitting || sendingNow || saving}
+                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {isEdit && campaign?.status !== "draft" ? "Update" : "Schedule"}
+              </button>
+            </div>
+            {hint && <p className="text-[11px] text-muted-gray text-right">{hint}</p>}
+          </div>
         </div>
       </div>
 

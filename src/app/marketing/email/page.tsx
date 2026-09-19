@@ -370,7 +370,7 @@ function EmailSchedule() {
             onClick={() => router.push("/marketing/email/new")}
             className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
           >
-            + New Campaign
+            ADD
           </button>
         </div>
       </div>
