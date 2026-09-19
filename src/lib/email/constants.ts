@@ -11,7 +11,18 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19-2";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19-3";
+
+/**
+ * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
+ *
+ * Previous stacks (revert by restoring these + the Bebas+DM Sans @import):
+ *   body/UI:  ${EMAIL_FONT}
+ *   display:  ${EMAIL_FONT}
+ *   Outlook CTA: 'Arial Narrow',Arial,sans-serif
+ */
+const EMAIL_FONT =
+  "Inter,-apple-system,BlinkMacSystemFont,system-ui,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
 // ── Broker senders ──
 // Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
@@ -202,8 +213,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                       <!-- Title left, value right, on one line -->
                                       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                                         <tr>
-                                          <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;white-space:nowrap;padding-right:16px;">${escapeHtml(h.label || "Detail")}</td>
-                                          <td valign="middle" align="right" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;color:#FFFFFF;line-height:1.3;text-align:right;">${escapeHtml(h.value)}</td>
+                                          <td valign="middle" style="font-family:${EMAIL_FONT};font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px;color:#888888;line-height:1.3;white-space:nowrap;padding-right:16px;">${escapeHtml(h.label || "Detail")}</td>
+                                          <td valign="middle" align="right" style="font-family:${EMAIL_FONT};font-size:14px;font-weight:700;color:#FFFFFF;line-height:1.3;text-align:right;">${escapeHtml(h.value)}</td>
                                         </tr>
                                       </table>
                                     </td>
@@ -252,7 +263,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   const groupChip = (chip: string) => {
     if (!chip) return "";
     const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : "#8CC644";
-    return `<p style="margin:0 0 4px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${escapeHtml(chip)}</p>`;
+    return `<p style="margin:0 0 4px 0;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${escapeHtml(chip)}</p>`;
   };
   const groupCard = (g: GroupListing, i: number) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
@@ -275,10 +286,10 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                           <td style="padding:12px 14px 14px 14px;">
                             ${groupChip(g.chip)}
                             <a href="${href}" target="_blank" style="text-decoration:none;">
-                              <p style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:19px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">${escapeHtml(g.name)}</p>
+                              <p style="margin:0;font-family:${EMAIL_FONT};font-size:19px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;">${escapeHtml(g.name)}</p>
                             </a>
-                            ${g.summary ? `<p style="margin:4px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#BFBFBF;line-height:1.4;">${escapeHtml(g.summary)}</p>` : ""}
-                            <a href="${href}" target="_blank" style="display:inline-block;margin-top:10px;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#8CC644;text-decoration:none;line-height:1.3;">View listing &rarr;</a>
+                            ${g.summary ? `<p style="margin:4px 0 0 0;font-family:${EMAIL_FONT};font-size:12px;color:#BFBFBF;line-height:1.4;">${escapeHtml(g.summary)}</p>` : ""}
+                            <a href="${href}" target="_blank" style="display:inline-block;margin-top:10px;font-family:${EMAIL_FONT};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#8CC644;text-decoration:none;line-height:1.3;">View listing &rarr;</a>
                           </td>
                         </tr>
                       </table>
@@ -314,7 +325,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                         <td valign="middle" style="width:80px;padding-right:20px;">
                           <img src="${b.headshotUrl}" alt="${escapeHtml(b.name)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
                         </td>` : ""}
-                        <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
+                        <td valign="middle" style="font-family:${EMAIL_FONT};">
                           <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
                             ${escapeHtml(b.name)}
                           </p>
@@ -342,6 +353,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   <meta name="color-scheme" content="light dark" />
   <meta name="supported-color-schemes" content="light dark" />
   <title>${escapeHtml(vars.heading)}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <!--[if mso]>
   <noscript>
     <xml>
@@ -353,7 +366,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   </noscript>
   <![endif]-->
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;700&display=swap');
+    /* Web font: Inter (admin UI). Old import was Bebas Neue + DM Sans. */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
     /* Light mode default — white outer background, dark card */
     :root { color-scheme: light dark; supported-color-schemes: light dark; }
@@ -371,7 +385,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     [data-ogsc] .body { background-color: #FFFFFF !important; }
   </style>
 </head>
-<body class="body" style="margin:0;padding:0;background-color:#FFFFFF;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body class="body" style="margin:0;padding:0;background-color:#FFFFFF;font-family:${EMAIL_FONT};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
   <!-- Preheader — hidden inbox preview text -->
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
@@ -400,20 +414,18 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                   <td valign="top" style="padding-right:16px;">
                     <!-- Top line — the listing name (or a typed override), small green caps -->
                     ${vars.heading ? `
-                    <p data-field="heading" style="margin:0 0 5px 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
+                    <p data-field="heading" style="margin:0 0 5px 0;font-family:${EMAIL_FONT};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#8CC644;line-height:1.4;">
                       ${escapeHtml(vars.heading.toUpperCase())}
                     </p>` : ""}
-                    <!-- Heading — Bebas Neue where web fonts load (Apple Mail, iOS).
-                         Outlook/Gmail strip web fonts, so the fallback is bold uppercase
-                         Helvetica/Arial with tracking — reads as the same display style
-                         instead of the cramped Arial Narrow fallback. -->
+                    <!-- Heading — Inter semibold (admin font-bebas trial).
+                         Outlook/Gmail strip web fonts and fall back to the system stack. -->
                     <!-- Big line — the heading typed in the composer ("Just Listed", "Price Reduced", …) -->
                     ${vars.label ? `
-                    <h1 data-field="label" style="margin:0;font-family:'Bebas Neue','Helvetica Neue',Helvetica,Arial,sans-serif;font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
+                    <h1 data-field="label" style="margin:0;font-family:${EMAIL_FONT};font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.label)}
                     </h1>` : ""}
                     ${vars.propertyAddress ? `
-                    <p style="margin:6px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;color:#999999;line-height:1.4;">
+                    <p style="margin:6px 0 0 0;font-family:${EMAIL_FONT};font-size:14px;color:#999999;line-height:1.4;">
                       ${escapeHtml(vars.propertyAddress)}
                     </p>` : ""}
                   </td>
@@ -444,7 +456,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           ${vars.bodyText ? `
           <tr>
             <td style="padding:${isGroup ? "4px" : "20px"} 32px 0 32px;">
-              <p data-field="body" style="margin:0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:15px;color:#BFBFBF;line-height:1.65;">
+              <p data-field="body" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
                 ${escapeHtml(vars.bodyText)}
               </p>
             </td>
@@ -478,13 +490,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                     <!--[if mso]>
                     <v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" style="height:48px;v-text-anchor:middle;width:260px;" arcsize="8%" strokecolor="#8CC644" fillcolor="#8CC644">
                     <w:anchorlock/>
-                    <center style="color:#000000;font-family:'Arial Narrow',Arial,sans-serif;font-size:14px;font-weight:bold;letter-spacing:1.5px;">
+                    <center style="color:#000000;font-family:${EMAIL_FONT};font-size:14px;font-weight:bold;letter-spacing:1.5px;">
                       ${escapeHtml(ctaText)}
                     </center>
                     </v:roundrect>
                     <![endif]-->
                     <!--[if !mso]><!-->
-                    <a href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
+                    <a href="${vars.listingUrl || CRE8_SITE_URL + "/listings"}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:${EMAIL_FONT};font-size:14px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;text-decoration:none;padding:14px 40px;border-radius:4px;line-height:1.2;mso-hide:all;">
                       ${escapeHtml(ctaText)}
                     </a>
                     <!--<![endif]-->
@@ -510,13 +522,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
               <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="100" height="34" style="display:block;width:100px;height:34px;margin:0 auto;border:0;outline:none;text-decoration:none;" />
 
               <!-- Company address + phone -->
-              <p style="margin:14px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:12px;color:#666666;line-height:1.5;">
+              <p style="margin:14px 0 0 0;font-family:${EMAIL_FONT};font-size:12px;color:#666666;line-height:1.5;">
                 ${escapeHtml(CRE8_ADDRESS)}<br/>
                 ${escapeHtml(CRE8_PHONE)}
               </p>
 
               <!-- Social links — uppercase -->
-              <p style="margin:14px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
+              <p style="margin:14px 0 0 0;font-family:${EMAIL_FONT};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;line-height:1.5;">
                 <a href="${CRE8_LINKEDIN}" target="_blank" style="color:#8CC644;text-decoration:none;">LinkedIn</a>
                 &nbsp;&nbsp;&middot;&nbsp;&nbsp;
                 <a href="${CRE8_INSTAGRAM}" target="_blank" style="color:#8CC644;text-decoration:none;">Instagram</a>
@@ -525,7 +537,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
               </p>
 
               <!-- Unsubscribe (Resend merge tag — replaced with a real per-contact link at send time) -->
-              <p style="margin:18px 0 0 0;font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;font-size:11px;line-height:1.4;">
+              <p style="margin:18px 0 0 0;font-family:${EMAIL_FONT};font-size:11px;line-height:1.4;">
                 <a href="{{{RESEND_UNSUBSCRIBE_URL}}}" style="color:#666666;text-decoration:underline;">Unsubscribe</a>
               </p>
             </td>

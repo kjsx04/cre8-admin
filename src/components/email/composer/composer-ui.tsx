@@ -2,9 +2,9 @@
  * Shared light-tool classes for the email composer column.
  *
  * Tokens from the CRE8 Design System in tailwind.config.ts + globals.css:
- *   green #8CC644, charcoal #1A1A1A, subtle-gray #FAFAFA,
+ *   green #8CC644, charcoal #1A1A1A, subtle-gray #FAFAFA, light-gray #F5F5F5,
  *   rounded-card 8px, rounded-btn 4px.
- * Selection is a quiet border + soft fill — no green wash, no pill stadium.
+ * Selected = pressed in (inset shadow). No checks, no green wash.
  */
 
 import { ButtonHTMLAttributes, ReactNode } from "react";
@@ -14,23 +14,17 @@ export const COMPOSER_FIELD =
 
 export const COMPOSER_FIELD_SEARCH = `${COMPOSER_FIELD} pl-9`;
 
-/** 8px choice chip — matches rounded-card. No color transition (avoids the green flash). */
+/** 8px choice chip. Shadow/transform only — no color-transition flash. */
 export const COMPOSER_CHOICE =
-  "inline-flex items-center px-3 py-1.5 rounded-card text-sm font-medium border";
+  "inline-flex items-center px-3 py-1.5 rounded-card text-sm font-medium active:scale-[0.98] transition-[box-shadow,transform,opacity] duration-100";
 
+/** Recessed: inner shadow + thin brand hairline. */
 export const COMPOSER_CHOICE_ON =
-  "bg-subtle-gray text-charcoal border-charcoal/20";
+  "bg-light-gray text-charcoal shadow-[inset_0_1px_2px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(140,198,68,0.4)]";
 
+/** Soft surface, quiet hairline. */
 export const COMPOSER_CHOICE_OFF =
-  "bg-white text-medium-gray border-border-light hover:border-border-medium hover:text-charcoal";
-
-export function ChoiceCheck() {
-  return (
-    <svg className="mr-1.5 text-green shrink-0" width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden>
-      <path d="M2.4 6.2L5 8.6 9.6 3.4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+  "bg-white text-medium-gray shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] hover:text-charcoal hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)]";
 
 type ChoiceButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   selected: boolean;
@@ -45,7 +39,6 @@ export function ChoiceButton({ selected, children, className = "", type = "butto
       aria-pressed={selected}
       {...rest}
     >
-      {selected && <ChoiceCheck />}
       {children}
     </button>
   );

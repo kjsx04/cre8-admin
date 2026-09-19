@@ -294,7 +294,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-btn disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of letting the AI pick a time"
               >
                 Send now
@@ -303,7 +303,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={handleSubmit}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-btn hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 {isEdit ? "Update" : "Schedule"}
               </button>
