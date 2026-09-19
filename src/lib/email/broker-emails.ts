@@ -25,7 +25,7 @@ export function parseTestRecipients(input: unknown): string[] {
     .filter((e): e is string => typeof e === "string")
     .map((e) => e.trim())
     .filter(Boolean);
-  return [...new Set(emails)];
+  return Array.from(new Set(emails));
 }
 
 export function resolveCre8BrokerEmails(input: unknown): { emails: string[]; invalid: string[] } {
