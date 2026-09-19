@@ -335,6 +335,11 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
   }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl]);
 
   const isValid = missing.length === 0;
+  // Save campaign only needs a listing (or group) and a broker — audience waits for Schedule.
+  const canSave =
+    !!draft.kind &&
+    draft.brokerIds.length > 0 &&
+    (draft.kind === "group" ? draft.groupListings.length >= 2 : !!draft.listingId);
   const dirty = JSON.stringify(draft) !== initialJsonRef.current;
 
   return {
@@ -348,6 +353,7 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     formData,
     missing,
     isValid,
+    canSave,
     dirty,
     restored,
     restoredAt: initial.restoredAt,

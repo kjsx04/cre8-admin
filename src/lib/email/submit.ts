@@ -1,19 +1,20 @@
 /**
  * Submit a campaign (create or edit) to the API.
  *
- * One function used by the composer for both "Schedule" (create) and "Update"
- * (edit). Both paths send auto_schedule: true so the AI picks the send time and
- * the server pushes the email to Resend. If the server saved the row but Resend
- * refused, the response carries provider_sync.ok === false — we throw so the
- * toast shows the problem with a retry.
+ * Schedule / Update send auto_schedule: true so the AI picks a send time and
+ * the server pushes the email to Resend. Save campaign sends auto_schedule:
+ * false — the row stays a draft under "Not on the schedule" until Schedule
+ * or Send now. If the server saved the row but Resend refused, the response
+ * carries provider_sync.ok === false — we throw so the toast can retry.
  */
 
 import { Campaign, CampaignFormData } from "./types";
 
-export async function submitCampaign(
+async function postCampaign(
   data: CampaignFormData,
   userEmail: string,
-  editId?: string
+  editId: string | undefined,
+  autoSchedule: boolean
 ): Promise<Campaign> {
   const url = editId ? `/api/email/campaigns/${editId}` : "/api/email/campaigns";
 
@@ -23,17 +24,19 @@ export async function submitCampaign(
       "Content-Type": "application/json",
       "x-user-email": userEmail,
     },
-    body: JSON.stringify({ ...data, auto_schedule: true }),
+    body: JSON.stringify({ ...data, auto_schedule: autoSchedule }),
   });
 
+  const saved = await res.json().catch(() => ({}));
+
   if (!res.ok) {
-    throw new Error(editId ? "Failed to update campaign" : "Failed to create campaign");
+    throw new Error(
+      saved.error || (editId ? "Failed to update campaign" : "Failed to create campaign")
+    );
   }
 
-  const saved = await res.json();
-
-  // The API saved to Supabase AND pushed to Resend. Surface a Resend failure.
-  if (saved.provider_sync && saved.provider_sync.ok === false) {
+  // Schedule / Update push to Resend. Surface a provider failure.
+  if (autoSchedule && saved.provider_sync && saved.provider_sync.ok === false) {
     const why = saved.provider_sync.error || saved.provider_sync.action;
     throw new Error(
       editId
@@ -43,4 +46,21 @@ export async function submitCampaign(
   }
 
   return saved as Campaign;
+}
+
+export async function submitCampaign(
+  data: CampaignFormData,
+  userEmail: string,
+  editId?: string
+): Promise<Campaign> {
+  return postCampaign(data, userEmail, editId, true);
+}
+
+/** Persist work as a draft. Does not schedule or go live. */
+export async function saveCampaignDraft(
+  data: CampaignFormData,
+  userEmail: string,
+  editId?: string
+): Promise<Campaign> {
+  return postCampaign(data, userEmail, editId, false);
 }

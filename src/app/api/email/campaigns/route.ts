@@ -71,7 +71,8 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (!body.segment_id) {
+  // Schedule / Send now need an audience. Save campaign may persist a draft without one.
+  if (body.auto_schedule && !body.segment_id) {
     return NextResponse.json({ error: "Pick at least one audience list or contact" }, { status: 400 });
   }
 
