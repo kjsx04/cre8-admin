@@ -54,6 +54,14 @@ assert((html.match(/class="group-col"/g) || []).length === 2, "two 50% columns f
 assert(html.includes('width="50%"'), "columns are half-width");
 assert(html.includes("padding-bottom:75%"), "photos are 4:3 landscape");
 assert(!html.includes("padding-bottom:100%"), "photos are no longer 1:1 squares");
+assert(html.includes("table-layout:fixed"), "fixed 50/50 columns keep cards the same width");
+assert(html.includes('class="group-title"'), "title is a clamped slot");
+assert(html.includes('class="group-summary"'), "summary is a reserved slot");
+assert(html.includes('class="group-chip"'), "chip slot is always reserved");
+assert(html.includes("height:44px"), "title box is two clamped lines");
+assert(html.includes("-webkit-line-clamp: 2"), "title clamps to 2 lines");
+assert((html.match(/class="group-photo"/g) || []).length === 2, "both cards use the same 4:3 photo box");
+assert((html.match(/position:relative;width:100%;height:0;padding-bottom:75%/g) || []).length === 2, "empty-photo placeholders match the photo box");
 assert(html.includes("max-width: 480px"), "mobile stacks below 480px, not 600");
 assert(!html.includes("@media only screen and (max-width: 600px)"), "600px no longer stacks group cards");
 assert(html.includes("padding:20px 32px 0 32px"), "grid inset matches heading/intro 32px");
@@ -95,6 +103,30 @@ const four = renderEmailHtml(buildTemplateVars({
 assert((four.match(/class="group-col"/g) || []).length === 4, "four listings → two 2-up rows");
 assert(four.indexOf("INTRO_SLOT_COPY") < four.indexOf("Queen Creek Station"), "intro stays above cards with 4 listings");
 assert(four.indexOf("Fourth Listing") < four.indexOf("BODY_SLOT_COPY"), "body stays under cards with 4 listings");
+
+const mixed = renderEmailHtml(buildTemplateVars({
+  campaign_kind: "group",
+  email_label: "West Valley",
+  heading_text: "LAND · WEST VALLEY",
+  group_listings: [
+    { listing_id: "a", name: "A Very Long Listing Name That Would Wrap Across Several Lines If Unclamped", photo_url: "https://cdn/aerial-wide.jpg", url: "https://cre8advisors.com/listings/a", summary: "76.57 Acres · Buckeye · extra meta that should stay one line", chip: "Just Listed" as const },
+    { listing_id: "b", name: "Short", photo_url: "", url: "https://cre8advisors.com/listings/b", summary: "", chip: "" as const },
+    { listing_id: "c", name: "Odd last card", photo_url: "", url: "https://cre8advisors.com/listings/c", summary: "10 acres", chip: "Price Reduced" as const },
+  ],
+  broker_id: "6987fb6d372758be66e14cb8",
+  broker_name: "Kevin Smith",
+  broker_email: "Kevin@cre8advisors.com",
+}));
+assert((mixed.match(/class="group-card"/g) || []).length === 3, "three listing cards");
+assert((mixed.match(/class="group-col[^"]*"/g) || []).length === 4, "odd last row still uses two 50% columns");
+assert((mixed.match(/class="group-col group-col-empty"/g) || []).length === 1, "empty mate of the odd last card is marked");
+assert(mixed.includes(".group-col-empty"), "mobile CSS hides the empty odd-row cell");
+assert((mixed.match(/class="group-title"/g) || []).length === 3, "every card has the same title slot");
+assert((mixed.match(/class="group-summary"/g) || []).length === 3, "every card has the same summary slot");
+assert((mixed.match(/class="group-chip"/g) || []).length === 3, "every card has the same chip slot");
+assert((mixed.match(/padding-bottom:75%/g) || []).length >= 3, "every card photo box is 4:3 including placeholders");
+assert(mixed.includes('width="252"') && mixed.includes('height="189"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 252×189 box");
+assert(mixed.includes("VIEW ALL LISTINGS"), "group CTA unchanged");
 
 const single = renderEmailHtml(buildTemplateVars({
   campaign_kind: "single",

@@ -48,11 +48,28 @@ const PREVIEW_STYLE = `
   /* Keep text selectable-looking but not editable */
   * { -webkit-user-select: none; user-select: none; }
   /* Multiple cards: keep the 2-up 4:3 grid in the ~600px iframe.
-     Photos stay 4:3 via padding-bottom:75% — do not also set aspect-ratio. */
-  .group-grid { width: 100% !important; }
+     Photos stay 4:3 via padding-bottom:75% — do not also set aspect-ratio.
+     table-layout:fixed + clamped title/meta keep every card the same size. */
+  .group-grid { width: 100% !important; table-layout: fixed !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
+  .group-card { height: 100% !important; }
+  .group-title {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden !important;
+    max-height: 44px !important;
+  }
+  .group-summary {
+    display: -webkit-box !important;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden !important;
+    max-height: 17px !important;
+  }
   @media only screen and (max-width: 480px) {
     .group-col { display: block !important; width: 100% !important; max-width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; }
+    .group-col-empty { display: none !important; width: 0 !important; height: 0 !important; padding: 0 !important; overflow: hidden !important; }
   }
 </style>`;
 
