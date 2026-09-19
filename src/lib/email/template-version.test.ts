@@ -22,7 +22,7 @@ function assert(cond: unknown, msg: string) {
   }
 }
 
-assert(CURRENT_TEMPLATE_VERSION === "2026-09-19-6", "version id");
+assert(CURRENT_TEMPLATE_VERSION === "2026-09-19-7", "version id");
 assert(usesCurrentTemplate({ template_version: CURRENT_TEMPLATE_VERSION }), "current matches");
 assert(usesCurrentTemplate({ template_version: null }), "null is current (pre-version rows)");
 assert(usesCurrentTemplate({}), "missing is current");
