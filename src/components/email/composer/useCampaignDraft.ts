@@ -30,6 +30,7 @@ export interface CampaignDraft {
   campaignType: CampaignType;
   emailLabel: string;
   headingText: string;
+  introText: string;            // group emails: under heading, above listing cards
   bodyText: string;
   photoUrl: string;
   partnerLogoUrl: string;       // hosted URL, or a data: URL while adjusting (blocks submit)
@@ -69,11 +70,12 @@ function normalizeDraft(draft: CampaignDraft & { segmentId?: string }): Campaign
     draft.extraContactNames && typeof draft.extraContactNames === "object" && !Array.isArray(draft.extraContactNames)
       ? draft.extraContactNames
       : {};
+  const introText = typeof draft.introText === "string" ? draft.introText : "";
   if (Array.isArray(draft.segmentIds) && Array.isArray(draft.extraEmails)) {
-    return { ...draft, extraContactNames: names };
+    return { ...draft, extraContactNames: names, introText };
   }
   const parsed = parseAudienceTokens(draft.segmentId || "");
-  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails, extraContactNames: names };
+  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails, extraContactNames: names, introText };
 }
 
 function readStoredDraft(campaignId?: string | null): StoredDraft | null {
@@ -126,6 +128,7 @@ function emptyDraft(userEmail: string): CampaignDraft {
     campaignType: "one-time",
     emailLabel: "",
     headingText: "",
+    introText: "",
     bodyText: "",
     photoUrl: "",
     partnerLogoUrl: "",
@@ -154,6 +157,7 @@ function fromCampaign(c: Campaign): CampaignDraft {
     campaignType: c.campaign_type || "one-time",
     emailLabel: c.email_label || "",
     headingText: c.heading_text || "",
+    introText: c.intro_text || "",
     bodyText: c.body_text || "",
     photoUrl: c.photo_url || "",
     partnerLogoUrl: c.partner_logo_url || "",
@@ -289,6 +293,7 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       // Blank label → the email's default, exactly what the placeholder shows
       email_label: isGroup ? draft.emailLabel.trim() : (draft.emailLabel.trim() || "Just Listed"),
       heading_text: draft.headingText || undefined,
+      intro_text: isGroup ? draft.introText || undefined : undefined,
       body_text: draft.bodyText || undefined,
       photo_url: isGroup ? draft.groupListings[0]?.photo_url || undefined : draft.photoUrl || undefined,
       partner_logo_url: draft.partnerLogoUrl && !draft.partnerLogoUrl.startsWith("data:") ? draft.partnerLogoUrl : undefined,

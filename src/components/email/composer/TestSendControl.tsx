@@ -38,12 +38,6 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
 
   const selected = EMAIL_SENDERS.filter((s) => selectedIds.includes(s.id));
   const canSend = selected.length > 0 && !sending && !disabled;
-  const fieldLabel =
-    selected.length === 0
-      ? "CRE8 brokers"
-      : selected.length === 1
-        ? selected[0].email
-        : `${selected.length} brokers`;
 
   function toggle(id: string) {
     setSelectedIds((cur) => (cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id]));
@@ -95,25 +89,15 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          onClick={openModal}
-          disabled={disabled}
-          className="hidden sm:inline-block max-w-[220px] truncate px-3 py-1.5 text-sm text-charcoal bg-white rounded-card shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.12)] disabled:opacity-50 disabled:cursor-not-allowed"
-          title={selected.map((s) => s.email).join(", ") || "Choose CRE8 brokers"}
-        >
-          {fieldLabel}
-        </button>
-        <button
-          type="button"
-          onClick={openModal}
-          disabled={disabled}
-          className="flex items-center px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-btn disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
-        >
-          test
-        </button>
-      </div>
+      <button
+        type="button"
+        onClick={openModal}
+        disabled={disabled}
+        className="flex items-center px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-btn disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+        title="Send a test to CRE8 brokers"
+      >
+        test
+      </button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">

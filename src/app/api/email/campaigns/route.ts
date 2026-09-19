@@ -87,6 +87,7 @@ export async function POST(request: NextRequest) {
       group_listings: groupListings,
       email_label: body.email_label,
       heading_text: body.heading_text || null,
+      intro_text: body.intro_text || null,
       body_text: body.body_text || null,
       photo_url: body.photo_url || null,
       partner_logo_url: body.partner_logo_url || null,

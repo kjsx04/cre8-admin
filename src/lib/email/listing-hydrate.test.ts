@@ -33,6 +33,7 @@ const campaign = overlayListingOnCampaign(
     listing_name: "Old Name",
     photo_url: "https://cdn/old.jpg",
     heading_text: "Keep heading",
+    intro_text: "Keep intro",
     body_text: "Keep body",
     partner_logo_url: "https://cdn/logo.png",
     broker_name: "Kevin Smith",
@@ -45,6 +46,7 @@ assert(campaign.listing_name === "Live Name", "listing name is live");
 assert(campaign.photo_url === "https://cdn/hero.jpg", "hero photo is live");
 assert(campaign.listing_page_url === "https://cre8advisors.com/listings/live-name", "slug url is live");
 assert(campaign.heading_text === "Keep heading", "heading stays campaign copy");
+assert(campaign.intro_text === "Keep intro", "intro stays campaign copy");
 assert(campaign.body_text === "Keep body", "body stays campaign copy");
 assert(campaign.partner_logo_url === "https://cdn/logo.png", "partner logo stays");
 assert(campaign.broker_name === "Kevin Smith", "broker stays");
@@ -71,7 +73,7 @@ const snap = listingSnapshotFields(campaign, new Date("2026-09-19T15:00:00.000Z"
 assert(snap.listing_name === "Live Name", "snapshot name");
 assert(snap.photo_url === "https://cdn/hero.jpg", "snapshot photo");
 assert(snap.listing_synced_at === "2026-09-19T15:00:00.000Z", "snapshot time");
-assert(!("heading_text" in snap), "snapshot omits campaign copy");
+assert(!("heading_text" in snap) && !("intro_text" in snap) && !("body_text" in snap), "snapshot omits campaign copy");
 
 if (failed) {
   console.error(`\n${failed} failed`);

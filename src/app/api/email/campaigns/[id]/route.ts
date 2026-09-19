@@ -56,6 +56,7 @@ export async function PATCH(
     if (!body.photo_url && Array.isArray(body.group_listings) && body.group_listings[0]?.photo_url) updates.photo_url = body.group_listings[0].photo_url;
   }
   if (body.heading_text !== undefined) updates.heading_text = body.heading_text || null;
+  if (body.intro_text !== undefined) updates.intro_text = body.intro_text || null;
   if (body.body_text !== undefined) updates.body_text = body.body_text || null;
   if (body.photo_url !== undefined) updates.photo_url = body.photo_url || null;
   if (body.partner_logo_url !== undefined) updates.partner_logo_url = body.partner_logo_url || null;
