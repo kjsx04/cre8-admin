@@ -10,7 +10,7 @@ import { EMAIL_RE } from "@/lib/email/audience-tokens";
 import { contactChipLabel, formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
 import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
-import { COMPOSER_FIELD, COMPOSER_PILL, COMPOSER_PILL_OFF, COMPOSER_PILL_ON } from "./composer-ui";
+import { COMPOSER_FIELD, ChoiceButton } from "./composer-ui";
 
 interface AudiencePickerProps {
   list: AudienceCount[];
@@ -129,17 +129,12 @@ export default function AudiencePicker({
           {list.map((s) => {
             const on = segmentIds.includes(s.id);
             return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => toggle(s.id)}
-                className={`${COMPOSER_PILL} ${on ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
-              >
+              <ChoiceButton key={s.id} selected={on} onClick={() => toggle(s.id)}>
                 {s.name}
-                <span className={`ml-1.5 text-xs tabular-nums ${on ? "text-muted-gray" : "text-medium-gray/70"}`}>
+                <span className="ml-1.5 text-xs tabular-nums text-muted-gray">
                   · {formatCount(s.subscribed || s.total)}
                 </span>
-              </button>
+              </ChoiceButton>
             );
           })}
         </div>
@@ -210,7 +205,7 @@ export default function AudiencePicker({
                 <span
                   key={email}
                   title={email}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-white text-xs text-charcoal"
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-card border border-border-light bg-white text-xs text-charcoal"
                 >
                   {label}
                   <button type="button" onClick={() => removeEmail(email)} className="text-muted-gray hover:text-charcoal" aria-label={`Remove ${label}`}>

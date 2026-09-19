@@ -42,7 +42,7 @@ export default function PhotoPicker({ gallery, photoUrl, onChange, fieldProps }:
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={img.url} alt={img.alt || `Listing photo ${i + 1}`} className="w-full h-full object-cover" />
                 {active && (
-                  <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-green text-charcoal flex items-center justify-center">
+                  <span className="absolute top-2 right-2 w-5 h-5 rounded-btn bg-charcoal text-white flex items-center justify-center">
                     <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
                       <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>

@@ -203,7 +203,7 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
           }}
           onClick={() => inputRef.current?.click()}
           className={`cursor-pointer rounded-card px-4 py-8 text-center transition-colors ${
-            dragOver ? "bg-green/10" : "bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] hover:bg-white/90"
+            dragOver ? "bg-subtle-gray" : "bg-white shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] hover:bg-white/90"
           }`}
         >
           <p className="text-sm text-charcoal">{fetching ? "Fetching…" : "Drop, paste, or click to choose a logo"}</p>

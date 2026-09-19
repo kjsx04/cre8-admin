@@ -1,9 +1,8 @@
 /**
  * Per-campaign template chrome pin.
  *
- * Sent Resend mail is never rewritten. A campaign keeps the shell it last
- * synced until the user clicks Sync template (or saves from the composer,
- * which is the same review). Listing photos/fields freeze at Schedule.
+ * Bump CURRENT_TEMPLATE_VERSION in constants.ts when renderEmailHtml chrome
+ * changes. Sent mail is never rewritten. Listing photos/fields freeze at Schedule.
  */
 
 import { CURRENT_TEMPLATE_VERSION } from "./constants";

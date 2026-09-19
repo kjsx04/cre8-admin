@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19-2";
 
 // ── Broker senders ──
 // Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
@@ -298,7 +298,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     groupGridHtml = rows.join("");
   }
 
-  // Broker cards — one per broker, 8px apart. Falls back to the single primary broker fields.
+  // Broker rows sit directly on the black band — no nested gray cards.
   const brokerList: BrokerCardVars[] =
     vars.brokers && vars.brokers.length > 0
       ? vars.brokers
@@ -307,28 +307,20 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     .map(
       (b, i) => `
                 <tr>
-                  <td style="padding:${i === 0 ? "0" : "8px"} 0 0 0;">
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border-radius:8px;width:100%;">
+                  <td style="padding:${i === 0 ? "0" : "20px"} 0 0 0;">
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
-                        <td style="padding:20px 24px;">
-                          <table role="presentation" cellpadding="0" cellspacing="0" border="0">
-                            <tr>
-                              ${b.headshotUrl ? `
-                              <!-- Broker headshot — 80px -->
-                              <td valign="top" style="width:80px;padding-right:20px;">
-                                <img src="${b.headshotUrl}" alt="${escapeHtml(b.name)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
-                              </td>` : ""}
-                              <!-- Broker info: name, email, phone -->
-                              <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
-                                <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
-                                  ${escapeHtml(b.name)}
-                                </p>
-                                <p style="margin:6px 0 0 0;font-size:13px;line-height:1.4;">
-                                  <a href="mailto:${b.email}" style="color:#8CC644;text-decoration:none;">${escapeHtml(b.email)}</a>${b.phone ? ` &nbsp;&middot;&nbsp; <span style="color:#BFBFBF;">${escapeHtml(b.phone)}</span>` : ""}
-                                </p>
-                              </td>
-                            </tr>
-                          </table>
+                        ${b.headshotUrl ? `
+                        <td valign="middle" style="width:80px;padding-right:20px;">
+                          <img src="${b.headshotUrl}" alt="${escapeHtml(b.name)}" width="80" height="80" style="display:block;width:80px;height:80px;border-radius:6px;border:0;outline:none;" />
+                        </td>` : ""}
+                        <td valign="middle" style="font-family:'DM Sans','Segoe UI','Helvetica Neue',Arial,sans-serif;">
+                          <p style="margin:0;font-size:17px;font-weight:700;color:#FFFFFF;line-height:1.3;">
+                            ${escapeHtml(b.name)}
+                          </p>
+                          <p style="margin:6px 0 0 0;font-size:13px;line-height:1.4;">
+                            <a href="mailto:${b.email}" style="color:#8CC644;text-decoration:none;">${escapeHtml(b.email)}</a>${b.phone ? ` &nbsp;&middot;&nbsp; <span style="color:#BFBFBF;">${escapeHtml(b.phone)}</span>` : ""}
+                          </p>
                         </td>
                       </tr>
                     </table>
@@ -502,20 +494,9 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Divider -->
+          <!-- Broker band — flat #000, photo/name/email/phone sit on the black -->
           <tr>
-            <td style="padding:32px 32px 0 32px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                <tr>
-                  <td style="height:1px;background-color:#333333;font-size:1px;line-height:1px;">&nbsp;</td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Broker contact card(s) — one per broker, stacked -->
-          <tr>
-            <td data-field="broker" style="padding:28px 32px 28px 32px;">
+            <td data-field="broker" style="background-color:#000000;padding:28px 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${brokerCardsHtml}
               </table>

@@ -5,7 +5,7 @@ import { ListingItem } from "@/lib/admin-constants";
 import { GroupListing, GroupChip } from "@/lib/email/types";
 import { listingToGroupCard } from "@/lib/email/utils";
 import { FieldProps } from "./fieldProps";
-import { COMPOSER_FIELD, COMPOSER_FIELD_SEARCH, COMPOSER_PILL_ON } from "./composer-ui";
+import { COMPOSER_FIELD, COMPOSER_FIELD_SEARCH, ChoiceButton } from "./composer-ui";
 
 interface GroupListingsPickerProps {
   listings: ListingItem[];
@@ -21,8 +21,8 @@ const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"
 
 /**
  * Section 2 (group emails) — pick several listings, order them, tune each card.
- * The search box stays open while you add: type, click a listing, it joins the
- * list below and the box is ready for the next one.
+ * Search query and filtered results stay after Add so you can keep picking
+ * every listing on that street/county without re-typing.
  * Each card: photo (from the listing's gallery), name, one-line summary, status chip.
  */
 export default function GroupListingsPicker({ listings, loading, cards, onChange, fieldProps }: GroupListingsPickerProps) {
@@ -33,23 +33,21 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Listings not yet in the group (sold ones excluded)
   const chosen = new Set(cards.map((c) => c.listing_id));
-  const candidates = useMemo(
-    () => listings.filter((l) => !l.fieldData.sold && !chosen.has(l.id)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [listings, cards]
+  const pool = useMemo(
+    () => listings.filter((l) => !l.fieldData.sold),
+    [listings]
   );
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return candidates;
-    return candidates.filter((l) => {
+    if (!q) return pool;
+    return pool.filter((l) => {
       const fd = l.fieldData;
       return [fd.name, fd["city-county"], fd["full-address"], fd["list-price"], fd.zoning]
         .filter(Boolean)
         .some((v) => String(v).toLowerCase().includes(q));
     });
-  }, [candidates, query]);
+  }, [pool, query]);
 
   // Close the results when clicking anywhere else
   useEffect(() => {
@@ -61,11 +59,10 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
     return () => document.removeEventListener("mousedown", onDown);
   }, [open]);
 
-  /** Add a listing and keep the search ready for the next one */
+  /** Add a listing — keep the query and the same filtered list */
   const add = (l: ListingItem) => {
+    if (chosen.has(l.id)) return;
     onChange([...cards, listingToGroupCard(l)]);
-    setQuery("");
-    setHighlightIdx(0);
     inputRef.current?.focus();
     setOpen(true);
   };
@@ -114,19 +111,21 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
             <ul className="max-h-72 overflow-y-auto py-1">
               {loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-muted-gray">Loading…</li>}
               {!loading && filtered.length === 0 && (
-                <li className="px-3 py-3 text-sm text-muted-gray">{candidates.length === 0 ? "Every listing is already in the group" : "No matches"}</li>
+                <li className="px-3 py-3 text-sm text-muted-gray">{pool.length === 0 ? "No listings to add" : "No matches"}</li>
               )}
               {filtered.map((l, i) => {
                 const fd = l.fieldData;
                 const t = fd.gallery?.[0]?.url;
                 const sub = [fd["city-county"], fd["list-price"]].filter(Boolean).join(" · ");
+                const added = chosen.has(l.id);
                 return (
                   <li key={l.id}>
                     <button
                       type="button"
+                      disabled={added}
                       onMouseEnter={() => setHighlightIdx(i)}
                       onClick={() => add(l)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === highlightIdx ? "bg-light-gray" : ""}`}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === highlightIdx && !added ? "bg-light-gray" : ""} ${added ? "opacity-50 cursor-default" : ""}`}
                     >
                       <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
                         {t && (
@@ -138,7 +137,9 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                         <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
                         {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
                       </div>
-                      <span className="ml-auto text-xs font-medium text-green shrink-0">+ Add</span>
+                      <span className={`ml-auto text-xs font-medium shrink-0 ${added ? "text-muted-gray" : "text-green"}`}>
+                        {added ? "Added" : "+ Add"}
+                      </span>
                     </button>
                   </li>
                 );
@@ -190,16 +191,14 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                     />
                     <div className="flex items-center gap-1.5">
                       {CHIPS.map((chip) => (
-                        <button
+                        <ChoiceButton
                           key={chip || "none"}
-                          type="button"
+                          selected={c.chip === chip}
                           onClick={() => update(c.listing_id, { chip })}
-                          className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition-colors ${
-                            c.chip === chip ? COMPOSER_PILL_ON : "bg-white text-medium-gray hover:text-charcoal"
-                          }`}
+                          className="px-2.5 py-0.5 text-[11px]"
                         >
                           {chip || "No chip"}
-                        </button>
+                        </ChoiceButton>
                       ))}
                     </div>
                   </div>

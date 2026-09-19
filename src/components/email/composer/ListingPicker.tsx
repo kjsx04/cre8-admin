@@ -147,7 +147,7 @@ export default function ListingPicker({
 
       {/* The chosen listing */}
       {hasSelection && (
-        <div className="flex items-center gap-3 rounded-card px-3 py-2 bg-green/10">
+        <div className="flex items-center gap-3 rounded-card px-3 py-2 bg-subtle-gray border border-border-light">
           <div className="w-11 h-8 rounded overflow-hidden bg-border-light shrink-0">
             {thumb && (
               // eslint-disable-next-line @next/next/no-img-element

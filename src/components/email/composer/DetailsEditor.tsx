@@ -115,7 +115,7 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
             key={chip.key}
             type="button"
             onClick={() => addFromChip(chip)}
-            className="px-2.5 py-1 rounded-full text-xs bg-white text-medium-gray hover:text-charcoal hover:bg-green/10 transition-colors"
+            className="px-2.5 py-1 rounded-card border border-border-light text-xs bg-white text-medium-gray hover:text-charcoal hover:border-border-medium"
           >
             + {chip.label}
           </button>
@@ -123,7 +123,7 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
         <button
           type="button"
           onClick={addCustom}
-          className="px-2.5 py-1 rounded-full text-xs font-medium text-green hover:bg-green/10 transition-colors"
+          className="px-2.5 py-1 rounded-card border border-border-light text-xs font-medium text-charcoal hover:border-border-medium"
         >
           + Custom
         </button>

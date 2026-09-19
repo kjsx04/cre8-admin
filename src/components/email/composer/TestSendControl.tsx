@@ -97,7 +97,7 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
         <button
           onClick={handleSend}
           disabled={disabled || sending || !recipientValid}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-full transition-colors disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
+          className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-btn disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap"
         >
           {sending ? (
             <>

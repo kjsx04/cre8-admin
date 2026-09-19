@@ -37,7 +37,7 @@ import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
-import { COMPOSER_FIELD, COMPOSER_PILL, COMPOSER_PILL_OFF, COMPOSER_PILL_ON } from "./composer-ui";
+import { COMPOSER_FIELD, ChoiceButton } from "./composer-ui";
 
 interface EmailComposerProps {
   mode: "create" | "edit";
@@ -268,7 +268,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             type="button"
             onClick={handleBack}
             disabled={submitting}
-            className="w-8 h-8 flex items-center justify-center rounded-full text-medium-gray hover:text-charcoal hover:bg-subtle-gray transition-colors disabled:opacity-40"
+            className="w-8 h-8 flex items-center justify-center rounded-card text-medium-gray hover:text-charcoal hover:bg-subtle-gray disabled:opacity-40"
             title="Back to campaigns"
           >
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -294,7 +294,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-full transition disabled:opacity-40 disabled:cursor-not-allowed"
+                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal hover:bg-subtle-gray rounded-btn disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of letting the AI pick a time"
               >
                 Send now
@@ -303,7 +303,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 type="button"
                 onClick={handleSubmit}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-full hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
+                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-btn hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
               >
                 {isEdit ? "Update" : "Schedule"}
               </button>
@@ -361,7 +361,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </div>
           {!revealed && (
             <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-24">
-              <span className="px-4 py-2 rounded-full bg-white/90 border border-border-light text-sm text-muted-gray shadow-sm">
+              <span className="px-4 py-2 rounded-card bg-white/90 border border-border-light text-sm text-muted-gray shadow-sm">
                 Choose a listing to begin
               </span>
             </div>
@@ -645,7 +645,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               <button type="button" onClick={() => setSendNowOpen(false)} disabled={sendingNow} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
                 Cancel
               </button>
-              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-4 py-1.5 bg-charcoal text-white text-sm font-medium rounded-full hover:bg-black disabled:opacity-50">
+              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-4 py-1.5 bg-charcoal text-white text-sm font-medium rounded-btn hover:bg-black disabled:opacity-50">
                 {sendingNow ? "Sending…" : "Yes, send now"}
               </button>
             </div>
@@ -700,14 +700,9 @@ function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onCha
       {opts.map((o) => {
         const on = value === o.id;
         return (
-          <button
-            key={o.id}
-            type="button"
-            onClick={() => onChange(o.id)}
-            className={`${COMPOSER_PILL} ${on ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
-          >
+          <ChoiceButton key={o.id} selected={on} onClick={() => onChange(o.id)}>
             {o.label}
-          </button>
+          </ChoiceButton>
         );
       })}
     </div>
@@ -727,19 +722,14 @@ function Segmented({
   return (
     <div className="flex flex-wrap gap-1.5">
       {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => onChange(o.id)}
-          className={`${COMPOSER_PILL} ${value === o.id ? COMPOSER_PILL_ON : COMPOSER_PILL_OFF}`}
-        >
+        <ChoiceButton key={o.id} selected={value === o.id} onClick={() => onChange(o.id)}>
           {o.label}
           {o.badge !== undefined && (
-            <span className={`ml-1.5 text-xs tabular-nums ${value === o.id ? "text-muted-gray" : "text-medium-gray/70"}`}>
+            <span className="ml-1.5 text-xs tabular-nums text-muted-gray">
               · {o.badge}
             </span>
           )}
-        </button>
+        </ChoiceButton>
       ))}
     </div>
   );
