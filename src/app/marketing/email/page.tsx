@@ -25,8 +25,11 @@ import MonthOverview from "@/components/email/schedule/MonthOverview";
 import OffScheduleSection from "@/components/email/schedule/OffScheduleSection";
 import PriorityPanel from "@/components/email/schedule/PriorityPanel";
 import SettingsPanel from "@/components/email/schedule/SettingsPanel";
+import CalendarToolsMenu from "@/components/email/schedule/CalendarToolsMenu";
 import AlertsStrip from "@/components/email/schedule/AlertsStrip";
 import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
+import { needsTemplateSync } from "@/lib/email/template-version";
+import { ChoiceButton } from "@/components/email/composer/composer-ui";
 import CampaignDetail from "@/components/email/CampaignDetail";
 
 type View = "week" | "month";
@@ -63,6 +66,8 @@ function EmailSchedule() {
   const [settings, setSettings] = useState<EmailSettings>(DEFAULT_SETTINGS);
   const [optimizing, setOptimizing] = useState(false);
   const [optimizeNote, setOptimizeNote] = useState<string | null>(null);
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllNote, setSyncAllNote] = useState<string | null>(null);
 
   const fetchCampaigns = useCallback(async () => {
     try {
@@ -233,6 +238,34 @@ function EmailSchedule() {
     }
   };
 
+  const handleSyncAllTemplates = async () => {
+    setSyncingAll(true);
+    setSyncAllNote(null);
+    try {
+      const res = await fetch("/api/email/campaigns/sync-templates", {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to sync templates");
+      const n = Number(data.synced || 0);
+      const failed = Array.isArray(data.errors) ? data.errors.length : 0;
+      if (n === 0 && failed === 0) {
+        setSyncAllNote("Already on the current template");
+      } else if (failed > 0) {
+        setSyncAllNote(`Synced ${n}, ${failed} failed`);
+      } else {
+        setSyncAllNote(n === 1 ? "Synced 1 campaign" : `Synced ${n} campaigns`);
+      }
+      await fetchCampaigns();
+    } catch (err) {
+      setSyncAllNote(err instanceof Error ? err.message : "Failed to sync templates");
+    } finally {
+      setSyncingAll(false);
+      window.setTimeout(() => setSyncAllNote(null), 6000);
+    }
+  };
+
   const handleRefreshListing = async (id: string) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}/refresh-listing`, {
@@ -298,6 +331,7 @@ function EmailSchedule() {
   const onSchedule = campaigns.filter((c) => c.status === "scheduled" || c.status === "active");
   const listingsOnSchedule = new Set(onSchedule.map((c) => c.listing_id)).size;
   const weekSends = weekKeys(weekStart).reduce((n, k) => n + (itemsByDay.get(k)?.length ?? 0), 0);
+  const staleTemplateCount = campaigns.filter(needsTemplateSync).length;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   return (
@@ -311,39 +345,25 @@ function EmailSchedule() {
             {plural(listingsOnSchedule, "listing")} on schedule &middot; {waiting.length} waiting
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          {/* Week | Month toggle */}
-          <div className="flex border border-border-light rounded-btn overflow-hidden">
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-1.5">
             {(["week", "month"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setQuery({ view: v })}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  view === v ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"
-                }`}
-              >
+              <ChoiceButton key={v} selected={view === v} onClick={() => setQuery({ view: v })}>
                 {v === "week" ? "Week" : "Month"}
-              </button>
+              </ChoiceButton>
             ))}
           </div>
 
-          {/* Settings + Priorities panels */}
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="px-3 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
-            title="Scheduler settings"
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowPriorities(true)}
-            className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
-          >
-            Priorities
-          </button>
+          <CalendarToolsMenu
+            staleCount={staleTemplateCount}
+            syncing={syncingAll}
+            onOpenSettings={() => setShowSettings(true)}
+            onOpenPriorities={() => setShowPriorities(true)}
+            onSyncAll={handleSyncAllTemplates}
+          />
+          {syncAllNote && (
+            <span className="max-w-[160px] truncate text-[11px] text-muted-gray">{syncAllNote}</span>
+          )}
 
           <button
             type="button"

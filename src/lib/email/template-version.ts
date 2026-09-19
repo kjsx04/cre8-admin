@@ -31,3 +31,18 @@ export function canSyncTemplate(status: string): boolean {
 
 /** Same statuses as Sync template — Refresh listing replaces the pending send only. */
 export const canRefreshListing = canSyncTemplate;
+
+/** Draft/scheduled/active/paused and not already on CURRENT_TEMPLATE_VERSION. */
+export function needsTemplateSync(campaign: {
+  status?: string | null;
+  template_version?: string | null;
+}): boolean {
+  return canSyncTemplate(String(campaign.status || "")) && !usesCurrentTemplate(campaign);
+}
+
+export function selectTemplateSyncTargets<T extends {
+  status?: string | null;
+  template_version?: string | null;
+}>(rows: T[]): T[] {
+  return rows.filter(needsTemplateSync);
+}
