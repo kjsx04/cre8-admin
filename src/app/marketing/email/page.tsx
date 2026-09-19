@@ -233,6 +233,25 @@ function EmailSchedule() {
     }
   };
 
+  const handleRefreshListing = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email/campaigns/${id}/refresh-listing`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to refresh listing");
+      if (data.provider_sync && data.provider_sync.ok === false) {
+        throw new Error(data.provider_sync.error || "Listing refreshed, but the scheduled send wasn't updated");
+      }
+      await fetchCampaigns();
+      if (selectedCampaign?.id === id) setSelectedCampaign(data);
+    } catch (err) {
+      console.error("Refresh listing failed:", err);
+      window.alert(err instanceof Error ? err.message : "Failed to refresh listing");
+    }
+  };
+
   // Send a campaign right now (skips the AI)
   const handleSendNow = async (id: string) => {
     try {
@@ -400,6 +419,7 @@ function EmailSchedule() {
           onReschedule={handleReschedule}
           onSendNow={handleSendNow}
           onSyncTemplate={handleSyncTemplate}
+          onRefreshListing={handleRefreshListing}
           onClose={() => setSelectedCampaign(null)}
         />
       )}

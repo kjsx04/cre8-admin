@@ -87,8 +87,18 @@ export async function PATCH(
   if (body.status !== undefined) updates.status = body.status;
   if (body.ai_reasoning !== undefined) updates.ai_reasoning = body.ai_reasoning;
 
-  // Composer save is the review step — pin the campaign to today's chrome.
+  // Composer save is the review step — pin today's chrome. Listing fields in
+  // this payload become the new freeze (they are what the user reviewed).
   Object.assign(updates, templateStamp());
+  if (
+    body.listing_name !== undefined ||
+    body.photo_url !== undefined ||
+    body.highlights !== undefined ||
+    body.listing_page_url !== undefined ||
+    body.group_listings !== undefined
+  ) {
+    updates.listing_synced_at = new Date().toISOString();
+  }
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase

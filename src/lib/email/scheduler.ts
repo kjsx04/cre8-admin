@@ -10,6 +10,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { syncCampaignToProvider, CampaignLike } from "./provider";
 import { splitProviderIds } from "./audience-tokens";
 import { templateStamp } from "./template-version";
+import { hydrateCampaignListing, listingSnapshotFields } from "./listing-hydrate";
 import { CalendarChange, Campaign } from "./types";
 import { expandOccurrences } from "./occurrences";
 import { getSettings } from "./settings-server";
@@ -171,6 +172,12 @@ export async function applySlotAndSync(
     ...templateStamp(),
     updated_at: new Date().toISOString(),
   };
+  // First lock: bake live CMS listing into the row. Later slots (cron / reschedule)
+  // keep the frozen snapshot unless the user hits Refresh listing.
+  if (current.status === "draft") {
+    const live = await hydrateCampaignListing(current);
+    Object.assign(fields, listingSnapshotFields(live));
+  }
   if (isRecurring) fields.next_send_date = scheduledDate;
 
   const { data: updated } = await supabase

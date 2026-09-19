@@ -6,7 +6,8 @@ import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
-import { canSyncTemplate, usesCurrentTemplate } from "@/lib/email/template-version";
+import { canRefreshListing, canSyncTemplate, usesCurrentTemplate } from "@/lib/email/template-version";
+import { listingStaysLive } from "@/lib/email/listing-hydrate";
 import PriorityBadge from "./PriorityBadge";
 import EmailPreview from "./EmailPreview";
 import { useAudienceCounts, formatCount, recipientLine, audienceForCampaign, audienceLabel } from "@/lib/email/audience-client";
@@ -21,8 +22,10 @@ interface CampaignDetailProps {
   onReschedule?: (id: string) => Promise<void>;
   /** Send immediately, skipping the AI */
   onSendNow?: (id: string) => Promise<void>;
-  /** Rebuild the pending send from today's template chrome + live listing */
+  /** Rebuild the pending send from today's template chrome; listing stays frozen */
   onSyncTemplate?: (id: string) => Promise<void>;
+  /** Overlay live listing onto the pinned chrome and replace the pending send */
+  onRefreshListing?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -36,6 +39,7 @@ export default function CampaignDetail({
   onReschedule,
   onSendNow,
   onSyncTemplate,
+  onRefreshListing,
   onClose,
 }: CampaignDetailProps) {
   void onUpdate; // reserved for inline edit
@@ -113,8 +117,20 @@ export default function CampaignDetail({
     setActionLoading(false);
   };
 
+  const handleRefreshListing = async () => {
+    if (!onRefreshListing) return;
+    setActionLoading(true);
+    await onRefreshListing(campaign.id);
+    setActionLoading(false);
+  };
+
   const templateCurrent = usesCurrentTemplate(campaign);
+  const listingLive = listingStaysLive(campaign.status);
   const showSync = !!onSyncTemplate && canSyncTemplate(campaign.status);
+  const showRefreshListing = !!onRefreshListing && canRefreshListing(campaign.status);
+  const listingLockedLabel = campaign.listing_synced_at
+    ? `Locked ${new Date(campaign.listing_synced_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+    : "Locked at schedule";
 
   return (
     <>
@@ -192,8 +208,17 @@ export default function CampaignDetail({
                 value={templateCurrent ? "Current layout" : "Layout updated"}
                 sub={
                   templateCurrent
-                    ? "Listing photos and fields stay live. Layout stays until you sync."
-                    : "Sync template to apply the new layout. Sent mail is not changed."
+                    ? "Layout stays until you sync. Sent mail is not changed."
+                    : "Sync template applies the new layout to the pending send only."
+                }
+              />
+              <InfoRow
+                label="Listing"
+                value={listingLive ? "Live" : listingLockedLabel}
+                sub={
+                  listingLive
+                    ? "Photos and fields follow the listing until you schedule."
+                    : "Frozen at schedule. Refresh listing to pull current photos and fields."
                 }
               />
               {campaign.heading_text && (
@@ -298,6 +323,16 @@ export default function CampaignDetail({
                   className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
                 >
                   {actionLoading ? "Syncing..." : templateCurrent ? "Sync template" : "Sync template (layout updated)"}
+                </button>
+              )}
+
+              {showRefreshListing && (
+                <button
+                  onClick={handleRefreshListing}
+                  disabled={actionLoading}
+                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
+                >
+                  {actionLoading ? "Refreshing..." : "Refresh listing"}
                 </button>
               )}
 

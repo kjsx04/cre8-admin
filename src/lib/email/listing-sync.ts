@@ -1,33 +1,28 @@
 /**
  * Listing → Campaign sync.
  *
- * When a listing is saved in the admin portal, any email campaign tied to that
- * listing gets its listing-derived fields refreshed (name, hero photo, page URL,
- * and the auto-built highlights like price / acreage / zoning). If the campaign
- * is already on today's template chrome, the pending Resend broadcast is
- * updated so the next send goes out with accurate listing info. A stale
- * template_version skips that re-push so a chrome deploy cannot rewrite
- * scheduled HTML without Sync template.
+ * When a listing is saved in the admin portal, DRAFT campaigns tied to that
+ * listing get listing-derived fields refreshed (name, hero photo, page URL,
+ * auto highlights). Scheduled / active / paused rows stay frozen until the
+ * user clicks Refresh listing. Sent mail is never rewritten.
  *
  * Fields the user typed by hand (heading_text, body_text, custom highlights)
- * are never touched. Sent mail is never rewritten.
+ * are never touched.
  */
 
 import { supabase } from "@/lib/flow/supabase";
 import { ListingFieldData } from "@/lib/admin-constants";
-import { syncCampaignToProvider } from "./provider";
-import { usesCurrentTemplate } from "./template-version";
 import { refreshHighlights, buildGroupSummary } from "./utils";
 
 export type ListingSyncResult = {
   updated: string[];  // campaign ids whose row changed
-  synced: string[];   // campaign ids whose Resend broadcast was updated
+  synced: string[];   // leftover: drafts have no pending Resend push
   errors: string[];
 };
 
 /**
- * Refresh every non-finished campaign for this listing.
- * Only fields present in `fieldData` are applied, so partial saves are safe.
+ * Refresh draft campaigns for this listing.
+ * Scheduled rows are locked at Schedule — use Refresh listing to un-freeze.
  */
 export async function syncCampaignsForListing(
   listingId: string,
@@ -39,75 +34,58 @@ export async function syncCampaignsForListing(
     .from("email_campaigns")
     .select("*")
     .eq("listing_id", listingId)
-    .in("status", ["draft", "scheduled", "active", "paused"]);
+    .eq("status", "draft");
 
-  if (error || !campaigns?.length) return result;
+  if (error || !campaigns?.length) {
+    // still check group drafts below
+  } else {
+    for (const campaign of campaigns) {
+      const updates: Record<string, unknown> = {};
 
-  for (const campaign of campaigns) {
-    const updates: Record<string, unknown> = {};
-
-    // Listing name (drives the subject line + default heading)
-    if (fieldData.name && fieldData.name !== campaign.listing_name) {
-      updates.listing_name = fieldData.name;
-    }
-
-    // Hero photo = first gallery image
-    const heroUrl = fieldData.gallery?.[0]?.url;
-    if (heroUrl && heroUrl !== campaign.photo_url) {
-      updates.photo_url = heroUrl;
-    }
-
-    // Listing page URL from slug
-    if (fieldData.slug) {
-      const url = `https://cre8advisors.com/listings/${fieldData.slug}`;
-      if (url !== campaign.listing_page_url) updates.listing_page_url = url;
-    }
-
-    // Auto-derived highlights (price, acres, zoning, etc.) — custom ones are left alone
-    const nextHighlights = refreshHighlights(campaign.highlights || [], fieldData);
-    if (JSON.stringify(nextHighlights) !== JSON.stringify(campaign.highlights || [])) {
-      updates.highlights = nextHighlights;
-    }
-
-    if (Object.keys(updates).length === 0) continue;
-
-    updates.updated_at = new Date().toISOString();
-
-    const { data: saved, error: updErr } = await supabase
-      .from("email_campaigns")
-      .update(updates)
-      .eq("id", campaign.id)
-      .select()
-      .single();
-
-    if (updErr || !saved) {
-      result.errors.push(`${campaign.id}: ${updErr?.message || "update failed"}`);
-      continue;
-    }
-    result.updated.push(campaign.id);
-
-    // Listing fields stay live on the row. Re-push the pending send only when
-    // this campaign is already on today's chrome — otherwise a template deploy
-    // would rewrite scheduled HTML without Sync template.
-    if ((saved.status === "scheduled" || saved.status === "active") && usesCurrentTemplate(saved)) {
-      const sync = await syncCampaignToProvider(saved);
-      if (sync.provider_send_id !== saved.provider_send_id) {
-        await supabase
-          .from("email_campaigns")
-          .update({ provider_send_id: sync.provider_send_id })
-          .eq("id", campaign.id);
+      if (fieldData.name && fieldData.name !== campaign.listing_name) {
+        updates.listing_name = fieldData.name;
       }
-      if (sync.ok) result.synced.push(campaign.id);
-      else result.errors.push(`${campaign.id}: ${sync.error || sync.action}`);
+
+      const heroUrl = fieldData.gallery?.[0]?.url;
+      if (heroUrl && heroUrl !== campaign.photo_url) {
+        updates.photo_url = heroUrl;
+      }
+
+      if (fieldData.slug) {
+        const url = `https://cre8advisors.com/listings/${fieldData.slug}`;
+        if (url !== campaign.listing_page_url) updates.listing_page_url = url;
+      }
+
+      const nextHighlights = refreshHighlights(campaign.highlights || [], fieldData);
+      if (JSON.stringify(nextHighlights) !== JSON.stringify(campaign.highlights || [])) {
+        updates.highlights = nextHighlights;
+      }
+
+      if (Object.keys(updates).length === 0) continue;
+
+      updates.updated_at = new Date().toISOString();
+
+      const { data: saved, error: updErr } = await supabase
+        .from("email_campaigns")
+        .update(updates)
+        .eq("id", campaign.id)
+        .select()
+        .single();
+
+      if (updErr || !saved) {
+        result.errors.push(`${campaign.id}: ${updErr?.message || "update failed"}`);
+        continue;
+      }
+      result.updated.push(campaign.id);
     }
   }
 
-  // Group emails that feature this listing: refresh that card's name / photo / summary / url
+  // Group drafts that feature this listing
   const { data: groups } = await supabase
     .from("email_campaigns")
     .select("*")
     .eq("campaign_kind", "group")
-    .in("status", ["draft", "scheduled", "active", "paused"])
+    .eq("status", "draft")
     .contains("group_listings", JSON.stringify([{ listing_id: listingId }]));
 
   for (const g of groups || []) {
@@ -117,7 +95,7 @@ export async function syncCampaignsForListing(
       const next = { ...card };
       if (fieldData.name && fieldData.name !== card.name) next.name = fieldData.name;
       const hero = fieldData.gallery?.[0]?.url;
-      if (hero && !card.photo_url) next.photo_url = hero; // keep a hand-picked photo, fill an empty one
+      if (hero && !card.photo_url) next.photo_url = hero;
       if (fieldData.slug) next.url = `https://cre8advisors.com/listings/${fieldData.slug}`;
       const summary = buildGroupSummary(fieldData);
       if (summary && summary !== card.summary) next.summary = summary;
@@ -135,14 +113,6 @@ export async function syncCampaignsForListing(
       .single();
     if (!saved) continue;
     result.updated.push(g.id);
-    if ((saved.status === "scheduled" || saved.status === "active") && usesCurrentTemplate(saved)) {
-      const sync = await syncCampaignToProvider(saved);
-      if (sync.provider_send_id !== saved.provider_send_id) {
-        await supabase.from("email_campaigns").update({ provider_send_id: sync.provider_send_id }).eq("id", g.id);
-      }
-      if (sync.ok) result.synced.push(g.id);
-      else result.errors.push(`${g.id}: ${sync.error || sync.action}`);
-    }
   }
 
   return result;

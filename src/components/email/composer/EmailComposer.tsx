@@ -19,6 +19,7 @@ import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
+import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
@@ -88,7 +89,17 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   // ── Live preview ──
   const previewHtml = useMemo(() => {
-    const input: Record<string, unknown> = { ...formData };
+    let input: Record<string, unknown> = { ...formData };
+    // Drafts overlay current CMS listing fields. Scheduled campaigns stay frozen.
+    if (listingStaysLive(campaign?.status)) {
+      if (selectedListing) input = overlayListingOnCampaign(input, selectedListing);
+      if (draft.kind === "group" && Array.isArray(formData.group_listings)) {
+        input.group_listings = formData.group_listings.map((card) => {
+          const item = listings.find((l) => l.id === card.listing_id);
+          return item ? overlayGroupCard(card as unknown as Record<string, unknown>, item) : card;
+        });
+      }
+    }
     // While a partner logo is being adjusted it's a data: URL — show it in the preview anyway
     if (draft.partnerLogoUrl) {
       input.partner_logo_url = draft.partnerLogoUrl;
@@ -101,7 +112,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       input.heading_text = draft.headingText || "Property Name";
     }
     return wrapPreviewHtml(renderEmailHtml(buildTemplateVars(input)));
-  }, [formData, draft.kind, draft.listingId, draft.headingText, draft.emailLabel, draft.partnerLogoUrl, draft.partnerLogoWidth, draft.partnerLogoHeight]);
+  }, [formData, campaign?.status, selectedListing, listings, draft.kind, draft.listingId, draft.headingText, draft.emailLabel, draft.partnerLogoUrl, draft.partnerLogoWidth, draft.partnerLogoHeight]);
 
   // ── Focus bridge: preview region ⇄ input ──
   const [activeField, setActiveField] = useState<PreviewField | null>(null);

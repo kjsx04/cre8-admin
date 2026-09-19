@@ -1,5 +1,6 @@
 /**
- * Overlay live CMS listing fields onto a campaign row for preview / next send.
+ * Overlay live CMS listing fields onto a campaign row.
+ * Drafts stay live. Schedule bakes a snapshot; send uses that freeze.
  * Never touches user copy (heading, body, partner logo, broker, audience).
  */
 
@@ -48,6 +49,24 @@ export function overlayGroupCard(card: Record<string, unknown>, item: ListingIte
   if (fd["under-contract"]) next.chip = "Under Contract";
   if (fd["under-contract"] === false && card.chip === "Under Contract") next.chip = "";
   return next;
+}
+
+/** Draft (or no status) still follows the listing CMS. Scheduled+ is frozen. */
+export function listingStaysLive(status: unknown): boolean {
+  return status == null || status === "" || status === "draft";
+}
+
+/** Persistable listing snapshot (photos, URL, auto highlights, group cards). */
+export function listingSnapshotFields(live: CampaignRow, at = new Date()): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
+    listing_name: live.listing_name,
+    photo_url: live.photo_url,
+    listing_page_url: live.listing_page_url,
+    highlights: live.highlights || [],
+    listing_synced_at: at.toISOString(),
+  };
+  if (Array.isArray(live.group_listings)) fields.group_listings = live.group_listings;
+  return fields;
 }
 
 /** Pull current listing CMS data onto campaign fields used by renderEmailHtml. */

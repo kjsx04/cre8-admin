@@ -3,7 +3,7 @@
  *
  * Sent Resend mail is never rewritten. A campaign keeps the shell it last
  * synced until the user clicks Sync template (or saves from the composer,
- * which is the same review). Listing fields stay live on their own path.
+ * which is the same review). Listing photos/fields freeze at Schedule.
  */
 
 import { CURRENT_TEMPLATE_VERSION } from "./constants";
@@ -20,7 +20,7 @@ export function templateStamp(at = new Date()): {
   };
 }
 
-/** Null = created before versioning; treat as current so listing re-push stays on. */
+/** Null = created before versioning; treat as current. */
 export function usesCurrentTemplate(campaign: { template_version?: string | null }): boolean {
   const v = campaign.template_version;
   return !v || v === CURRENT_TEMPLATE_VERSION;
@@ -29,3 +29,6 @@ export function usesCurrentTemplate(campaign: { template_version?: string | null
 export function canSyncTemplate(status: string): boolean {
   return status === "draft" || status === "scheduled" || status === "active" || status === "paused";
 }
+
+/** Same statuses as Sync template — Refresh listing replaces the pending send only. */
+export const canRefreshListing = canSyncTemplate;

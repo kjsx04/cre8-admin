@@ -2,14 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { syncCampaignToProvider } from "@/lib/email/provider";
-import { canSyncTemplate, templateStamp } from "@/lib/email/template-version";
+import { hydrateCampaignListing, listingSnapshotFields } from "@/lib/email/listing-hydrate";
+import { canRefreshListing } from "@/lib/email/template-version";
 
 /**
- * POST /api/email/campaigns/[id]/sync-template
+ * POST /api/email/campaigns/[id]/refresh-listing
  *
- * Rebuild the pending send from today's renderEmailHtml chrome.
- * Listing snapshot stays frozen (use Refresh listing for photos/price).
- * Campaign copy (heading, body, partner logo, broker, audience) stays.
+ * Overlay live CMS listing fields onto the pinned template chrome, replace the
+ * pending Resend broadcast, keep campaign copy. Does not change template_version.
  * Completed / cancelled campaigns are refused — sent inbox mail is immutable.
  */
 export async function POST(
@@ -29,26 +29,28 @@ export async function POST(
     return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   }
 
-  if (!canSyncTemplate(campaign.status)) {
+  if (!canRefreshListing(campaign.status)) {
     return NextResponse.json(
       { error: "Sent emails stay as they were. Duplicate the campaign to send again." },
       { status: 400 }
     );
   }
 
-  const stamp = templateStamp();
+  const live = await hydrateCampaignListing(campaign);
+  const snap = listingSnapshotFields(live);
+
   const { data: saved, error: updErr } = await supabase
     .from("email_campaigns")
     .update({
-      ...stamp,
-      updated_at: stamp.template_synced_at,
+      ...snap,
+      updated_at: snap.listing_synced_at,
     })
     .eq("id", params.id)
     .select()
     .single();
 
   if (updErr || !saved) {
-    return NextResponse.json({ error: updErr?.message || "Sync failed" }, { status: 500 });
+    return NextResponse.json({ error: updErr?.message || "Refresh failed" }, { status: 500 });
   }
 
   let providerSync = null;

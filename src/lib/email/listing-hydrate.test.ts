@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/email/listing-hydrate.test.ts
  */
 
-import { overlayListingOnCampaign, overlayGroupCard } from "./listing-hydrate";
+import { overlayListingOnCampaign, overlayGroupCard, listingStaysLive, listingSnapshotFields } from "./listing-hydrate";
 import type { ListingItem } from "@/lib/admin-constants";
 
 let failed = 0;
@@ -63,6 +63,15 @@ const filledPhoto = overlayGroupCard(
   listing
 );
 assert(filledPhoto.photo_url === "https://cdn/hero.jpg", "empty group photo fills from listing");
+
+assert(listingStaysLive("draft") && listingStaysLive(null) && listingStaysLive(undefined), "drafts stay live");
+assert(!listingStaysLive("scheduled") && !listingStaysLive("active") && !listingStaysLive("completed"), "scheduled+ is frozen");
+
+const snap = listingSnapshotFields(campaign, new Date("2026-09-19T15:00:00.000Z"));
+assert(snap.listing_name === "Live Name", "snapshot name");
+assert(snap.photo_url === "https://cdn/hero.jpg", "snapshot photo");
+assert(snap.listing_synced_at === "2026-09-19T15:00:00.000Z", "snapshot time");
+assert(!("heading_text" in snap), "snapshot omits campaign copy");
 
 if (failed) {
   console.error(`\n${failed} failed`);

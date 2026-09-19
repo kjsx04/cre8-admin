@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/email/auth";
 import { cancelSend, sendNow, isProviderConfigured } from "@/lib/email/provider";
 import { recordSend, computeNextSendDate } from "@/lib/email/scheduler";
 import { templateStamp } from "@/lib/email/template-version";
+import { hydrateCampaignListing, listingSnapshotFields, listingStaysLive } from "@/lib/email/listing-hydrate";
 
 /**
  * POST /api/email/campaigns/[id]/send-now — send immediately, skipping the AI.
@@ -35,12 +36,26 @@ export async function POST(
   }
 
   try {
-    await cancelSend(campaign.provider_send_id);
-    const broadcastId = await sendNow(campaign);
+    // Draft send-now locks listing the same way Schedule does, then sends that freeze.
+    let row = campaign;
+    if (listingStaysLive(campaign.status)) {
+      const live = await hydrateCampaignListing(campaign);
+      const snap = listingSnapshotFields(live);
+      const { data: frozen } = await supabase
+        .from("email_campaigns")
+        .update(snap)
+        .eq("id", params.id)
+        .select()
+        .single();
+      row = frozen || { ...campaign, ...snap };
+    }
+
+    await cancelSend(row.provider_send_id);
+    const broadcastId = await sendNow(row);
     const now = new Date().toISOString();
 
-    const isRecurring = campaign.campaign_type === "recurring";
-    const nextSend = isRecurring ? computeNextSendDate(now, campaign.frequency) : null;
+    const isRecurring = row.campaign_type === "recurring";
+    const nextSend = isRecurring ? computeNextSendDate(now, row.frequency) : null;
 
     const { data: updated, error: updErr } = await supabase
       .from("email_campaigns")
@@ -50,7 +65,7 @@ export async function POST(
         last_sent_at: now,
         // Recurring: the pending id is cleared (it just went out); cron creates the next near next_send_date
         provider_send_id: isRecurring ? null : broadcastId,
-        next_send_date: isRecurring ? nextSend : campaign.next_send_date,
+        next_send_date: isRecurring ? nextSend : row.next_send_date,
         ai_reasoning: `Sent now by ${auth.email}`,
         ...templateStamp(),
         updated_at: now,

@@ -82,6 +82,7 @@ export interface Campaign {
   ai_reasoning: string | null;
   template_version: string | null;     // last synced renderEmailHtml chrome id
   template_synced_at: string | null;
+  listing_synced_at: string | null;    // when listing photos/fields were frozen (Schedule or Refresh listing)
   created_at: string;
   updated_at: string;
 }
