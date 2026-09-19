@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19-5";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19-6";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -259,12 +259,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       </tr>
                     </table>`;
 
-  // Group (digest) grid — two square listing cards per row (50/50 table).
+  // Group (digest) grid — two 4:3 landscape listing cards per row (50/50 table).
   // Gutter G = 32px matches heading/intro/body inset: edge ↔ card ↔ card ↔ edge.
   const isGroup = vars.groupListings.length > 0;
   const GROUP_GUTTER = 32;
   const GROUP_HALF = GROUP_GUTTER / 2;
-  const GROUP_PHOTO = 252; // Outlook: (600 − 32 − 32 − 32) / 2
+  const GROUP_PHOTO_W = 252; // Outlook: (600 − 32 − 32 − 32) / 2
+  const GROUP_PHOTO_H = 189; // 4:3 landscape (252 × 3/4)
   const groupChip = (chip: string) => {
     if (!chip) return "";
     const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : "#8CC644";
@@ -273,8 +274,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   const groupPhoto = (g: GroupListing) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
     const photo = g.photo_url
-      ? `<!--[if mso]><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="display:block;width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!--><div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:100%;background-color:#222222;background-image:url('${g.photo_url}');background-size:cover;background-position:center center;background-repeat:no-repeat;border-radius:6px 6px 0 0;overflow:hidden;line-height:0;font-size:0;"><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;border:0;outline:none;text-decoration:none;" /></div><!--<![endif]-->`
-      : `<div class="group-photo" style="width:100%;height:0;padding-bottom:100%;background-color:#222222;border-radius:6px 6px 0 0;line-height:0;font-size:0;">&nbsp;</div>`;
+      ? `<!--[if mso]><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" style="display:block;width:${GROUP_PHOTO_W}px;height:${GROUP_PHOTO_H}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!--><div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:75%;background-color:#222222;background-image:url('${g.photo_url}');background-size:cover;background-position:center center;background-repeat:no-repeat;border-radius:6px 6px 0 0;overflow:hidden;line-height:0;font-size:0;"><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center;border:0;outline:none;text-decoration:none;" /></div><!--<![endif]-->`
+      : `<div class="group-photo" style="width:100%;height:0;padding-bottom:75%;background-color:#222222;border-radius:6px 6px 0 0;line-height:0;font-size:0;">&nbsp;</div>`;
     return `<a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${photo}</a>`;
   };
   const groupCard = (g: GroupListing, i: number) => {
@@ -479,7 +480,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Group grid — two square listing cards per row, 32px gutters -->
+          <!-- Group grid — two 4:3 landscape listing cards per row, 32px gutters -->
           ${isGroup ? `
           <tr>
             <td style="padding:20px ${GROUP_GUTTER}px 0 ${GROUP_GUTTER}px;">

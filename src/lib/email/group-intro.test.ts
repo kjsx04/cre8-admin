@@ -52,12 +52,30 @@ assert(html.includes('data-field="intro"'), "intro is clickable in preview");
 assert(html.includes('data-field="body"'), "body is clickable in preview");
 assert((html.match(/class="group-col"/g) || []).length === 2, "two 50% columns for two listings");
 assert(html.includes('width="50%"'), "columns are half-width");
-assert(html.includes("padding-bottom:100%"), "photos are square (1:1 crop)");
+assert(html.includes("padding-bottom:75%"), "photos are 4:3 landscape");
+assert(!html.includes("padding-bottom:100%"), "photos are no longer 1:1 squares");
 assert(html.includes("max-width: 480px"), "mobile stacks below 480px, not 600");
 assert(!html.includes("@media only screen and (max-width: 600px)"), "600px no longer stacks group cards");
 assert(html.includes("padding:20px 32px 0 32px"), "grid inset matches heading/intro 32px");
 assert(html.includes("padding:0 16px 32px 0"), "left card gutter 16+16=32 between cards");
 assert(html.includes("padding:0 0 32px 16px"), "right card gutter matches left");
+
+const withPhotos = renderEmailHtml(buildTemplateVars({
+  campaign_kind: "group",
+  email_label: "West Valley",
+  heading_text: "LAND · WEST VALLEY",
+  group_listings: [
+    { listing_id: "a", name: "Queen Creek Station", photo_url: "https://cdn/aerial-wide.jpg", url: "https://cre8advisors.com/listings/a", summary: "6 acres", chip: "" as const },
+    { listing_id: "b", name: "Meridian & Pecos", photo_url: "https://cdn/aerial-wide.jpg", url: "https://cre8advisors.com/listings/b", summary: "24 acres", chip: "" as const },
+  ],
+  broker_id: "6987fb6d372758be66e14cb8",
+  broker_name: "Kevin Smith",
+  broker_email: "Kevin@cre8advisors.com",
+}));
+assert(withPhotos.includes("padding-bottom:75%"), "photo cards use 4:3 box");
+assert(withPhotos.includes("object-fit:cover"), "cover crop, not letterbox");
+assert(withPhotos.includes("object-position:center center"), "cover is centered");
+assert(withPhotos.includes('width="252"') && withPhotos.includes('height="189"'), "Outlook 4:3 fallback 252×189");
 
 const four = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
