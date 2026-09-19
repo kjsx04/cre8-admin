@@ -397,12 +397,6 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
         padding-left: 0 !important;
         padding-right: 0 !important;
       }
-      .group-photo {
-        width: 100% !important;
-        max-width: 100% !important;
-        aspect-ratio: 1 / 1 !important;
-        height: auto !important;
-      }
     }
     u + .body { background-color: #FFFFFF !important; }
     [data-ogsc] .body { background-color: #FFFFFF !important; }

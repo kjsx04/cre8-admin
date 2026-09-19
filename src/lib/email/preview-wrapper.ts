@@ -47,10 +47,10 @@ const PREVIEW_STYLE = `
   }
   /* Keep text selectable-looking but not editable */
   * { -webkit-user-select: none; user-select: none; }
-  /* Multiple cards: keep the 2-up square grid in the ~600px iframe */
+  /* Multiple cards: keep the 2-up square grid in the ~600px iframe.
+     Photos stay 1:1 via padding-bottom:100% — do not also set aspect-ratio. */
   .group-grid { width: 100% !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
-  .group-photo { aspect-ratio: 1 / 1 !important; }
   @media only screen and (max-width: 480px) {
     .group-col { display: block !important; width: 100% !important; max-width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; }
   }
