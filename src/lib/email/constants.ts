@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19-4";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19-5";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -259,28 +259,30 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       </tr>
                     </table>`;
 
-  // Group (digest) grid — two listing cards per row, whole card clickable.
+  // Group (digest) grid — two square listing cards per row (50/50 table).
+  // Gutter G = 32px matches heading/intro/body inset: edge ↔ card ↔ card ↔ edge.
   const isGroup = vars.groupListings.length > 0;
+  const GROUP_GUTTER = 32;
+  const GROUP_HALF = GROUP_GUTTER / 2;
+  const GROUP_PHOTO = 252; // Outlook: (600 − 32 − 32 − 32) / 2
   const groupChip = (chip: string) => {
     if (!chip) return "";
     const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : "#8CC644";
     return `<p style="margin:0 0 4px 0;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${escapeHtml(chip)}</p>`;
   };
+  const groupPhoto = (g: GroupListing) => {
+    const href = g.url || CRE8_SITE_URL + "/listings";
+    const photo = g.photo_url
+      ? `<!--[if mso]><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="display:block;width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!--><div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:100%;background-color:#222222;background-image:url('${g.photo_url}');background-size:cover;background-position:center center;background-repeat:no-repeat;border-radius:6px 6px 0 0;overflow:hidden;line-height:0;font-size:0;"><img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;border:0;outline:none;text-decoration:none;" /></div><!--<![endif]-->`
+      : `<div class="group-photo" style="width:100%;height:0;padding-bottom:100%;background-color:#222222;border-radius:6px 6px 0 0;line-height:0;font-size:0;">&nbsp;</div>`;
+    return `<a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${photo}</a>`;
+  };
   const groupCard = (g: GroupListing, i: number) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
-    // Each card is an inline-block capped at half the content width (272px of 544px).
-    // On a phone the container is narrower than two cards, so they wrap to one column.
-    // Outlook desktop ignores inline-block, so it gets real table cells via the mso comments.
-    return `<!--[if mso]><td width="292" valign="top"><![endif]--><div class="group-card" data-field="group-${i}" style="display:inline-block;width:100%;max-width:292px;vertical-align:top;font-size:14px;">
-                    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td valign="top" style="padding:0 8px 16px 8px;">
-                      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border:1px solid #FFFFFF;border-radius:6px;">
+    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border:1px solid #FFFFFF;border-radius:6px;">
                         <tr>
                           <td style="padding:0;line-height:0;font-size:0;border-radius:6px 6px 0 0;overflow:hidden;">
-                            <a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${
-                              g.photo_url
-                                ? `<img src="${g.photo_url}" alt="${escapeHtml(g.name)}" width="274" height="165" style="display:block;width:100%;height:165px;object-fit:cover;border:0;outline:none;text-decoration:none;border-radius:6px 6px 0 0;" />`
-                                : `<div style="width:100%;height:165px;background-color:#222222;border-radius:6px 6px 0 0;"></div>`
-                            }</a>
+                            ${groupPhoto(g)}
                           </td>
                         </tr>
                         <tr>
@@ -293,19 +295,25 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                             <a href="${href}" target="_blank" style="display:inline-block;margin-top:10px;font-family:${EMAIL_FONT};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#8CC644;text-decoration:none;line-height:1.3;">View listing &rarr;</a>
                           </td>
                         </tr>
-                      </table>
-                    </td></tr></table>
-                  </div><!--[if mso]></td><![endif]-->`;
+                      </table>`;
   };
   let groupGridHtml = "";
   if (isGroup) {
-    // Cards are emitted back-to-back with NO whitespace between them (inline-block gaps).
-    // Outlook gets a row per pair of cards through the mso comments.
+    // Real 50/50 table so the composer preview (≈534–600px iframe) stays 2-up.
+    // Hybrid inline-block + max-width:292px wrapped at that width. Phones stack.
     const rows: string[] = [];
     for (let i = 0; i < vars.groupListings.length; i += 2) {
-      const a = groupCard(vars.groupListings[i], i);
-      const b = i + 1 < vars.groupListings.length ? groupCard(vars.groupListings[i + 1], i + 1) : "";
-      rows.push(`<!--[if mso]><tr><![endif]-->${a}${b}<!--[if mso]></tr><![endif]-->`);
+      const left = groupCard(vars.groupListings[i], i);
+      const hasRight = i + 1 < vars.groupListings.length;
+      const right = hasRight ? groupCard(vars.groupListings[i + 1], i + 1) : "";
+      rows.push(`<tr>
+                <td class="group-col" width="50%" valign="top" style="width:50%;padding:0 ${GROUP_HALF}px ${GROUP_GUTTER}px 0;">
+                  ${left}
+                </td>
+                <td class="group-col" width="50%" valign="top" style="width:50%;padding:0 0 ${GROUP_GUTTER}px ${GROUP_HALF}px;">
+                  ${right || "&nbsp;"}
+                </td>
+              </tr>`);
     }
     groupGridHtml = rows.join("");
   }
@@ -378,9 +386,17 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       .body, .body-table { background-color: #111111 !important; }
       .card-bg { background-color: #1A1A1A !important; }
     }
-    /* Phones: group listing cards go one per row */
-    @media only screen and (max-width: 600px) {
-      .group-card { max-width: 100% !important; }
+    /* Phones: stack the 50/50 listing cards. 480px — not 600 — so the
+       composer preview iframe (~534–600px) and desktop clients stay 2-up. */
+    @media only screen and (max-width: 480px) {
+      .group-col {
+        display: block !important;
+        width: 100% !important;
+        max-width: 100% !important;
+        box-sizing: border-box !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
+      }
     }
     u + .body { background-color: #FFFFFF !important; }
     [data-ogsc] .body { background-color: #FFFFFF !important; }
@@ -463,11 +479,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Group grid — two listing cards per row -->
+          <!-- Group grid — two square listing cards per row, 32px gutters -->
           ${isGroup ? `
           <tr>
-            <td style="padding:20px 8px 0 8px;font-size:0;line-height:0;text-align:left;">
-              <!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><![endif]-->${groupGridHtml}<!--[if mso]></table><![endif]-->
+            <td style="padding:20px ${GROUP_GUTTER}px 0 ${GROUP_GUTTER}px;">
+              <table role="presentation" class="group-grid" width="100%" cellpadding="0" cellspacing="0" border="0">
+                ${groupGridHtml}
+              </table>
             </td>
           </tr>` : ""}
 
