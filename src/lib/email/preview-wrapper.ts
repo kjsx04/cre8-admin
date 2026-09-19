@@ -47,8 +47,8 @@ const PREVIEW_STYLE = `
   }
   /* Keep text selectable-looking but not editable */
   * { -webkit-user-select: none; user-select: none; }
-  /* Multiple cards: keep the 2-up square grid in the ~600px iframe.
-     Photos stay 1:1 via padding-bottom:100% — do not also set aspect-ratio. */
+  /* Multiple cards: keep the 2-up 4:3 grid in the ~600px iframe.
+     Photos stay 4:3 via padding-bottom:75% — do not also set aspect-ratio. */
   .group-grid { width: 100% !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
   @media only screen and (max-width: 480px) {
