@@ -5,57 +5,74 @@
  * each one via GET /segments/{id}/contacts (full pagination). Resend has no
  * segment.total field. Composer chips show `subscribed` (broadcast recipients);
  * `total` includes unsubscribed. Cached 10 minutes; ?refresh=1 forces a recount.
+ *
+ * Brokers is counted first (alone). Promise.all of Brokers + Buyers + Sellers
+ * hits Resend's 10 req/s cap mid-page; a thrown 429 used to cache Brokers as 0
+ * while the bigger lists finished.
  */
 
 import { listSegments, countSegmentContacts, isProviderConfigured, invalidateContactCaches } from "./provider";
 import { AudienceCount } from "./types";
+import {
+  isPreferredAudienceName,
+  pickCountOnError,
+  shouldCacheAudienceCounts,
+  sortAudienceSegments,
+} from "./audience-count";
 
 const CACHE_TTL_MS = 10 * 60 * 1000; // 10 minutes
-
-// Preferred order on the composer — anything else follows alphabetically
-const PREFERRED_ORDER = ["brokers", "buyers", "sellers"];
 
 // Module-level cache: survives across requests on a warm serverless instance
 let cache: { at: number; data: AudienceCount[] } | null = null;
 
-function sortSegments<T extends { name: string }>(rows: T[]): T[] {
-  return [...rows].sort((a, b) => {
-    const ai = PREFERRED_ORDER.indexOf(a.name.toLowerCase());
-    const bi = PREFERRED_ORDER.indexOf(b.name.toLowerCase());
-    if (ai !== -1 || bi !== -1) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-    return a.name.localeCompare(b.name);
-  });
+async function countOne(
+  seg: { id: string; name: string },
+  force: boolean,
+  previous?: AudienceCount | null
+): Promise<{ row: AudienceCount; failed: boolean }> {
+  try {
+    const c = await countSegmentContacts(seg.id, force);
+    return { row: { id: seg.id, name: seg.name, ...c }, failed: false };
+  } catch (err) {
+    console.error(`[audience] count failed for ${seg.id}:`, err);
+    const failed: AudienceCount = { id: seg.id, name: seg.name, total: 0, subscribed: 0, unsubscribed: 0 };
+    return { row: pickCountOnError(failed, previous), failed: true };
+  }
 }
 
 /** Counts for every live Resend segment, cached. Pass force=true to bypass the cache. */
 export async function getAudienceCounts(force = false): Promise<AudienceCount[]> {
   if (!force && cache && Date.now() - cache.at < CACHE_TTL_MS) return cache.data;
   if (!isProviderConfigured()) return [];
+  const previous = cache?.data || [];
+  const prevById = new Map(previous.map((row) => [row.id, row]));
   if (force) {
     cache = null;
     invalidateContactCaches();
   }
 
-  const segments = sortSegments(await listSegments());
-  const data = await Promise.all(
-    segments.map(async (seg): Promise<AudienceCount> => {
-      try {
-        const c = await countSegmentContacts(seg.id, force);
-        return { id: seg.id, name: seg.name, ...c };
-      } catch (err) {
-        // One bad segment shouldn't blank the others — report zero and log it
-        console.error(`[audience] count failed for ${seg.id}:`, err);
-        return { id: seg.id, name: seg.name, total: 0, subscribed: 0, unsubscribed: 0 };
-      }
-    })
-  );
+  const segments = sortAudienceSegments(await listSegments());
+  const preferred = segments.filter((seg) => isPreferredAudienceName(seg.name));
+  const rest = segments.filter((seg) => !isPreferredAudienceName(seg.name));
 
-  // Don't cache an all-zero result — that's almost always a failed Resend read
-  const allZero = data.length > 0 && data.every((d) => d.total === 0 && d.subscribed === 0);
-  if (allZero) {
-    console.error("[audience] all segment counts were zero — not caching");
-  } else {
+  // Preferred lists sequentially — Brokers (~760) finishes before Buyers/Sellers
+  // start paging (~5k contacts) and burning the shared rate limit.
+  const preferredResults: Array<{ row: AudienceCount; failed: boolean }> = [];
+  for (const seg of preferred) {
+    preferredResults.push(await countOne(seg, force, prevById.get(seg.id)));
+  }
+  const restResults = await Promise.all(rest.map((seg) => countOne(seg, force, prevById.get(seg.id))));
+  const results = [...preferredResults, ...restResults];
+  const data = results.map((r) => r.row);
+  const anyFailed = results.some((r) => r.failed);
+
+  if (shouldCacheAudienceCounts(data, { anyFailed })) {
     cache = { at: Date.now(), data };
+  } else {
+    console.error("[audience] incomplete or zero counts — not caching", {
+      anyFailed,
+      zeros: data.filter((d) => !d.total && !d.subscribed).map((d) => d.name),
+    });
   }
   return data;
 }
