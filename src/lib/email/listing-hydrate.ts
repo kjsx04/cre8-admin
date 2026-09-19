@@ -1,7 +1,7 @@
 /**
  * Overlay live CMS listing fields onto a campaign row.
  * Drafts stay live. Schedule bakes a snapshot; send uses that freeze.
- * Never touches user copy (heading, body, partner logo, broker, audience).
+ * Never touches user copy (heading, intro, body, partner logo, broker, audience).
  */
 
 import { API_BASE, ListingItem } from "@/lib/admin-constants";

@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19-3";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19-4";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -152,6 +152,7 @@ export function buildTemplateVars(
     label,
     labelColor,
     heading,
+    introText: (data.intro_text as string) || "",
     bodyText: (data.body_text as string) || "",
     photoUrl: (data.photo_url as string) || "",
     highlights: (data.highlights as string[]) || [],
@@ -452,12 +453,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Body text (optional) -->
-          ${vars.bodyText ? `
+          <!-- Intro (group emails) — under heading, above listing cards -->
+          ${isGroup && vars.introText ? `
           <tr>
-            <td style="padding:${isGroup ? "4px" : "20px"} 32px 0 32px;">
-              <p data-field="body" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
-                ${escapeHtml(vars.bodyText)}
+            <td style="padding:4px 32px 0 32px;">
+              <p data-field="intro" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
+                ${escapeHtml(vars.introText)}
               </p>
             </td>
           </tr>` : ""}
@@ -467,6 +468,16 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <tr>
             <td style="padding:20px 8px 0 8px;font-size:0;line-height:0;text-align:left;">
               <!--[if mso]><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><![endif]-->${groupGridHtml}<!--[if mso]></table><![endif]-->
+            </td>
+          </tr>` : ""}
+
+          <!-- Body text (optional) — single: under photo; group: under listing cards -->
+          ${vars.bodyText ? `
+          <tr>
+            <td style="padding:${isGroup ? "8px" : "20px"} 32px 0 32px;">
+              <p data-field="body" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
+                ${escapeHtml(vars.bodyText)}
+              </p>
             </td>
           </tr>` : ""}
 

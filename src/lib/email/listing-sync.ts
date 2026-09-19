@@ -6,7 +6,7 @@
  * auto highlights). Scheduled / active / paused rows stay frozen until the
  * user clicks Refresh listing. Sent mail is never rewritten.
  *
- * Fields the user typed by hand (heading_text, body_text, custom highlights)
+ * Fields the user typed by hand (heading_text, intro_text, body_text, custom highlights)
  * are never touched.
  */
 

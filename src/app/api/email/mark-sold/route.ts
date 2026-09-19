@@ -60,6 +60,7 @@ export async function POST(request: NextRequest) {
         campaign_type: "one-time",
         email_label: "Just Sold",
         heading_text: `SOLD: ${template.listing_name}`,
+        intro_text: template.intro_text || null,
         body_text: template.body_text || null,
         photo_url: template.photo_url || null,
         partner_logo_url: template.partner_logo_url || null,

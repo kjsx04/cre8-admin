@@ -5,12 +5,12 @@
  *
  * Left: the real email, rendered live from the template on every keystroke.
  * Right: short sections in the same top-to-bottom order as the email
- * (Listing → Heading → Photo → Body → Details → Listing Link → Broker),
+ * (Listing → Heading → Photo/Intro → Body → Details → Listing Link → Broker),
  * then Audience → Frequency → Priority for the send itself.
  * Click a region in the email and its input focuses; focus an input and the
  * region lights up.
  *
- * Toolbar: test (CRE8 brokers) + Save campaign (draft, not live).
+ * Toolbar: test (CRE8-broker checkbox modal) + Save campaign (draft, not live).
  * Bottom of the settings column: Send now or Schedule — that's when it goes
  * on the calendar. Save ≠ Schedule.
  */
@@ -155,6 +155,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   }, []);
 
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+  const [introUndo, setIntroUndo] = useState<string | null>(null);
   const [bodyUndo, setBodyUndo] = useState<string | null>(null);
 
   const handleFieldClick = useCallback((field: PreviewField) => {
@@ -474,11 +475,45 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section title={isGroup ? "Intro" : "Body"}>
+              {isGroup && (
+              <Section title="Intro">
                 <div className="space-y-2.5">
                   <BodyAiControl
-                    listingIds={isGroup ? draft.groupListings.map((c) => c.listing_id) : draft.listingId ? [draft.listingId] : []}
-                    kind={isGroup ? "group" : "single"}
+                    listingIds={draft.groupListings.map((c) => c.listing_id)}
+                    kind="group"
+                    userEmail={userEmail}
+                    onInsert={(text) => {
+                      setIntroUndo(draft.introText);
+                      set("introText", text);
+                    }}
+                    onUndo={() => {
+                      if (introUndo == null) return;
+                      set("introText", introUndo);
+                      setIntroUndo(null);
+                    }}
+                    canUndo={introUndo != null}
+                  />
+                  <textarea
+                    {...fieldProps("intro")}
+                    value={draft.introText}
+                    onChange={(e) => {
+                      setIntroUndo(null);
+                      set("introText", e.target.value);
+                    }}
+                    placeholder="Optional — a short intro above the listings"
+                    rows={3}
+                    className={`${INPUT} resize-y`}
+                  />
+                </div>
+              </Section>
+              )}
+
+              <Section title="Body">
+                <div className="space-y-2.5">
+                  {!isGroup && (
+                  <BodyAiControl
+                    listingIds={draft.listingId ? [draft.listingId] : []}
+                    kind="single"
                     userEmail={userEmail}
                     onInsert={(text) => {
                       setBodyUndo(draft.bodyText);
@@ -491,6 +526,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     }}
                     canUndo={bodyUndo != null}
                   />
+                  )}
                   <textarea
                     {...fieldProps("body")}
                     value={draft.bodyText}
@@ -498,7 +534,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                       setBodyUndo(null);
                       set("bodyText", e.target.value);
                     }}
-                    placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
+                    placeholder={isGroup ? "Optional — a short paragraph under the listings" : "Optional — a short paragraph under the photo"}
                     rows={4}
                     className={`${INPUT} resize-y`}
                   />

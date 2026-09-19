@@ -224,6 +224,9 @@ export default function CampaignDetail({
               {campaign.heading_text && (
                 <InfoRow label="Heading" value={campaign.heading_text} />
               )}
+              {campaign.intro_text && (
+                <InfoRow label="Intro" value={campaign.intro_text} />
+              )}
               {campaign.body_text && (
                 <InfoRow label="Body" value={campaign.body_text} />
               )}

@@ -18,6 +18,7 @@
 export type PreviewField =
   | "label"
   | "heading"
+  | "intro"
   | "body"
   | "photo"
   | "cta"

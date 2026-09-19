@@ -55,6 +55,7 @@ export interface Campaign {
   group_listings: GroupListing[]; // cards for group emails (empty for single)
   email_label: string;
   heading_text: string | null;
+  intro_text: string | null;  // group emails: under heading, above listing cards
   body_text: string | null;
   photo_url: string | null;
   partner_logo_url: string | null;     // optional partner/developer logo in the header
@@ -96,6 +97,7 @@ export interface CampaignFormData {
   group_listings?: GroupListing[];
   email_label: string;
   heading_text?: string;
+  intro_text?: string;
   body_text?: string;
   photo_url?: string;
   partner_logo_url?: string;
@@ -164,6 +166,7 @@ export interface EmailTemplateVars {
   label: string;           // "Just Listed", "Just Sold", etc.
   labelColor: string;      // hex color for the badge
   heading: string;
+  introText: string;       // group emails only — under heading, above listing cards
   bodyText: string;
   photoUrl: string;
   highlights: string[];
