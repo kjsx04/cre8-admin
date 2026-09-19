@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { scheduleCampaign } from "@/lib/email/scheduler";
 import { placeListing } from "@/lib/email/priorities";
+import { templateStamp } from "@/lib/email/template-version";
 import { randomUUID } from "crypto";
 
 // GET /api/email/campaigns — list campaigns, optionally filtered by listing_id or status
@@ -108,6 +109,7 @@ export async function POST(request: NextRequest) {
       frequency: body.frequency || "one-time",
       end_date: body.end_date || null,
       status: "draft",
+      ...templateStamp(),
     })
     .select()
     .single();

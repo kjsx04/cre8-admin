@@ -6,6 +6,7 @@ import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
 import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
+import { canSyncTemplate, usesCurrentTemplate } from "@/lib/email/template-version";
 import PriorityBadge from "./PriorityBadge";
 import EmailPreview from "./EmailPreview";
 import { useAudienceCounts, formatCount, recipientLine, audienceForCampaign, audienceLabel } from "@/lib/email/audience-client";
@@ -20,6 +21,8 @@ interface CampaignDetailProps {
   onReschedule?: (id: string) => Promise<void>;
   /** Send immediately, skipping the AI */
   onSendNow?: (id: string) => Promise<void>;
+  /** Rebuild the pending send from today's template chrome + live listing */
+  onSyncTemplate?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -32,6 +35,7 @@ export default function CampaignDetail({
   onResume,
   onReschedule,
   onSendNow,
+  onSyncTemplate,
   onClose,
 }: CampaignDetailProps) {
   void onUpdate; // reserved for inline edit
@@ -101,6 +105,16 @@ export default function CampaignDetail({
     setActionLoading(false);
     setShowDeleteConfirm(false);
   };
+
+  const handleSyncTemplate = async () => {
+    if (!onSyncTemplate) return;
+    setActionLoading(true);
+    await onSyncTemplate(campaign.id);
+    setActionLoading(false);
+  };
+
+  const templateCurrent = usesCurrentTemplate(campaign);
+  const showSync = !!onSyncTemplate && canSyncTemplate(campaign.status);
 
   return (
     <>
@@ -173,6 +187,15 @@ export default function CampaignDetail({
 
             {/* Content info */}
             <Section title="Email Content">
+              <InfoRow
+                label="Template"
+                value={templateCurrent ? "Current layout" : "Layout updated"}
+                sub={
+                  templateCurrent
+                    ? "Listing photos and fields stay live. Layout stays until you sync."
+                    : "Sync template to apply the new layout. Sent mail is not changed."
+                }
+              />
               {campaign.heading_text && (
                 <InfoRow label="Heading" value={campaign.heading_text} />
               )}
@@ -267,6 +290,16 @@ export default function CampaignDetail({
               >
                 Preview Email
               </button>
+
+              {showSync && (
+                <button
+                  onClick={handleSyncTemplate}
+                  disabled={actionLoading}
+                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
+                >
+                  {actionLoading ? "Syncing..." : templateCurrent ? "Sync template" : "Sync template (layout updated)"}
+                </button>
+              )}
 
               {/* Edit button — opens the full-page composer (draft/scheduled/active only) */}
               {canEdit(campaign.status) && (

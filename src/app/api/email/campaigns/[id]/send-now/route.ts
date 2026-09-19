@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { cancelSend, sendNow, isProviderConfigured } from "@/lib/email/provider";
 import { recordSend, computeNextSendDate } from "@/lib/email/scheduler";
+import { templateStamp } from "@/lib/email/template-version";
 
 /**
  * POST /api/email/campaigns/[id]/send-now — send immediately, skipping the AI.
@@ -51,6 +52,7 @@ export async function POST(
         provider_send_id: isRecurring ? null : broadcastId,
         next_send_date: isRecurring ? nextSend : campaign.next_send_date,
         ai_reasoning: `Sent now by ${auth.email}`,
+        ...templateStamp(),
         updated_at: now,
       })
       .eq("id", params.id)

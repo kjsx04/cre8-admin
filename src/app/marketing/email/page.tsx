@@ -214,6 +214,25 @@ function EmailSchedule() {
     }
   };
 
+  const handleSyncTemplate = async (id: string) => {
+    try {
+      const res = await fetch(`/api/email/campaigns/${id}/sync-template`, {
+        method: "POST",
+        headers: { "x-user-email": userEmail },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Failed to sync template");
+      if (data.provider_sync && data.provider_sync.ok === false) {
+        throw new Error(data.provider_sync.error || "Template synced, but the scheduled send wasn't updated");
+      }
+      await fetchCampaigns();
+      if (selectedCampaign?.id === id) setSelectedCampaign(data);
+    } catch (err) {
+      console.error("Sync template failed:", err);
+      window.alert(err instanceof Error ? err.message : "Failed to sync template");
+    }
+  };
+
   // Send a campaign right now (skips the AI)
   const handleSendNow = async (id: string) => {
     try {
@@ -380,6 +399,7 @@ function EmailSchedule() {
           onResume={handleResume}
           onReschedule={handleReschedule}
           onSendNow={handleSendNow}
+          onSyncTemplate={handleSyncTemplate}
           onClose={() => setSelectedCampaign(null)}
         />
       )}

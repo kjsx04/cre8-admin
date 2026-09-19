@@ -80,6 +80,8 @@ export interface Campaign {
   end_date: string | null;             // ISO timestamp (recurring end)
   status: CampaignStatus;
   ai_reasoning: string | null;
+  template_version: string | null;     // last synced renderEmailHtml chrome id
+  template_synced_at: string | null;
   created_at: string;
   updated_at: string;
 }

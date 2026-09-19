@@ -3,16 +3,20 @@
  *
  * When a listing is saved in the admin portal, any email campaign tied to that
  * listing gets its listing-derived fields refreshed (name, hero photo, page URL,
- * and the auto-built highlights like price / acreage / zoning), then the pending
- * Resend broadcast is updated so the next send goes out with accurate info.
+ * and the auto-built highlights like price / acreage / zoning). If the campaign
+ * is already on today's template chrome, the pending Resend broadcast is
+ * updated so the next send goes out with accurate listing info. A stale
+ * template_version skips that re-push so a chrome deploy cannot rewrite
+ * scheduled HTML without Sync template.
  *
  * Fields the user typed by hand (heading_text, body_text, custom highlights)
- * are never touched.
+ * are never touched. Sent mail is never rewritten.
  */
 
 import { supabase } from "@/lib/flow/supabase";
 import { ListingFieldData } from "@/lib/admin-constants";
 import { syncCampaignToProvider } from "./provider";
+import { usesCurrentTemplate } from "./template-version";
 import { refreshHighlights, buildGroupSummary } from "./utils";
 
 export type ListingSyncResult = {
@@ -82,8 +86,10 @@ export async function syncCampaignsForListing(
     }
     result.updated.push(campaign.id);
 
-    // Push the refreshed content to Resend if there's a pending send
-    if (saved.status === "scheduled" || saved.status === "active") {
+    // Listing fields stay live on the row. Re-push the pending send only when
+    // this campaign is already on today's chrome — otherwise a template deploy
+    // would rewrite scheduled HTML without Sync template.
+    if ((saved.status === "scheduled" || saved.status === "active") && usesCurrentTemplate(saved)) {
       const sync = await syncCampaignToProvider(saved);
       if (sync.provider_send_id !== saved.provider_send_id) {
         await supabase
@@ -129,7 +135,7 @@ export async function syncCampaignsForListing(
       .single();
     if (!saved) continue;
     result.updated.push(g.id);
-    if (saved.status === "scheduled" || saved.status === "active") {
+    if ((saved.status === "scheduled" || saved.status === "active") && usesCurrentTemplate(saved)) {
       const sync = await syncCampaignToProvider(saved);
       if (sync.provider_send_id !== saved.provider_send_id) {
         await supabase.from("email_campaigns").update({ provider_send_id: sync.provider_send_id }).eq("id", g.id);

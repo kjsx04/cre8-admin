@@ -9,6 +9,7 @@
 import { supabase } from "@/lib/flow/supabase";
 import { syncCampaignToProvider, CampaignLike } from "./provider";
 import { splitProviderIds } from "./audience-tokens";
+import { templateStamp } from "./template-version";
 import { CalendarChange, Campaign } from "./types";
 import { expandOccurrences } from "./occurrences";
 import { getSettings } from "./settings-server";
@@ -167,6 +168,7 @@ export async function applySlotAndSync(
     scheduled_date: scheduledDate,
     ai_reasoning: reasoning,
     status: isRecurring ? "active" : "scheduled",
+    ...templateStamp(),
     updated_at: new Date().toISOString(),
   };
   if (isRecurring) fields.next_send_date = scheduledDate;

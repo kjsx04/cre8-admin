@@ -9,9 +9,12 @@
  *   - We render the HTML ourselves (renderEmailHtml) and push it to Resend as a
  *     "Broadcast" scheduled for the campaign's send time. Resend holds it and
  *     delivers on time — our app is not involved at send time.
- *   - When a campaign is edited, syncCampaignToProvider() cancels the pending
- *     broadcast and creates a fresh one from the current row. (Resend only lets
- *     you edit DRAFT broadcasts, so a scheduled one can't be changed in place.)
+ *   - Listing fields overlay live CMS data at push / preview. Template chrome
+ *     stays pinned on template_version until Sync template or a composer save.
+ *   - Sent broadcasts are never rewritten. When a campaign is edited,
+ *     syncCampaignToProvider() cancels the pending broadcast and creates a
+ *     fresh one from the current row. (Resend only lets you edit DRAFT
+ *     broadcasts, so a scheduled one can't be changed in place.)
  *
  * Env vars (set in .env.local + Vercel):
  *   RESEND_API_KEY         — API key
@@ -24,6 +27,7 @@
  */
 
 import { buildTemplateVars, renderEmailHtml } from "./constants";
+import { hydrateCampaignListing } from "./listing-hydrate";
 import { EMAIL_RE, parseAudienceTokens, splitProviderIds } from "./audience-tokens";
 import {
   contactMatchesQuery,
@@ -125,7 +129,7 @@ export function buildFrom(campaign: CampaignLike): string {
   return `${name} <${email}>`;
 }
 
-/** Render the campaign's full HTML from the campaign row */
+/** Render the campaign's full HTML from the campaign row. */
 export function renderCampaignHtml(campaign: CampaignLike): string {
   return renderEmailHtml(buildTemplateVars(campaign));
 }
@@ -181,11 +185,13 @@ async function deliverCampaign(
     throw new Error("No audience selected — pick a Resend list or add a contact");
   }
 
+  const live = await hydrateCampaignListing(campaign);
+
   const created: string[] = [];
   try {
     for (const segmentId of segmentIds) {
       const body: Record<string, unknown> = {
-        ...buildBroadcastBody(campaign, segmentId, opts.nameSuffix),
+        ...buildBroadcastBody(live, segmentId, opts.nameSuffix),
         send: opts.send,
       };
       if (opts.scheduledAt) body.scheduled_at = opts.scheduledAt;
@@ -198,7 +204,7 @@ async function deliverCampaign(
     }
 
     for (const email of extraEmails) {
-      const id = await sendToRecipient(email, campaign, opts.scheduledAt);
+      const id = await sendToRecipient(email, live, opts.scheduledAt);
       if (id) created.push(id);
     }
   } catch (err) {
@@ -331,12 +337,13 @@ async function sendToRecipient(
   scheduledAt?: string,
   opts: { test?: boolean } = {}
 ): Promise<string> {
-  const html = renderCampaignHtml(campaign).replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
+  const live = await hydrateCampaignListing(campaign);
+  const html = renderCampaignHtml(live).replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
   const body: Record<string, unknown> = {
-    from: buildFrom(campaign),
+    from: buildFrom(live),
     to: [recipientEmail],
-    reply_to: ((campaign.broker_email as string) || "").toLowerCase() || undefined,
-    subject: opts.test ? `[TEST] ${buildSubject(campaign)}` : buildSubject(campaign),
+    reply_to: ((live.broker_email as string) || "").toLowerCase() || undefined,
+    subject: opts.test ? `[TEST] ${buildSubject(live)}` : buildSubject(live),
     html,
   };
   if (scheduledAt) body.scheduled_at = scheduledAt;

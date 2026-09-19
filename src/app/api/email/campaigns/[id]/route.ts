@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { syncCampaignToProvider, cancelSend } from "@/lib/email/provider";
 import { scheduleCampaign } from "@/lib/email/scheduler";
+import { templateStamp } from "@/lib/email/template-version";
 
 // GET /api/email/campaigns/[id] — fetch a single campaign
 export async function GET(
@@ -86,6 +87,8 @@ export async function PATCH(
   if (body.status !== undefined) updates.status = body.status;
   if (body.ai_reasoning !== undefined) updates.ai_reasoning = body.ai_reasoning;
 
+  // Composer save is the review step — pin the campaign to today's chrome.
+  Object.assign(updates, templateStamp());
   updates.updated_at = new Date().toISOString();
 
   const { data, error } = await supabase

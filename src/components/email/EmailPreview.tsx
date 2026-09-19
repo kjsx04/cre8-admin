@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { wrapPreviewHtml } from "@/lib/email/preview-wrapper";
@@ -14,13 +14,38 @@ interface EmailPreviewProps {
 
 /**
  * Read-only preview modal (used from the campaign detail panel).
- * Renders the real template client-side — no API call — and offers a test send.
+ * Starts from the campaign row, then overlays live listing CMS fields
+ * via /api/email/preview so photos/price match the listing.
  */
 export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
-  const html = useMemo(
+  const fallbackHtml = useMemo(
     () => wrapPreviewHtml(renderEmailHtml(buildTemplateVars(campaign as unknown as Record<string, unknown>))),
     [campaign]
   );
+  const [html, setHtml] = useState(fallbackHtml);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/email/preview", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(campaign),
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (!cancelled && typeof data.html === "string") {
+          setHtml(wrapPreviewHtml(data.html));
+        }
+      } catch {
+        /* keep the campaign-row fallback */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [campaign]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">

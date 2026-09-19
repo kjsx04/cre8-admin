@@ -1,0 +1,34 @@
+/**
+ * Run: npx tsx src/lib/email/template-version.test.ts
+ */
+
+import { CURRENT_TEMPLATE_VERSION, canSyncTemplate, templateStamp, usesCurrentTemplate } from "./template-version";
+
+let failed = 0;
+function assert(cond: unknown, msg: string) {
+  if (!cond) {
+    failed += 1;
+    console.error("FAIL:", msg);
+  } else {
+    console.log("ok ", msg);
+  }
+}
+
+assert(CURRENT_TEMPLATE_VERSION === "2026-09-19", "version id");
+assert(usesCurrentTemplate({ template_version: CURRENT_TEMPLATE_VERSION }), "current matches");
+assert(usesCurrentTemplate({ template_version: null }), "null is current (pre-version rows)");
+assert(usesCurrentTemplate({}), "missing is current");
+assert(!usesCurrentTemplate({ template_version: "2010-01-01" }), "stale version is frozen");
+
+const stamp = templateStamp(new Date("2026-09-19T12:00:00.000Z"));
+assert(stamp.template_version === CURRENT_TEMPLATE_VERSION, "stamp version");
+assert(stamp.template_synced_at === "2026-09-19T12:00:00.000Z", "stamp time");
+
+assert(canSyncTemplate("draft") && canSyncTemplate("scheduled") && canSyncTemplate("active") && canSyncTemplate("paused"), "syncable statuses");
+assert(!canSyncTemplate("completed") && !canSyncTemplate("cancelled"), "sent/cancelled never sync");
+
+if (failed) {
+  console.error(`\n${failed} failed`);
+  process.exit(1);
+}
+console.log("\nall template-version tests passed");

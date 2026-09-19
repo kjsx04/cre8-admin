@@ -9,6 +9,10 @@
 
 import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupListing } from "./types";
 
+/** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
+ *  shell until the user clicks Sync template (sent mail is never rewritten). */
+export const CURRENT_TEMPLATE_VERSION = "2026-09-19";
+
 // ── Broker senders ──
 // Each campaign sends FROM the chosen broker's cre8advisors.com address (domain verified in Resend).
 export const EMAIL_SENDERS: EmailSender[] = [
