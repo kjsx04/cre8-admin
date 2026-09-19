@@ -4,6 +4,7 @@ import { getAudienceCounts } from "@/lib/email/audience";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const maxDuration = 60;
 
 /**
  * GET /api/email/audience — live Resend segments + contact counts

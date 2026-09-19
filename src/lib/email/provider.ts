@@ -37,6 +37,7 @@ import {
   unwrapContact,
   type MatchedContact,
 } from "./contact-match";
+import { nextContactPageCursor, retryAfterMs } from "./audience-count";
 
 const RESEND_API = "https://api.resend.com";
 
@@ -136,27 +137,48 @@ export function renderCampaignHtml(campaign: CampaignLike): string {
 
 // ── Low-level Resend calls ──
 
+const RESEND_MAX_ATTEMPTS = 8;
+const RESEND_CONCURRENCY = 2;
+
+let resendInflight = 0;
+const resendWaiters: Array<() => void> = [];
+
+async function withResendSlot<T>(fn: () => Promise<T>): Promise<T> {
+  if (resendInflight >= RESEND_CONCURRENCY) {
+    await new Promise<void>((resolve) => resendWaiters.push(resolve));
+  }
+  resendInflight += 1;
+  try {
+    return await fn();
+  } finally {
+    resendInflight -= 1;
+    resendWaiters.shift()?.();
+  }
+}
+
 async function resendFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) throw new Error("RESEND_API_KEY not configured");
-  let last: Response | null = null;
-  for (let attempt = 0; attempt < 4; attempt++) {
-    // Next.js 14 caches GET fetch by default — never cache Resend reads
-    // (a failed/empty first page would otherwise stick as 0 counts).
-    const res = await fetch(`${RESEND_API}${path}`, {
-      ...init,
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        ...(init.headers || {}),
-      },
-    });
-    last = res;
-    if (res.status !== 429) return res;
-    await new Promise((r) => setTimeout(r, Math.min(8000, 400 * 2 ** attempt)));
-  }
-  return last!;
+  return withResendSlot(async () => {
+    let last: Response | null = null;
+    for (let attempt = 0; attempt < RESEND_MAX_ATTEMPTS; attempt++) {
+      // Next.js 14 caches GET fetch by default — never cache Resend reads
+      // (a failed/empty first page would otherwise stick as 0 counts).
+      const res = await fetch(`${RESEND_API}${path}`, {
+        ...init,
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          ...(init.headers || {}),
+        },
+      });
+      last = res;
+      if (res.status !== 429) return res;
+      await new Promise((r) => setTimeout(r, retryAfterMs(attempt, res.headers.get("retry-after"))));
+    }
+    return last!;
+  });
 }
 
 /** Build the broadcast payload for one Resend segment */
@@ -440,10 +462,8 @@ export async function listAllContacts(segmentId?: string): Promise<ResendContact
       out.push(row);
       added += 1;
     }
-    if (!hasMore || rows.length === 0) break;
-    const next = rows[rows.length - 1]?.id || null;
-    // Cursor didn't advance, or this page was all duplicates — stop.
-    if (!next || next === after || added === 0) break;
+    const next = nextContactPageCursor({ rows, hasMore, after, added });
+    if (!next) break;
     after = next;
   }
   return out;

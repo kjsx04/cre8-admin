@@ -12,17 +12,14 @@ import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { AudienceCount } from "./types";
 import { parseAudienceTokens } from "./audience-tokens";
+import { shouldSoftRefreshAudience } from "./audience-count";
 
 let shared: Promise<AudienceCount[]> | null = null;
 let sharedFor = ""; // the user email the shared promise was made with
 
-function allZero(list: AudienceCount[]): boolean {
-  return list.length > 0 && list.every((s) => !s.total && !s.subscribed);
-}
-
 async function fetchAudience(userEmail: string, refresh = false): Promise<AudienceCount[]> {
-  // v=3 busts browsers that cached the old all-zero JSON at /api/email/audience
-  const qs = refresh ? "?refresh=1&v=3" : "?v=3";
+  // v=4 busts browsers that cached Brokers=0 next to live Buyers/Sellers
+  const qs = refresh ? "?refresh=1&v=4" : "?v=4";
   const res = await fetch(`/api/email/audience${qs}`, {
     cache: "no-store",
     headers: { "x-user-email": userEmail, "Cache-Control": "no-cache", Pragma: "no-cache" },
@@ -34,8 +31,8 @@ async function fetchAudience(userEmail: string, refresh = false): Promise<Audien
 
 async function load(userEmail: string): Promise<AudienceCount[]> {
   const first = await fetchAudience(userEmail, false);
-  if (!allZero(first)) return first;
-  // Stale/cached zeros from a bad count — force a live recount
+  if (!shouldSoftRefreshAudience(first)) return first;
+  // Stale/cached zeros from a bad count — force a live recount (?refresh=1)
   return fetchAudience(userEmail, true);
 }
 
@@ -58,7 +55,7 @@ export function useAudience(): AudienceState {
       sharedFor = userEmail;
       shared = load(userEmail)
         .then((list) => {
-          if (allZero(list)) shared = null;
+          if (shouldSoftRefreshAudience(list)) shared = null;
           return list;
         })
         .catch((err) => {
