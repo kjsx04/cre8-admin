@@ -6,6 +6,7 @@
  */
 
 import { buildTemplateVars, renderEmailHtml } from "./constants";
+import { wrapPreviewHtml } from "./preview-wrapper";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -77,6 +78,12 @@ assert(html.includes("background-color:#8CC644") && html.includes(">View listing
 assert(!html.includes("View listing &rarr;"), "old green text-link CTA is gone");
 assert(html.includes("color:#111111"), "title is dark on the light card");
 assert(html.includes("color:#6B7280"), "meta is muted gray on the light card");
+
+const preview = wrapPreviewHtml(html);
+assert(preview.includes('id="cre8-preview-style"'), "composer preview wraps the live email HTML");
+assert(preview.includes("background-color: #FFFFFF !important"), "composer preview pins Option C white cards");
+assert(preview.includes(">View listing</a>"), "composer preview keeps the solid View listing button");
+assert(!preview.includes("View listing &rarr;"), "composer preview does not keep the old text-link CTA");
 assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");
 assert(!html.includes("background-color:#111111;border:1px solid #FFFFFF"), "old dark card chrome is gone");
 assert(!html.includes("padding:6px 6px 0 6px"), "old photo inner padding is gone");
