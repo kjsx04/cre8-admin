@@ -47,13 +47,15 @@ const PREVIEW_STYLE = `
   }
   /* Keep text selectable-looking but not editable */
   * { -webkit-user-select: none; user-select: none; }
-  /* Multiple cards: keep the 2-up 4:3 grid in the ~600px iframe.
+  /* Multiple cards: keep the 2-up 4:3 light-card grid in the ~600px iframe.
      Photos stay 4:3 via padding-bottom:75% — do not also set aspect-ratio.
      table-layout:fixed + clamped title/meta keep every card the same size. */
   .group-grid { width: 100% !important; table-layout: fixed !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
-  .group-card { height: 100% !important; border-radius: 3px !important; overflow: hidden !important; }
+  .group-card { height: 100% !important; background-color: #FFFFFF !important; border-radius: 3px !important; overflow: hidden !important; }
+  .group-meta { background-color: #FFFFFF !important; }
   .group-title {
+    color: #111111 !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
@@ -61,6 +63,7 @@ const PREVIEW_STYLE = `
     max-height: 44px !important;
   }
   .group-summary {
+    color: #6B7280 !important;
     display: -webkit-box !important;
     -webkit-line-clamp: 1;
     -webkit-box-orient: vertical;

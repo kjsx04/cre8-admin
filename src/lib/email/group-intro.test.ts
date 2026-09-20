@@ -65,13 +65,21 @@ assert((html.match(/position:relative;width:100%;height:0;padding-bottom:75%/g) 
 assert(html.includes("max-width: 480px"), "mobile stacks below 480px, not 600");
 assert(!html.includes("@media only screen and (max-width: 600px)"), "600px no longer stacks group cards");
 assert(html.includes("padding:20px 32px 0 32px"), "grid inset matches heading/intro 32px");
-assert(html.includes("padding:0 6px 12px 0"), "left card gutter 6+6=12 between cards");
-assert(html.includes("padding:0 0 12px 6px"), "right card gutter matches left");
+assert(html.includes("padding:0 3px 6px 0"), "left card gutter 3+3=6 between cards");
+assert(html.includes("padding:0 0 6px 3px"), "right card gutter matches left");
 assert(html.includes("border-radius:3px"), "card corners are a few pixels, not pill");
-assert(html.includes("padding:6px 6px 0 6px"), "few pixels between border and photo");
-assert(html.includes("padding:6px 6px 6px 6px"), "meta padding is a few pixels");
+assert(html.includes('bgcolor="#FFFFFF"'), "listing cards are white/light");
+assert(html.includes("background-color:#FFFFFF;border-radius:3px"), "white card chrome");
+assert(html.includes("padding:0;line-height:0;font-size:0;overflow:hidden"), "photo is full-bleed to card edges");
+assert(html.includes("padding:14px 14px 14px 14px"), "white meta block has tight inner padding");
+assert(html.includes('class="group-cta"'), "card CTA is a solid button, not a text link");
+assert(html.includes("background-color:#8CC644") && html.includes(">View listing</a>"), "CRE8 green View listing button");
+assert(!html.includes("View listing &rarr;"), "old green text-link CTA is gone");
+assert(html.includes("color:#111111"), "title is dark on the light card");
+assert(html.includes("color:#6B7280"), "meta is muted gray on the light card");
 assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");
-assert(!html.includes("padding:12px 14px 14px 14px"), "old 12/14 card padding is gone");
+assert(!html.includes("background-color:#111111;border:1px solid #FFFFFF"), "old dark card chrome is gone");
+assert(!html.includes("padding:6px 6px 0 6px"), "old photo inner padding is gone");
 
 const withPhotos = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -88,7 +96,7 @@ const withPhotos = renderEmailHtml(buildTemplateVars({
 assert(withPhotos.includes("padding-bottom:75%"), "photo cards use 4:3 box");
 assert(withPhotos.includes("object-fit:cover"), "cover crop, not letterbox");
 assert(withPhotos.includes("object-position:center center"), "cover is centered");
-assert(withPhotos.includes('width="250"') && withPhotos.includes('height="188"'), "Outlook 4:3 fallback 250×188");
+assert(withPhotos.includes('width="265"') && withPhotos.includes('height="199"'), "Outlook 4:3 fallback 265×199");
 
 const four = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -114,7 +122,7 @@ const mixed = renderEmailHtml(buildTemplateVars({
   email_label: "West Valley",
   heading_text: "LAND · WEST VALLEY",
   group_listings: [
-    { listing_id: "a", name: "A Very Long Listing Name That Would Wrap Across Several Lines If Unclamped", photo_url: "https://cdn/aerial-wide.jpg", url: "https://cre8advisors.com/listings/a", summary: "76.57 Acres · Buckeye · extra meta that should stay one line", chip: "Just Listed" as const },
+    { listing_id: "a", name: "A Very Long Listing Name That Would Wrap Across Several Lines If Unclamped", photo_url: "https://cdn/aerial-wide.jpg", url: "https://cre8advisors.com/listings/a", summary: "76.57 Acres · Buckeye · extra meta that should stay one line", chip: "Under Contract" as const },
     { listing_id: "b", name: "Short", photo_url: "", url: "https://cre8advisors.com/listings/b", summary: "", chip: "" as const },
     { listing_id: "c", name: "Odd last card", photo_url: "", url: "https://cre8advisors.com/listings/c", summary: "10 acres", chip: "Price Reduced" as const },
   ],
@@ -130,8 +138,10 @@ assert((mixed.match(/class="group-title"/g) || []).length === 3, "every card has
 assert((mixed.match(/class="group-summary"/g) || []).length === 3, "every card has the same summary slot");
 assert((mixed.match(/class="group-chip"/g) || []).length === 3, "every card has the same chip slot");
 assert((mixed.match(/padding-bottom:75%/g) || []).length >= 3, "every card photo box is 4:3 including placeholders");
-assert(mixed.includes('width="250"') && mixed.includes('height="188"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 250×188 box");
+assert(mixed.includes('width="265"') && mixed.includes('height="199"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 265×199 box");
 assert(mixed.includes("VIEW ALL LISTINGS"), "group CTA unchanged");
+assert(mixed.includes("color:#C2410C"), "Under Contract status is amber/brown");
+assert((mixed.match(/class="group-cta"/g) || []).length === 3, "every card has a solid View listing button");
 
 const single = renderEmailHtml(buildTemplateVars({
   campaign_kind: "single",
