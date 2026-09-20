@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-19-8";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-20-1";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -259,25 +259,27 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       </tr>
                     </table>`;
 
-  // Group (digest) grid — two uniform 4:3 landscape listing cards per row
-  // (fixed 50/50 table). Every card uses the same photo box + title/meta/footer
-  // heights so left/right (and odd last) cards align. Outer inset stays 32px
-  // (heading/intro/body). Between-card gutter is modest (12px). Inner card
-  // chrome is a few pixels so the photo/info fill the card.
+  // Group (digest) grid — Option C: white/light cards on the dark email.
+  // Two uniform 4:3 landscape listing cards per row (fixed 50/50 table).
+  // Photo is full-bleed to the card edges. White meta block under the photo
+  // holds status / dark title / muted acres·city / solid CRE8 green button.
+  // Every card uses the same photo box + title/meta/footer heights so
+  // left/right (and odd last) cards align. Outer inset stays 32px
+  // (heading/intro/body). Between-card gutter is a few pixels (6px).
   const isGroup = vars.groupListings.length > 0;
   const GROUP_INSET = 32;
-  const GROUP_GUTTER = 12;
+  const GROUP_GUTTER = 6;
   const GROUP_HALF = GROUP_GUTTER / 2;
-  const GROUP_CARD_PAD = 6;
+  const GROUP_META_PAD = "14px 14px 14px 14px";
   const GROUP_CARD_RADIUS = 3;
-  const GROUP_PHOTO_W = 250; // Outlook: (600 − 32 − 12 − 32) / 2 − 6 − 6
-  const GROUP_PHOTO_H = 188; // 4:3 landscape (250 × 3/4 ≈ 188)
+  const GROUP_PHOTO_W = 265; // Outlook: (600 − 32 − 6 − 32) / 2
+  const GROUP_PHOTO_H = 199; // 4:3 landscape (265 × 3/4 ≈ 199)
   const GROUP_TITLE_H = 44; // 19px × 1.15 × 2 lines
   const GROUP_CHIP_H = 17; // 13px type + 4px gap
   const GROUP_SUMMARY_H = 21; // 4px gap + 17px one-liner
-  const GROUP_FOOTER_H = 25; // 10px gap + 15px link
+  const GROUP_FOOTER_H = 42; // 10px gap + 32px solid button
   const groupPhotoBox = (inner: string, bgImage: string) =>
-    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:75%;background-color:#222222;${bgImage}border-radius:${GROUP_CARD_RADIUS}px ${GROUP_CARD_RADIUS}px 0 0;overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
+    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:75%;background-color:#222222;${bgImage}overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
   const groupChip = (chip: string) => {
     const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : chip ? "#8CC644" : "transparent";
     return `<p class="group-chip" style="margin:0;height:13px;max-height:13px;overflow:hidden;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${chip ? escapeHtml(chip) : "&nbsp;"}</p>`;
@@ -294,16 +296,24 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       : `${outlookEmpty}<!--[if !mso]><!-->${groupPhotoBox("&nbsp;", "")}<!--<![endif]-->`;
     return `<a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${photo}</a>`;
   };
+  const groupCta = (href: string) =>
+    `<table role="presentation" class="group-cta" cellpadding="0" cellspacing="0" border="0">
+                                  <tr>
+                                    <td align="center" bgcolor="#8CC644" style="background-color:#8CC644;border-radius:4px;">
+                                      <a href="${href}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:${EMAIL_FONT};font-size:12px;font-weight:700;text-decoration:none;padding:8px 16px;border-radius:4px;line-height:1.2;">View listing</a>
+                                    </td>
+                                  </tr>
+                                </table>`;
   const groupCard = (g: GroupListing, i: number) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
-    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#111111;border:1px solid #FFFFFF;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;height:100%;">
+    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;height:100%;">
                         <tr>
-                          <td valign="top" style="padding:${GROUP_CARD_PAD}px ${GROUP_CARD_PAD}px 0 ${GROUP_CARD_PAD}px;line-height:0;font-size:0;border-radius:${GROUP_CARD_RADIUS}px ${GROUP_CARD_RADIUS}px 0 0;overflow:hidden;">
+                          <td valign="top" style="padding:0;line-height:0;font-size:0;overflow:hidden;">
                             ${groupPhoto(g)}
                           </td>
                         </tr>
                         <tr>
-                          <td class="group-meta" valign="top" style="padding:${GROUP_CARD_PAD}px ${GROUP_CARD_PAD}px ${GROUP_CARD_PAD}px ${GROUP_CARD_PAD}px;">
+                          <td class="group-meta" valign="top" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:${GROUP_META_PAD};">
                             <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                               <tr>
                                 <td class="group-chip-cell" height="${GROUP_CHIP_H}" valign="top" style="height:${GROUP_CHIP_H}px;padding:0 0 4px 0;overflow:hidden;">
@@ -313,18 +323,18 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                               <tr>
                                 <td class="group-title-cell" height="${GROUP_TITLE_H}" valign="top" style="height:${GROUP_TITLE_H}px;max-height:${GROUP_TITLE_H}px;overflow:hidden;">
                                   <a href="${href}" target="_blank" style="text-decoration:none;">
-                                    <p class="group-title" style="margin:0;height:${GROUP_TITLE_H}px;max-height:${GROUP_TITLE_H}px;overflow:hidden;font-family:${EMAIL_FONT};font-size:19px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:0.5px;word-wrap:break-word;overflow-wrap:anywhere;">${escapeHtml(g.name)}</p>
+                                    <p class="group-title" style="margin:0;height:${GROUP_TITLE_H}px;max-height:${GROUP_TITLE_H}px;overflow:hidden;font-family:${EMAIL_FONT};font-size:19px;font-weight:700;text-transform:uppercase;color:#111111;line-height:1.15;letter-spacing:0.5px;word-wrap:break-word;overflow-wrap:anywhere;">${escapeHtml(g.name)}</p>
                                   </a>
                                 </td>
                               </tr>
                               <tr>
                                 <td class="group-summary-cell" height="${GROUP_SUMMARY_H}" valign="top" style="height:${GROUP_SUMMARY_H}px;max-height:${GROUP_SUMMARY_H}px;padding:4px 0 0 0;overflow:hidden;">
-                                  <p class="group-summary" style="margin:0;height:17px;max-height:17px;overflow:hidden;font-family:${EMAIL_FONT};font-size:12px;color:#BFBFBF;line-height:1.4;word-wrap:break-word;overflow-wrap:anywhere;">${g.summary ? escapeHtml(g.summary) : "&nbsp;"}</p>
+                                  <p class="group-summary" style="margin:0;height:17px;max-height:17px;overflow:hidden;font-family:${EMAIL_FONT};font-size:12px;color:#6B7280;line-height:1.4;word-wrap:break-word;overflow-wrap:anywhere;">${g.summary ? escapeHtml(g.summary) : "&nbsp;"}</p>
                                 </td>
                               </tr>
                               <tr>
                                 <td class="group-footer-cell" height="${GROUP_FOOTER_H}" valign="bottom" style="height:${GROUP_FOOTER_H}px;padding:10px 0 0 0;">
-                                  <a href="${href}" target="_blank" style="display:inline-block;font-family:${EMAIL_FONT};font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:#8CC644;text-decoration:none;line-height:1.3;">View listing &rarr;</a>
+                                  ${groupCta(href)}
                                 </td>
                               </tr>
                             </table>
@@ -422,10 +432,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       .body, .body-table { background-color: #111111 !important; }
       .card-bg { background-color: #1A1A1A !important; }
     }
-    /* Uniform 2-up cards: fixed columns, clamped title/meta, 4:3 photos. */
+    /* Uniform 2-up light cards: fixed columns, clamped title/meta, 4:3 photos. */
     .group-grid { table-layout: fixed !important; width: 100% !important; }
-    .group-card { height: 100% !important; border-radius: 3px !important; overflow: hidden !important; }
+    .group-card { height: 100% !important; background-color: #FFFFFF !important; border-radius: 3px !important; overflow: hidden !important; }
+    .group-meta { background-color: #FFFFFF !important; }
     .group-title {
+      color: #111111 !important;
       display: -webkit-box !important;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -433,6 +445,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       max-height: 44px !important;
     }
     .group-summary {
+      color: #6B7280 !important;
       display: -webkit-box !important;
       -webkit-line-clamp: 1;
       -webkit-box-orient: vertical;
@@ -542,7 +555,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Group grid — two 4:3 landscape listing cards per row, modest 12px gutters -->
+          <!-- Group grid — two 4:3 landscape light cards per row, 6px gutters -->
           ${isGroup ? `
           <tr>
             <td style="padding:20px ${GROUP_INSET}px 0 ${GROUP_INSET}px;">
