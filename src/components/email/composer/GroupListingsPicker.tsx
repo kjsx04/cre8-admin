@@ -2,10 +2,10 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ListingItem } from "@/lib/admin-constants";
-import { GroupListing, GroupChip } from "@/lib/email/types";
+import { GroupListing } from "@/lib/email/types";
 import { listingToGroupCard } from "@/lib/email/utils";
 import { FieldProps } from "./fieldProps";
-import { COMPOSER_FIELD, COMPOSER_FIELD_SEARCH, ChoiceButton } from "./composer-ui";
+import { COMPOSER_FIELD, COMPOSER_FIELD_SEARCH } from "./composer-ui";
 
 interface GroupListingsPickerProps {
   listings: ListingItem[];
@@ -17,13 +17,12 @@ interface GroupListingsPickerProps {
 
 const INPUT = `${COMPOSER_FIELD} py-1.5`;
 const SEARCH = COMPOSER_FIELD_SEARCH;
-const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"];
 
 /**
  * Section 2 (group emails) — pick several listings, order them, tune each card.
  * Search query and filtered results stay after Add so you can keep picking
  * every listing on that street/county without re-typing.
- * Each card: photo (from the listing's gallery), name, one-line summary, status chip.
+ * Each card: photo (from the listing's gallery), name, one-line summary, free-text eyebrow.
  */
 export default function GroupListingsPicker({ listings, loading, cards, onChange, fieldProps }: GroupListingsPickerProps) {
   const [open, setOpen] = useState(false);
@@ -189,18 +188,12 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                       placeholder="Acres · City"
                       className={`${INPUT} text-xs`}
                     />
-                    <div className="flex items-center gap-1.5">
-                      {CHIPS.map((chip) => (
-                        <ChoiceButton
-                          key={chip || "none"}
-                          selected={c.chip === chip}
-                          onClick={() => update(c.listing_id, { chip })}
-                          className="px-2.5 py-0.5 text-[11px]"
-                        >
-                          {chip || "No chip"}
-                        </ChoiceButton>
-                      ))}
-                    </div>
+                    <input
+                      value={c.chip || ""}
+                      onChange={(e) => update(c.listing_id, { chip: e.target.value })}
+                      placeholder="Eyebrow (optional)"
+                      className={`${INPUT} text-xs`}
+                    />
                   </div>
 
                   {/* Order + remove */}

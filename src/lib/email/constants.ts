@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-21-3";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-21-4";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -82,12 +82,10 @@ export const STATUS_COLORS: Record<string, string> = {
 };
 
 // ── CRE8 branding constants for email template ──
-// Gmail doesn't render SVG images. White mark is for dark chrome; color mark
-// (black CRE + green 8, raster of public/cre8-logo.svg) is for light Multiple emails.
+// Gmail doesn't render SVG images. White mark is for the dark chrome
+// (Single #1A1A1A card, Multiple #000 card).
 const CRE8_LOGO_URL = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/email-assets/brand/cre8-white.png";
 const CRE8_LOGO_RATIO = 340 / 116;
-const CRE8_LOGO_URL_COLOR = "https://admin.cre8advisors.com/cre8-logo-color.png";
-const CRE8_LOGO_RATIO_COLOR = 1020 / 247;
 // Header logo heights: alone vs. with a partner logo (75%)
 const HEADER_LOGO_H = 30;
 const HEADER_LOGO_H_PAIRED = 23;
@@ -193,9 +191,9 @@ function parseHighlight(h: string): { label: string; value: string } {
  * Render the full HTML email for a campaign.
  * Used by the preview endpoint, test sends, and Resend broadcast creation.
  * Single-listing emails keep the dark premium CRE8 chrome. Multiple
- * (group) emails use a light grey shell so white listing cards sit on
- * a light page. Table-based layout with all inline styles for maximum
- * email client compatibility.
+ * (group) emails use a black shell with Option D editorial strips
+ * (photo left, copy right). Table-based layout with all inline styles
+ * for maximum email client compatibility.
  */
 // NOTE: the `data-field="…"` attributes below are inert in email clients. The
 // composer's live preview uses them to map a click in the email to the matching
@@ -232,19 +230,21 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   }
 
   const isGroup = vars.groupListings.length > 0;
-  const shellBg = isGroup ? "#F5F5F5" : "#1A1A1A";
-  const headingColor = isGroup ? "#1A1A1A" : "#FFFFFF";
-  const copyColor = isGroup ? "#1A1A1A" : "#BFBFBF";
-  const addressColor = isGroup ? "#333333" : "#999999";
-  const pageBg = isGroup ? "#F5F5F5" : "#FFFFFF";
-  const bandBg = isGroup ? "#F5F5F5" : "#000000";
-  const brokerNameColor = isGroup ? "#1A1A1A" : "#FFFFFF";
-  const brokerPhoneColor = isGroup ? "#333333" : "#BFBFBF";
-  const footerBorder = isGroup ? "#A3A3A3" : "#333333";
-  const footerMuted = isGroup ? "#333333" : "#666666";
-  const partnerDivider = isGroup ? "#D1D5DB" : "#444444";
-  const cre8LogoUrl = isGroup ? CRE8_LOGO_URL_COLOR : CRE8_LOGO_URL;
-  const cre8LogoRatio = isGroup ? CRE8_LOGO_RATIO_COLOR : CRE8_LOGO_RATIO;
+  // Multiple is black (#000). Single stays the near-black #1A1A1A card.
+  // Copy, broker band, and the white logo match the dark chrome.
+  const shellBg = isGroup ? "#000000" : "#1A1A1A";
+  const headingColor = "#FFFFFF";
+  const copyColor = "#BFBFBF";
+  const addressColor = "#999999";
+  const pageBg = "#FFFFFF";
+  const bandBg = "#000000";
+  const brokerNameColor = "#FFFFFF";
+  const brokerPhoneColor = "#BFBFBF";
+  const footerBorder = "#333333";
+  const footerMuted = "#666666";
+  const partnerDivider = "#444444";
+  const cre8LogoUrl = CRE8_LOGO_URL;
+  const cre8LogoRatio = CRE8_LOGO_RATIO;
 
   // CTA text varies by campaign type
   const ctaText = isGroup ? "VIEW ALL LISTINGS" : vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
@@ -281,108 +281,62 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                       </tr>
                     </table>`;
 
-  // Group (digest) grid — Option C white cards on a light grey email.
-  // Two uniform 4:3 landscape listing cards per row (fixed 50/50 table).
-  // Photo is full-bleed to the card edges. White meta block under the photo
-  // holds status / dark title / muted acres·city / solid CRE8 green button.
-  // Every card uses the same photo box + title/meta/footer heights so
-  // left/right (and odd last) cards align. Outer inset stays 32px
-  // (heading/intro/body). Between-card gutter is a few pixels (6px).
+  // Option D — full-width editorial strips on the black Multiple shell.
+  // Photo left (~42% of the 536px content box ≈ 225px, 1:1), copy right:
+  // optional eyebrow, white uppercase title, muted acres·city, green text link.
+  // Cards stack vertically with a 10px gap. Empty eyebrow is omitted.
   const GROUP_INSET = 32;
-  const GROUP_GUTTER = 6;
-  const GROUP_HALF = GROUP_GUTTER / 2;
-  const GROUP_META_PAD = "14px 14px 14px 14px";
+  const GROUP_GAP = 10;
+  const GROUP_PHOTO = 225; // Outlook fallback; 42% of (600 − 32 − 32)
   const GROUP_CARD_RADIUS = 3;
-  const GROUP_PHOTO_W = 265; // Outlook: (600 − 32 − 6 − 32) / 2
-  const GROUP_PHOTO_H = 199; // 4:3 landscape (265 × 3/4 ≈ 199)
-  const GROUP_TITLE_H = 44; // 19px × 1.15 × 2 lines
-  const GROUP_CHIP_H = 17; // 13px type + 4px gap
-  const GROUP_SUMMARY_H = 21; // 4px gap + 17px one-liner
-  const GROUP_FOOTER_H = 42; // 10px gap + 32px solid button
   const groupPhotoBox = (inner: string, bgImage: string) =>
-    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:75%;background-color:#222222;${bgImage}overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
-  const groupChip = (chip: string) => {
-    const color = chip === "Under Contract" ? "#C2410C" : chip === "Price Reduced" ? "#EF4444" : chip ? "#8CC644" : "transparent";
-    return `<p class="group-chip" style="margin:0;height:13px;max-height:13px;overflow:hidden;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:${color};line-height:1.3;">${chip ? escapeHtml(chip) : "&nbsp;"}</p>`;
-  };
+    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:100%;background-color:#1A1A1A;${bgImage}overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
   const groupPhoto = (g: GroupListing) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
     const alt = escapeHtml(g.name);
-    const outlookEmpty = `<!--[if mso]><table role="presentation" width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" cellpadding="0" cellspacing="0" border="0" bgcolor="#222222"><tr><td width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" bgcolor="#222222" style="width:${GROUP_PHOTO_W}px;height:${GROUP_PHOTO_H}px;background-color:#222222;font-size:0;line-height:0;">&nbsp;</td></tr></table><![endif]-->`;
+    const outlookEmpty = `<!--[if mso]><table role="presentation" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" cellpadding="0" cellspacing="0" border="0" bgcolor="#1A1A1A"><tr><td width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" bgcolor="#1A1A1A" style="width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;background-color:#1A1A1A;font-size:0;line-height:0;">&nbsp;</td></tr></table><![endif]-->`;
     const photo = g.photo_url
-      ? `<!--[if mso]><img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" style="display:block;width:${GROUP_PHOTO_W}px;height:${GROUP_PHOTO_H}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!-->${groupPhotoBox(
-          `<img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO_W}" height="${GROUP_PHOTO_H}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center;border:0;outline:none;text-decoration:none;" />`,
+      ? `<!--[if mso]><img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="display:block;width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!-->${groupPhotoBox(
+          `<img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center;border:0;outline:none;text-decoration:none;" />`,
           `background-image:url('${g.photo_url}');background-size:cover;background-position:center center;background-repeat:no-repeat;`
         )}<!--<![endif]-->`
       : `${outlookEmpty}<!--[if !mso]><!-->${groupPhotoBox("&nbsp;", "")}<!--<![endif]-->`;
     return `<a href="${href}" target="_blank" style="display:block;line-height:0;font-size:0;border:0;text-decoration:none;">${photo}</a>`;
   };
-  const groupCta = (href: string) =>
-    `<table role="presentation" class="group-cta" cellpadding="0" cellspacing="0" border="0">
-                                  <tr>
-                                    <td align="center" bgcolor="#8CC644" style="background-color:#8CC644;border-radius:4px;">
-                                      <a href="${href}" target="_blank" style="display:inline-block;background-color:#8CC644;color:#000000;font-family:${EMAIL_FONT};font-size:12px;font-weight:700;text-decoration:none;padding:8px 16px;border-radius:4px;line-height:1.2;">View listing</a>
-                                    </td>
-                                  </tr>
-                                </table>`;
+  const groupEyebrow = (chip: string) => {
+    const text = (chip || "").trim();
+    if (!text) return "";
+    return `<p class="group-chip" style="margin:0 0 6px 0;font-family:${EMAIL_FONT};font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.2px;color:#f59e0b;line-height:1.3;">${escapeHtml(text)}</p>`;
+  };
   const groupCard = (g: GroupListing, i: number) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
-    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #E5E5E5;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;height:100%;">
+    const summary = (g.summary || "").trim();
+    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#111111" style="background-color:#111111;border:1px solid #2a2a2a;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;">
                         <tr>
-                          <td valign="top" style="padding:0;line-height:0;font-size:0;overflow:hidden;">
+                          <td class="group-photo-cell" width="42%" valign="middle" bgcolor="#1A1A1A" style="width:42%;padding:0;line-height:0;font-size:0;background-color:#1A1A1A;">
                             ${groupPhoto(g)}
                           </td>
-                        </tr>
-                        <tr>
-                          <td class="group-meta" valign="top" bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:${GROUP_META_PAD};">
-                            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                              <tr>
-                                <td class="group-chip-cell" height="${GROUP_CHIP_H}" valign="top" style="height:${GROUP_CHIP_H}px;padding:0 0 4px 0;overflow:hidden;">
-                                  ${groupChip(g.chip)}
-                                </td>
-                              </tr>
-                              <tr>
-                                <td class="group-title-cell" height="${GROUP_TITLE_H}" valign="top" style="height:${GROUP_TITLE_H}px;max-height:${GROUP_TITLE_H}px;overflow:hidden;">
-                                  <a href="${href}" target="_blank" style="text-decoration:none;">
-                                    <p class="group-title" style="margin:0;height:${GROUP_TITLE_H}px;max-height:${GROUP_TITLE_H}px;overflow:hidden;font-family:${EMAIL_FONT};font-size:19px;font-weight:700;text-transform:uppercase;color:#111111;line-height:1.15;letter-spacing:0.5px;word-wrap:break-word;overflow-wrap:anywhere;">${escapeHtml(g.name)}</p>
-                                  </a>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td class="group-summary-cell" height="${GROUP_SUMMARY_H}" valign="top" style="height:${GROUP_SUMMARY_H}px;max-height:${GROUP_SUMMARY_H}px;padding:4px 0 0 0;overflow:hidden;">
-                                  <p class="group-summary" style="margin:0;height:17px;max-height:17px;overflow:hidden;font-family:${EMAIL_FONT};font-size:12px;color:#6B7280;line-height:1.4;word-wrap:break-word;overflow-wrap:anywhere;">${g.summary ? escapeHtml(g.summary) : "&nbsp;"}</p>
-                                </td>
-                              </tr>
-                              <tr>
-                                <td class="group-footer-cell" height="${GROUP_FOOTER_H}" valign="bottom" style="height:${GROUP_FOOTER_H}px;padding:10px 0 0 0;">
-                                  ${groupCta(href)}
-                                </td>
-                              </tr>
-                            </table>
+                          <td class="group-copy-cell" valign="middle" bgcolor="#111111" style="background-color:#111111;padding:12px 14px;">
+                            ${groupEyebrow(g.chip)}
+                            <a href="${href}" target="_blank" style="text-decoration:none;">
+                              <p class="group-title" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.25;letter-spacing:0.4px;">${escapeHtml(g.name)}</p>
+                            </a>
+                            ${summary ? `<p class="group-summary" style="margin:6px 0 0 0;font-family:${EMAIL_FONT};font-size:12px;color:#A3A3A3;line-height:1.4;">${escapeHtml(summary)}</p>` : ""}
+                            <a href="${href}" target="_blank" class="group-cta" style="display:inline-block;margin:10px 0 0 0;font-family:${EMAIL_FONT};font-size:13px;font-weight:600;color:#8CC644;text-decoration:none;line-height:1.3;">View listing &rarr;</a>
                           </td>
                         </tr>
                       </table>`;
   };
   let groupGridHtml = "";
   if (isGroup) {
-    // Real 50/50 table so the composer preview (≈534–600px iframe) stays 2-up.
-    // table-layout:fixed keeps both cards the same width even with long titles.
-    // Phones stack; an empty odd-row cell is hidden so it does not add a gap.
-    const rows: string[] = [];
-    for (let i = 0; i < vars.groupListings.length; i += 2) {
-      const left = groupCard(vars.groupListings[i], i);
-      const hasRight = i + 1 < vars.groupListings.length;
-      const right = hasRight ? groupCard(vars.groupListings[i + 1], i + 1) : "";
-      rows.push(`<tr>
-                <td class="group-col" width="50%" valign="top" style="width:50%;padding:0 ${GROUP_HALF}px ${GROUP_GUTTER}px 0;">
-                  ${left}
+    groupGridHtml = vars.groupListings.map((g, i) => {
+      const last = i === vars.groupListings.length - 1;
+      return `<tr>
+                <td style="padding:0 0 ${last ? 0 : GROUP_GAP}px 0;">
+                  ${groupCard(g, i)}
                 </td>
-                <td class="group-col${hasRight ? "" : " group-col-empty"}" width="50%" valign="top" style="width:50%;padding:0 0 ${GROUP_GUTTER}px ${GROUP_HALF}px;">
-                  ${right || "&nbsp;"}
-                </td>
-              </tr>`);
-    }
-    groupGridHtml = rows.join("");
+              </tr>`;
+    }).join("");
   }
 
   // Broker rows sit on the email shell — dark band for single, light for Multiple.
@@ -426,8 +380,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="x-apple-disable-message-reformatting" />
-  <meta name="color-scheme" content="${isGroup ? "light only" : "light dark"}" />
-  <meta name="supported-color-schemes" content="${isGroup ? "light" : "light dark"}" />
+  <meta name="color-scheme" content="light dark" />
+  <meta name="supported-color-schemes" content="light dark" />
   <title>${escapeHtml(vars.heading)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -445,67 +399,20 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     /* Web font: Inter (admin UI). Old import was Bebas Neue + DM Sans. */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Light mode default — white outer for single; light grey Multiple shell */
-    :root { color-scheme: ${isGroup ? "light only" : "light dark"}; supported-color-schemes: ${isGroup ? "light" : "light dark"}; }
+    /* Light mode default — white outer page; the card itself is dark */
+    :root { color-scheme: light dark; supported-color-schemes: light dark; }
 
-    /* Dark mode: keep the dark single-listing card intact. Multiple emails
-       stay light so heading/intro never go white-on-white or charcoal-on-charcoal. */
+    /* Dark mode: keep the dark card intact (Single #1A1A1A, Multiple #000). */
     @media (prefers-color-scheme: dark) {
-      .body, .body-table { background-color: ${isGroup ? "#F5F5F5" : "#111111"} !important; }
-      .card-bg { background-color: ${isGroup ? "#F5F5F5" : "#1A1A1A"} !important; }
-      .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
-      .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
-      .group-rule { border-top: 1px solid #A3A3A3 !important; }
+      .body, .body-table { background-color: #111111 !important; }
+      .card-bg { background-color: ${shellBg} !important; }
     }
-    .group-shell { background-color: #F5F5F5 !important; }
-    .group-header { background-color: #F5F5F5 !important; }
-    .group-band { background-color: #F5F5F5 !important; }
-    .group-rule { border-top: 1px solid #A3A3A3 !important; }
-    .group-label { color: #1A1A1A !important; }
-    .group-copy { color: #1A1A1A !important; }
-    .group-broker-name { color: #1A1A1A !important; }
-    /* Uniform 2-up light cards: fixed columns, clamped title/meta, 4:3 photos. */
-    .group-grid { table-layout: fixed !important; width: 100% !important; }
-    .group-card { height: 100% !important; background-color: #FFFFFF !important; border: 1px solid #E5E5E5 !important; border-radius: 3px !important; overflow: hidden !important; }
-    .group-meta { background-color: #FFFFFF !important; }
-    .group-title {
-      color: #111111 !important;
-      display: -webkit-box !important;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden !important;
-      max-height: 44px !important;
-    }
-    .group-summary {
-      color: #6B7280 !important;
-      display: -webkit-box !important;
-      -webkit-line-clamp: 1;
-      -webkit-box-orient: vertical;
-      overflow: hidden !important;
-      max-height: 17px !important;
-    }
-    /* Phones: stack the 50/50 listing cards. 480px — not 600 — so the
-       composer preview iframe (~534–600px) and desktop clients stay 2-up. */
-    @media only screen and (max-width: 480px) {
-      .group-col {
-        display: block !important;
-        width: 100% !important;
-        max-width: 100% !important;
-        box-sizing: border-box !important;
-        padding-left: 0 !important;
-        padding-right: 0 !important;
-      }
-      .group-col-empty {
-        display: none !important;
-        width: 0 !important;
-        height: 0 !important;
-        max-height: 0 !important;
-        padding: 0 !important;
-        font-size: 0 !important;
-        line-height: 0 !important;
-        overflow: hidden !important;
-      }
-    }
+    /* Option D strips — dark shell, amber eyebrow, white title, green text link. */
+    .group-card { background-color: #111111 !important; border: 1px solid #2a2a2a !important; border-radius: 3px !important; overflow: hidden !important; }
+    .group-title { color: #FFFFFF !important; }
+    .group-summary { color: #A3A3A3 !important; }
+    .group-chip { color: #f59e0b !important; }
+    .group-cta { color: #8CC644 !important; }
     u + .body { background-color: ${pageBg} !important; }
     [data-ogsc] .body { background-color: ${pageBg} !important; }
   </style>
@@ -517,7 +424,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     ${escapeHtml(vars.preheaderText)}${preheaderSpacer}
   </div>
 
-  <!-- Outer wrapper — white for single, light grey for Multiple -->
+  <!-- Outer wrapper — white page; the card is dark (Single #1A1A1A, Multiple #000) -->
   <table role="presentation" class="body-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${pageBg};">
     <tr>
       <td align="center" style="padding:32px 16px;">
@@ -527,7 +434,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
           <!-- Combined header — Label + Heading on left, CRE8 logo on right -->
           <tr>
-            <td${isGroup ? ' class="group-header"' : ""} style="background-color:${shellBg};padding:${isGroup ? "28px 32px 14px 32px" : "28px 32px"};">
+            <td${isGroup ? ' class="group-header"' : ""} style="background-color:${shellBg};padding:${isGroup ? "26px 32px 12px 32px" : "26px 32px"};">
               <!--[if mso]>
               <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
               <v:fill type="tile" color="${shellBg}"/>
@@ -587,11 +494,11 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Group grid — two 4:3 landscape white cards per row on light grey -->
+          <!-- Group strips — full-width Option D cards, stacked -->
           ${isGroup ? `
           <tr>
-            <td style="padding:20px ${GROUP_INSET}px 0 ${GROUP_INSET}px;">
-              <table role="presentation" class="group-grid" width="100%" cellpadding="0" cellspacing="0" border="0" style="table-layout:fixed;width:100%;">
+            <td style="padding:16px ${GROUP_INSET}px 0 ${GROUP_INSET}px;">
+              <table role="presentation" class="group-grid" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
                 ${groupGridHtml}
               </table>
             </td>
@@ -620,7 +527,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <!-- CTA button — dark text on green -->
           ${(vars.listingUrl || isGroup) ? `
           <tr>
-            <td data-field="cta" style="padding:28px 32px 0 32px;text-align:center;">
+            <td data-field="cta" style="padding:16px 32px 0 32px;text-align:center;line-height:0;font-size:0;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
                 <tr>
                   <td align="center" style="border-radius:4px;background-color:#8CC644;">
@@ -645,7 +552,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
           <!-- Broker band — black on single, light on Multiple -->
           <tr>
-            <td data-field="broker"${isGroup ? ' class="group-band group-rule"' : ""} style="background-color:${bandBg};${isGroup ? `border-top:1px solid ${footerBorder};` : ""}padding:28px 32px;">
+            <td data-field="broker"${isGroup ? ' class="group-band group-rule"' : ""} style="background-color:${bandBg};${isGroup ? `border-top:1px solid ${footerBorder};` : ""}padding:12px 32px 20px 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${brokerCardsHtml}
               </table>

@@ -32,13 +32,9 @@ export const PREVIEW_FOCUS_CLASS = "cre8-focus";
 
 const PREVIEW_STYLE = `
 <style id="cre8-preview-style">
-  /* Light page behind the email so the card floats in the composer */
+  /* Light page behind the email so the dark card floats in the composer */
   html, body { background-color: #F5F5F5 !important; }
   body > table { background-color: #F5F5F5 !important; }
-  /* Multiple emails: pin the light shell so OS dark mode cannot restore charcoal chrome */
-  .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
-  .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
-  .group-rule { border-top: 1px solid #A3A3A3 !important; }
   /* Clickable regions */
   [data-field] { cursor: pointer; }
   [data-field] a { cursor: pointer; }
@@ -51,33 +47,13 @@ const PREVIEW_STYLE = `
   }
   /* Keep text selectable-looking but not editable */
   * { -webkit-user-select: none; user-select: none; }
-  /* Multiple cards: keep the 2-up 4:3 light-card grid in the ~600px iframe.
-     Photos stay 4:3 via padding-bottom:75% — do not also set aspect-ratio.
-     table-layout:fixed + clamped title/meta keep every card the same size. */
-  .group-grid { width: 100% !important; table-layout: fixed !important; }
-  .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
-  .group-card { height: 100% !important; background-color: #FFFFFF !important; border: 1px solid #E5E5E5 !important; border-radius: 3px !important; overflow: hidden !important; }
-  .group-meta { background-color: #FFFFFF !important; }
-  .group-title {
-    color: #111111 !important;
-    display: -webkit-box !important;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden !important;
-    max-height: 44px !important;
-  }
-  .group-summary {
-    color: #6B7280 !important;
-    display: -webkit-box !important;
-    -webkit-line-clamp: 1;
-    -webkit-box-orient: vertical;
-    overflow: hidden !important;
-    max-height: 17px !important;
-  }
-  @media only screen and (max-width: 480px) {
-    .group-col { display: block !important; width: 100% !important; max-width: 100% !important; padding-left: 0 !important; padding-right: 0 !important; }
-    .group-col-empty { display: none !important; width: 0 !important; height: 0 !important; padding: 0 !important; overflow: hidden !important; }
-  }
+  /* Option D strips: pin dark card chrome so the composer canvas cannot wash it out. */
+  .group-grid { width: 100% !important; }
+  .group-card { background-color: #111111 !important; border: 1px solid #2a2a2a !important; border-radius: 3px !important; overflow: hidden !important; }
+  .group-title { color: #FFFFFF !important; }
+  .group-summary { color: #A3A3A3 !important; }
+  .group-chip { color: #f59e0b !important; }
+  .group-cta { color: #8CC644 !important; }
 </style>`;
 
 /**
