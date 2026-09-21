@@ -88,14 +88,18 @@ assert(html.includes("color-scheme: light only"), "Multiple emails stay light in
 assert(html.includes("cre8-logo-color.png"), "Multiple uses the black-and-green CRE8 logo");
 assert(!html.includes("cre8-white.png"), "Multiple does not use the white-on-dark logo");
 assert(!html.includes("background-color:#1A1A1A;border-radius:4px"), "no charcoal chip behind the color logo");
-assert(html.includes('data-field="broker"') && html.includes('class="group-band"') && html.includes("background-color:#F5F5F5;padding:28px 32px"), "broker band is light");
+assert(html.includes('data-field="broker"') && html.includes('class="group-band group-rule"') && html.includes("background-color:#F5F5F5;border-top:1px solid #A3A3A3;padding:28px 32px"), "broker band is light with a visible section rule");
 assert(html.includes("class=\"group-broker-name\"") && html.includes("color:#1A1A1A;line-height:1.3"), "broker name is dark on the light band");
+assert(html.includes("border-top:1px solid #A3A3A3"), "section/footer rules are #A3A3A3 on the light shell");
+assert(!html.includes("border-top:1px solid #E5E5E5"), "faint #E5E5E5 rules are gone from Multiple chrome");
+assert((html.match(/class="group-band group-rule"/g) || []).length === 2, "broker and footer each have a visible rule");
 
 const preview = wrapPreviewHtml(html);
 assert(preview.includes('id="cre8-preview-style"'), "composer preview wraps the live email HTML");
 assert(preview.includes("background-color: #FFFFFF !important"), "composer preview pins Option C white cards");
 assert(preview.includes("background-color: #F5F5F5 !important"), "composer preview pins the light Multiple shell");
 assert(preview.includes(".group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }"), "composer preview pins dark heading on light shell");
+assert(preview.includes(".group-rule { border-top: 1px solid #A3A3A3 !important; }"), "composer preview pins visible section rules");
 assert(preview.includes(">View listing</a>"), "composer preview keeps the solid View listing button");
 assert(!preview.includes("View listing &rarr;"), "composer preview does not keep the old text-link CTA");
 assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");

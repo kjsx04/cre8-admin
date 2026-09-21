@@ -38,6 +38,7 @@ const PREVIEW_STYLE = `
   /* Multiple emails: pin the light shell so OS dark mode cannot restore charcoal chrome */
   .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
   .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
+  .group-rule { border-top: 1px solid #A3A3A3 !important; }
   /* Clickable regions */
   [data-field] { cursor: pointer; }
   [data-field] a { cursor: pointer; }
