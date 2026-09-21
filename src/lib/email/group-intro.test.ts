@@ -70,7 +70,7 @@ assert(html.includes("padding:0 3px 6px 0"), "left card gutter 3+3=6 between car
 assert(html.includes("padding:0 0 6px 3px"), "right card gutter matches left");
 assert(html.includes("border-radius:3px"), "card corners are a few pixels, not pill");
 assert(html.includes('bgcolor="#FFFFFF"'), "listing cards are white/light");
-assert(html.includes("background-color:#FFFFFF;border-radius:3px"), "white card chrome");
+assert(html.includes("background-color:#FFFFFF;border:1px solid #E5E5E5;border-radius:3px"), "white card chrome on light shell");
 assert(html.includes("padding:0;line-height:0;font-size:0;overflow:hidden"), "photo is full-bleed to card edges");
 assert(html.includes("padding:14px 14px 14px 14px"), "white meta block has tight inner padding");
 assert(html.includes('class="group-cta"'), "card CTA is a solid button, not a text link");
@@ -78,10 +78,24 @@ assert(html.includes("background-color:#8CC644") && html.includes(">View listing
 assert(!html.includes("View listing &rarr;"), "old green text-link CTA is gone");
 assert(html.includes("color:#111111"), "title is dark on the light card");
 assert(html.includes("color:#6B7280"), "meta is muted gray on the light card");
+assert(html.includes('class="card-bg group-shell"'), "Multiple email uses the light shell class");
+assert(html.includes("max-width:600px;width:100%;background-color:#F5F5F5"), "Multiple chrome is light grey, not charcoal");
+assert(!html.includes("max-width:600px;width:100%;background-color:#1A1A1A"), "Multiple email is not dark #1A1A1A chrome");
+assert(html.includes("color:#1A1A1A;line-height:1.15;letter-spacing:1px"), "heading is dark on the light shell");
+assert(html.includes('data-field="intro"') && html.includes("class=\"group-copy\"") && html.includes("color:#1A1A1A;line-height:1.65"), "intro is dark for contrast");
+assert(html.includes('data-field="body"') && html.includes("color:#1A1A1A;line-height:1.65"), "body copy is dark on light shell");
+assert(html.includes("color-scheme: light only"), "Multiple emails stay light in dark-mode clients");
+assert(html.includes("cre8-logo-color.png"), "Multiple uses the black-and-green CRE8 logo");
+assert(!html.includes("cre8-white.png"), "Multiple does not use the white-on-dark logo");
+assert(!html.includes("background-color:#1A1A1A;border-radius:4px"), "no charcoal chip behind the color logo");
+assert(html.includes('data-field="broker"') && html.includes('class="group-band"') && html.includes("background-color:#F5F5F5;padding:28px 32px"), "broker band is light");
+assert(html.includes("class=\"group-broker-name\"") && html.includes("color:#1A1A1A;line-height:1.3"), "broker name is dark on the light band");
 
 const preview = wrapPreviewHtml(html);
 assert(preview.includes('id="cre8-preview-style"'), "composer preview wraps the live email HTML");
 assert(preview.includes("background-color: #FFFFFF !important"), "composer preview pins Option C white cards");
+assert(preview.includes("background-color: #F5F5F5 !important"), "composer preview pins the light Multiple shell");
+assert(preview.includes(".group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }"), "composer preview pins dark heading on light shell");
 assert(preview.includes(">View listing</a>"), "composer preview keeps the solid View listing button");
 assert(!preview.includes("View listing &rarr;"), "composer preview does not keep the old text-link CTA");
 assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");
@@ -165,6 +179,13 @@ const single = renderEmailHtml(buildTemplateVars({
 assert(single.includes("SINGLE_BODY"), "single still renders body");
 assert(!single.includes("INTRO_SHOULD_NOT_RENDER"), "single ignores intro_text");
 assert(single.indexOf("cdn/hero.jpg") < single.indexOf("SINGLE_BODY"), "single body stays under photo");
+assert(single.includes("max-width:600px;width:100%;background-color:#1A1A1A"), "single keeps dark chrome");
+assert(!single.includes('class="card-bg group-shell"'), "single does not use the Multiple light shell");
+assert(single.includes("color:#FFFFFF;line-height:1.15;letter-spacing:1px"), "single heading stays white on dark");
+assert(single.includes("color:#BFBFBF"), "single body stays light-on-dark");
+assert(single.includes("cre8-white.png"), "single keeps the white CRE8 logo");
+assert(!single.includes("cre8-logo-color.png"), "single does not use the color logo");
+assert(single.includes('data-field="broker" style="background-color:#000000'), "single broker band stays black");
 
 if (failed) {
   console.error(`\n${failed} failed`);

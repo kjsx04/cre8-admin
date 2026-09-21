@@ -3,7 +3,7 @@
  *
  * The composer shows the real email HTML (renderEmailHtml) in an iframe. This
  * file adds the little bit of styling that only makes sense in the composer:
- * a light page background so the dark email card floats, a pointer cursor on
+ * a light page background so the email card floats, a pointer cursor on
  * clickable regions, and the green focus outline used for click-to-focus.
  *
  * All interactivity (click → focus input, focus input → highlight region,
@@ -32,9 +32,12 @@ export const PREVIEW_FOCUS_CLASS = "cre8-focus";
 
 const PREVIEW_STYLE = `
 <style id="cre8-preview-style">
-  /* Light page behind the dark card so it reads as a floating email */
+  /* Light page behind the email so the card floats in the composer */
   html, body { background-color: #F5F5F5 !important; }
   body > table { background-color: #F5F5F5 !important; }
+  /* Multiple emails: pin the light shell so OS dark mode cannot restore charcoal chrome */
+  .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
+  .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
   /* Clickable regions */
   [data-field] { cursor: pointer; }
   [data-field] a { cursor: pointer; }
@@ -52,7 +55,7 @@ const PREVIEW_STYLE = `
      table-layout:fixed + clamped title/meta keep every card the same size. */
   .group-grid { width: 100% !important; table-layout: fixed !important; }
   .group-col { width: 50% !important; display: table-cell !important; vertical-align: top !important; box-sizing: border-box !important; }
-  .group-card { height: 100% !important; background-color: #FFFFFF !important; border-radius: 3px !important; overflow: hidden !important; }
+  .group-card { height: 100% !important; background-color: #FFFFFF !important; border: 1px solid #E5E5E5 !important; border-radius: 3px !important; overflow: hidden !important; }
   .group-meta { background-color: #FFFFFF !important; }
   .group-title {
     color: #111111 !important;
