@@ -11,8 +11,10 @@ export type CampaignType = "one-time" | "recurring";
 // Single listing email, or a group (digest) of several listings
 export type CampaignKind = "single" | "group";
 
-// Status chip shown on a group card
-export type GroupChip = "" | "Just Listed" | "Price Reduced" | "Under Contract";
+// Free-text eyebrow on a group card. Empty string renders nothing.
+// Older campaigns stored preset chips ("Just Listed", "Price Reduced",
+// "Under Contract"); those values still render as plain text.
+export type GroupChip = string;
 
 // One card in a group email (snapshot of the listing, refreshed by listing-sync)
 export interface GroupListing {
@@ -182,7 +184,7 @@ export interface EmailTemplateVars {
   partnerLogoWidth: number;    // natural px (0 when unknown)
   partnerLogoHeight: number;
   brokers: BrokerCardVars[];   // one card per broker, primary first
-  groupListings: GroupListing[]; // when non-empty the email renders as a 2-up grid of listing cards
+  groupListings: GroupListing[]; // when non-empty the email renders as stacked Option D strips
 }
 
 // One broker contact card in the email

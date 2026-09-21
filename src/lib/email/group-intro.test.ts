@@ -51,59 +51,52 @@ assert(introAt < cardAt, "intro is above listing cards");
 assert(cardAt < bodyAt, "body is under listing cards");
 assert(html.includes('data-field="intro"'), "intro is clickable in preview");
 assert(html.includes('data-field="body"'), "body is clickable in preview");
-assert((html.match(/class="group-col"/g) || []).length === 2, "two 50% columns for two listings");
-assert(html.includes('width="50%"'), "columns are half-width");
-assert(html.includes("padding-bottom:75%"), "photos are 4:3 landscape");
-assert(!html.includes("padding-bottom:100%"), "photos are no longer 1:1 squares");
-assert(html.includes("table-layout:fixed"), "fixed 50/50 columns keep cards the same width");
-assert(html.includes('class="group-title"'), "title is a clamped slot");
-assert(html.includes('class="group-summary"'), "summary is a reserved slot");
-assert(html.includes('class="group-chip"'), "chip slot is always reserved");
-assert(html.includes("height:44px"), "title box is two clamped lines");
-assert(html.includes("-webkit-line-clamp: 2"), "title clamps to 2 lines");
-assert((html.match(/class="group-photo"/g) || []).length === 2, "both cards use the same 4:3 photo box");
-assert((html.match(/position:relative;width:100%;height:0;padding-bottom:75%/g) || []).length === 2, "empty-photo placeholders match the photo box");
-assert(html.includes("max-width: 480px"), "mobile stacks below 480px, not 600");
-assert(!html.includes("@media only screen and (max-width: 600px)"), "600px no longer stacks group cards");
-assert(html.includes("padding:20px 32px 0 32px"), "grid inset matches heading/intro 32px");
-assert(html.includes("padding:0 3px 6px 0"), "left card gutter 3+3=6 between cards");
-assert(html.includes("padding:0 0 6px 3px"), "right card gutter matches left");
-assert(html.includes("border-radius:3px"), "card corners are a few pixels, not pill");
-assert(html.includes('bgcolor="#FFFFFF"'), "listing cards are white/light");
-assert(html.includes("background-color:#FFFFFF;border:1px solid #E5E5E5;border-radius:3px"), "white card chrome on light shell");
-assert(html.includes("padding:0;line-height:0;font-size:0;overflow:hidden"), "photo is full-bleed to card edges");
-assert(html.includes("padding:14px 14px 14px 14px"), "white meta block has tight inner padding");
-assert(html.includes('class="group-cta"'), "card CTA is a solid button, not a text link");
-assert(html.includes("background-color:#8CC644") && html.includes(">View listing</a>"), "CRE8 green View listing button");
-assert(!html.includes("View listing &rarr;"), "old green text-link CTA is gone");
-assert(html.includes("color:#111111"), "title is dark on the light card");
-assert(html.includes("color:#6B7280"), "meta is muted gray on the light card");
-assert(html.includes('class="card-bg group-shell"'), "Multiple email uses the light shell class");
-assert(html.includes("max-width:600px;width:100%;background-color:#F5F5F5"), "Multiple chrome is light grey, not charcoal");
-assert(!html.includes("max-width:600px;width:100%;background-color:#1A1A1A"), "Multiple email is not dark #1A1A1A chrome");
-assert(html.includes("color:#1A1A1A;line-height:1.15;letter-spacing:1px"), "heading is dark on the light shell");
-assert(html.includes('data-field="intro"') && html.includes("class=\"group-copy\"") && html.includes("color:#1A1A1A;line-height:1.65"), "intro is dark for contrast");
-assert(html.includes('data-field="body"') && html.includes("color:#1A1A1A;line-height:1.65"), "body copy is dark on light shell");
-assert(html.includes("color-scheme: light only"), "Multiple emails stay light in dark-mode clients");
-assert(html.includes("cre8-logo-color.png"), "Multiple uses the black-and-green CRE8 logo");
-assert(!html.includes("cre8-white.png"), "Multiple does not use the white-on-dark logo");
-assert(!html.includes("background-color:#1A1A1A;border-radius:4px"), "no charcoal chip behind the color logo");
-assert(html.includes('data-field="broker"') && html.includes('class="group-band group-rule"') && html.includes("background-color:#F5F5F5;border-top:1px solid #A3A3A3;padding:28px 32px"), "broker band is light with a visible section rule");
-assert(html.includes("class=\"group-broker-name\"") && html.includes("color:#1A1A1A;line-height:1.3"), "broker name is dark on the light band");
-assert(html.includes("border-top:1px solid #A3A3A3"), "section/footer rules are #A3A3A3 on the light shell");
-assert(!html.includes("border-top:1px solid #E5E5E5"), "faint #E5E5E5 rules are gone from Multiple chrome");
-assert((html.match(/class="group-band group-rule"/g) || []).length === 2, "broker and footer each have a visible rule");
+assert(!html.includes('class="group-col"'), "cards are not a 2-up grid");
+assert(!html.includes('width="50%"'), "no half-width columns");
+assert(html.includes("padding-bottom:100%"), "photos are 1:1");
+assert(!html.includes("padding-bottom:75%"), "photos are no longer 4:3");
+assert(html.includes('width="42%"'), "photo column is about 42% wide");
+assert((html.match(/class="group-card"/g) || []).length === 2, "one full-width strip per listing");
+assert(html.includes('class="group-title"'), "title renders");
+assert(html.includes('class="group-summary"'), "summary renders");
+assert(!html.includes('class="group-chip"'), "empty eyebrow is omitted");
+assert((html.match(/class="group-photo"/g) || []).length === 2, "both cards use the 1:1 photo box");
+assert((html.match(/position:relative;width:100%;height:0;padding-bottom:100%/g) || []).length === 2, "empty-photo placeholders match the photo box");
+assert(html.includes("padding:16px 32px 0 32px"), "strip stack keeps the 32px inset");
+assert(html.includes("padding:0 0 10px 0"), "10px gap between stacked strips");
+assert(html.includes("border-radius:3px"), "card corners are a few pixels");
+assert(html.includes('bgcolor="#111111"'), "listing cards are near-black");
+assert(html.includes("background-color:#111111;border:1px solid #2a2a2a;border-radius:3px"), "Option D card chrome");
+assert(!html.includes('bgcolor="#FFFFFF"'), "listing cards are not white");
+assert(html.includes("View listing &rarr;"), "card CTA is a text link");
+assert(!html.includes(">View listing</a>"), "solid View listing button is gone");
+assert(html.includes("color:#FFFFFF;line-height:1.25"), "title is white");
+assert(html.includes("color:#A3A3A3"), "meta is muted gray");
+assert(html.includes('class="card-bg group-shell"'), "Multiple email keeps the shell class");
+assert(html.includes("max-width:600px;width:100%;background-color:#000000"), "Multiple chrome is black");
+assert(!html.includes("background-color:#F5F5F5"), "Multiple email is not the light grey shell");
+assert(html.includes("color:#FFFFFF;line-height:1.15;letter-spacing:1px"), "heading is white on the black shell");
+assert(html.includes('data-field="intro"') && html.includes("color:#BFBFBF;line-height:1.65"), "intro is light on black");
+assert(html.includes('data-field="body"') && html.includes("color:#BFBFBF;line-height:1.65"), "body copy is light on black");
+assert(html.includes("color-scheme: light dark"), "dark chrome opts into light and dark");
+assert(!html.includes("color-scheme: light only"), "Multiple emails are not pinned to light");
+assert(html.includes("cre8-white.png"), "Multiple uses the white CRE8 logo on black");
+assert(!html.includes("cre8-logo-color.png"), "Multiple does not use the color logo");
+assert(html.includes("padding:26px 32px 12px 32px"), "Multiple header is 4px shorter");
+assert(html.includes('data-field="cta" style="padding:16px 32px 0 32px'), "CTA sits closer to the next section");
+assert(html.includes('data-field="broker"') && html.includes('class="group-band group-rule"') && html.includes("background-color:#000000;border-top:1px solid #333333;padding:12px 32px 20px 32px"), "broker band is black with a short gap under the CTA");
+assert(html.includes("class=\"group-broker-name\"") && html.includes("color:#FFFFFF;line-height:1.3"), "broker name is white on the black band");
+assert((html.match(/class="group-band group-rule"/g) || []).length === 2, "broker and footer each have a section rule");
 
 const preview = wrapPreviewHtml(html);
 assert(preview.includes('id="cre8-preview-style"'), "composer preview wraps the live email HTML");
-assert(preview.includes("background-color: #FFFFFF !important"), "composer preview pins Option C white cards");
-assert(preview.includes("background-color: #F5F5F5 !important"), "composer preview pins the light Multiple shell");
-assert(preview.includes(".group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }"), "composer preview pins dark heading on light shell");
-assert(preview.includes(".group-rule { border-top: 1px solid #A3A3A3 !important; }"), "composer preview pins visible section rules");
-assert(preview.includes(">View listing</a>"), "composer preview keeps the solid View listing button");
-assert(!preview.includes("View listing &rarr;"), "composer preview does not keep the old text-link CTA");
+assert(preview.includes("background-color: #111111 !important"), "composer preview pins Option D dark cards");
+assert(preview.includes("background-color: #F5F5F5 !important"), "composer preview page behind the card stays light");
+assert(!preview.includes(".group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }"), "composer preview does not force dark text on a light shell");
+assert(preview.includes("View listing &rarr;"), "composer preview keeps the text-link CTA");
+assert(!preview.includes(">View listing</a>"), "composer preview does not keep the solid View listing button");
 assert(!html.includes("border-radius:6px;height:100%"), "listing cards no longer use 6px radius");
-assert(!html.includes("background-color:#111111;border:1px solid #FFFFFF"), "old dark card chrome is gone");
+assert(!html.includes("background-color:#111111;border:1px solid #FFFFFF"), "old white-border dark chrome is gone");
 assert(!html.includes("padding:6px 6px 0 6px"), "old photo inner padding is gone");
 
 const withPhotos = renderEmailHtml(buildTemplateVars({
@@ -118,10 +111,10 @@ const withPhotos = renderEmailHtml(buildTemplateVars({
   broker_name: "Kevin Smith",
   broker_email: "Kevin@cre8advisors.com",
 }));
-assert(withPhotos.includes("padding-bottom:75%"), "photo cards use 4:3 box");
+assert(withPhotos.includes("padding-bottom:100%"), "photo cards use a 1:1 box");
 assert(withPhotos.includes("object-fit:cover"), "cover crop, not letterbox");
 assert(withPhotos.includes("object-position:center center"), "cover is centered");
-assert(withPhotos.includes('width="265"') && withPhotos.includes('height="199"'), "Outlook 4:3 fallback 265×199");
+assert(withPhotos.includes('width="225"') && withPhotos.includes('height="225"'), "Outlook 1:1 fallback 225×225");
 
 const four = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -138,7 +131,8 @@ const four = renderEmailHtml(buildTemplateVars({
   broker_name: "Kevin Smith",
   broker_email: "Kevin@cre8advisors.com",
 }));
-assert((four.match(/class="group-col"/g) || []).length === 4, "four listings → two 2-up rows");
+assert((four.match(/class="group-card"/g) || []).length === 4, "four listings → four stacked strips");
+assert(!four.includes('class="group-col"'), "four listings stay full-width, not 2-up");
 assert(four.indexOf("INTRO_SLOT_COPY") < four.indexOf("Queen Creek Station"), "intro stays above cards with 4 listings");
 assert(four.indexOf("Fourth Listing") < four.indexOf("BODY_SLOT_COPY"), "body stays under cards with 4 listings");
 
@@ -156,17 +150,19 @@ const mixed = renderEmailHtml(buildTemplateVars({
   broker_email: "Kevin@cre8advisors.com",
 }));
 assert((mixed.match(/class="group-card"/g) || []).length === 3, "three listing cards");
-assert((mixed.match(/class="group-col[^"]*"/g) || []).length === 4, "odd last row still uses two 50% columns");
-assert((mixed.match(/class="group-col group-col-empty"/g) || []).length === 1, "empty mate of the odd last card is marked");
-assert(mixed.includes(".group-col-empty"), "mobile CSS hides the empty odd-row cell");
-assert((mixed.match(/class="group-title"/g) || []).length === 3, "every card has the same title slot");
-assert((mixed.match(/class="group-summary"/g) || []).length === 3, "every card has the same summary slot");
-assert((mixed.match(/class="group-chip"/g) || []).length === 3, "every card has the same chip slot");
-assert((mixed.match(/padding-bottom:75%/g) || []).length >= 3, "every card photo box is 4:3 including placeholders");
-assert(mixed.includes('width="265"') && mixed.includes('height="199"') && mixed.includes('bgcolor="#222222"'), "Outlook empty placeholder is the same 265×199 box");
+assert(!mixed.includes('class="group-col"'), "odd count does not leave an empty half column");
+assert((mixed.match(/class="group-title"/g) || []).length === 3, "every card has a title");
+assert((mixed.match(/class="group-summary"/g) || []).length === 2, "empty summary is omitted");
+assert((mixed.match(/class="group-chip"/g) || []).length === 2, "only non-empty eyebrows render");
+assert(mixed.includes("UNDER CONTRACT") === false && mixed.includes("Under Contract"), "stored chip text renders as typed");
+assert(mixed.includes("Price Reduced"), "custom or stored eyebrow text is kept");
+assert(mixed.includes("color:#f59e0b"), "eyebrow is amber on the dark card");
+assert(!mixed.includes("color:#C2410C"), "preset chip colors are gone");
+assert((mixed.match(/padding-bottom:100%/g) || []).length >= 3, "every card photo box is 1:1 including placeholders");
+assert(mixed.includes('width="225"') && mixed.includes('height="225"') && mixed.includes('bgcolor="#1A1A1A"'), "Outlook empty placeholder is the same 225×225 box");
 assert(mixed.includes("VIEW ALL LISTINGS"), "group CTA unchanged");
-assert(mixed.includes("color:#C2410C"), "Under Contract status is amber/brown");
-assert((mixed.match(/class="group-cta"/g) || []).length === 3, "every card has a solid View listing button");
+assert((mixed.match(/class="group-cta"/g) || []).length === 3, "every card has a text-link CTA");
+assert(mixed.includes("Coming Soon") === false, "sanity");
 
 const single = renderEmailHtml(buildTemplateVars({
   campaign_kind: "single",
@@ -190,6 +186,8 @@ assert(single.includes("color:#BFBFBF"), "single body stays light-on-dark");
 assert(single.includes("cre8-white.png"), "single keeps the white CRE8 logo");
 assert(!single.includes("cre8-logo-color.png"), "single does not use the color logo");
 assert(single.includes('data-field="broker" style="background-color:#000000'), "single broker band stays black");
+assert(single.includes("padding:26px 32px;"), "single header is 4px shorter");
+assert(single.includes("padding:12px 32px 20px 32px"), "single broker band top gap is tightened");
 
 if (failed) {
   console.error(`\n${failed} failed`);
