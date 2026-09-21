@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-20-1";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-21-1";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -189,8 +189,10 @@ function parseHighlight(h: string): { label: string; value: string } {
 /**
  * Render the full HTML email for a campaign.
  * Used by the preview endpoint, test sends, and Resend broadcast creation.
- * Dark premium CRE8 brand — table-based layout with all inline styles
- * for maximum email client compatibility.
+ * Single-listing emails keep the dark premium CRE8 chrome. Multiple
+ * (group) emails use a light grey shell so white listing cards sit on
+ * a light page. Table-based layout with all inline styles for maximum
+ * email client compatibility.
  */
 // NOTE: the `data-field="…"` attributes below are inert in email clients. The
 // composer's live preview uses them to map a click in the email to the matching
@@ -226,8 +228,15 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     statsGridHtml = rows.join("");
   }
 
+  const isGroup = vars.groupListings.length > 0;
+  const shellBg = isGroup ? "#F5F5F5" : "#1A1A1A";
+  const headingColor = isGroup ? "#1A1A1A" : "#FFFFFF";
+  const copyColor = isGroup ? "#4B5563" : "#BFBFBF";
+  const addressColor = isGroup ? "#6B7280" : "#999999";
+  const pageBg = isGroup ? "#F5F5F5" : "#FFFFFF";
+
   // CTA text varies by campaign type
-  const ctaText = vars.groupListings.length > 0 ? "VIEW ALL LISTINGS" : vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
+  const ctaText = isGroup ? "VIEW ALL LISTINGS" : vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
 
   // Header logos — CRE8 alone at 30px, or CRE8 + partner both at 23px with a divider.
   const hasPartner = !!vars.partnerLogoUrl;
@@ -244,8 +253,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       partnerH = Math.round(PARTNER_LOGO_MAX_W / ratio);
     }
   }
-  const headerLogosHtml = `
-                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-left:auto;">
+  const headerLogosInner = `
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0">
                       <tr>
                         <td valign="middle" style="line-height:0;">
                           <img src="${CRE8_LOGO_URL}" alt="CRE8 Advisors" width="${cre8W}" height="${logoH}" style="display:block;width:${cre8W}px;height:${logoH}px;border:0;outline:none;text-decoration:none;" />
@@ -258,15 +267,33 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                         </td>` : ""}
                       </tr>
                     </table>`;
+  // Multiple emails are light; the CRE8 mark (and partner logos) are white, so they
+  // sit on a compact charcoal chip. Single-listing emails already have dark chrome.
+  const headerLogosHtml = isGroup
+    ? `
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-left:auto;">
+                      <tr>
+                        <td bgcolor="#1A1A1A" style="background-color:#1A1A1A;border-radius:4px;padding:8px 10px;line-height:0;">
+                          ${headerLogosInner}
+                        </td>
+                      </tr>
+                    </table>`
+    : `
+                    <table role="presentation" cellpadding="0" cellspacing="0" border="0" align="right" style="margin-left:auto;">
+                      <tr>
+                        <td valign="middle" style="line-height:0;">
+                          ${headerLogosInner}
+                        </td>
+                      </tr>
+                    </table>`;
 
-  // Group (digest) grid — Option C: white/light cards on the dark email.
+  // Group (digest) grid — Option C white cards on a light grey email.
   // Two uniform 4:3 landscape listing cards per row (fixed 50/50 table).
   // Photo is full-bleed to the card edges. White meta block under the photo
   // holds status / dark title / muted acres·city / solid CRE8 green button.
   // Every card uses the same photo box + title/meta/footer heights so
   // left/right (and odd last) cards align. Outer inset stays 32px
   // (heading/intro/body). Between-card gutter is a few pixels (6px).
-  const isGroup = vars.groupListings.length > 0;
   const GROUP_INSET = 32;
   const GROUP_GUTTER = 6;
   const GROUP_HALF = GROUP_GUTTER / 2;
@@ -306,7 +333,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                                 </table>`;
   const groupCard = (g: GroupListing, i: number) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
-    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;height:100%;">
+    return `<table role="presentation" class="group-card" data-field="group-${i}" width="100%" height="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #E5E5E5;border-radius:${GROUP_CARD_RADIUS}px;overflow:hidden;height:100%;">
                         <tr>
                           <td valign="top" style="padding:0;line-height:0;font-size:0;overflow:hidden;">
                             ${groupPhoto(g)}
@@ -405,8 +432,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta http-equiv="X-UA-Compatible" content="IE=edge" />
   <meta name="x-apple-disable-message-reformatting" />
-  <meta name="color-scheme" content="light dark" />
-  <meta name="supported-color-schemes" content="light dark" />
+  <meta name="color-scheme" content="${isGroup ? "light only" : "light dark"}" />
+  <meta name="supported-color-schemes" content="${isGroup ? "light" : "light dark"}" />
   <title>${escapeHtml(vars.heading)}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -424,17 +451,25 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     /* Web font: Inter (admin UI). Old import was Bebas Neue + DM Sans. */
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-    /* Light mode default — white outer background, dark card */
-    :root { color-scheme: light dark; supported-color-schemes: light dark; }
+    /* Light mode default — white outer for single; light grey Multiple shell */
+    :root { color-scheme: ${isGroup ? "light only" : "light dark"}; supported-color-schemes: ${isGroup ? "light" : "light dark"}; }
 
-    /* Dark mode: keep the dark card intact, darken outer bg to match */
+    /* Dark mode: keep the dark single-listing card intact. Multiple emails
+       stay light so heading/intro never go white-on-white or charcoal-on-charcoal. */
     @media (prefers-color-scheme: dark) {
-      .body, .body-table { background-color: #111111 !important; }
-      .card-bg { background-color: #1A1A1A !important; }
+      .body, .body-table { background-color: ${isGroup ? "#F5F5F5" : "#111111"} !important; }
+      .card-bg { background-color: ${isGroup ? "#F5F5F5" : "#1A1A1A"} !important; }
+      .group-shell, .group-header { background-color: #F5F5F5 !important; }
+      .group-label { color: #1A1A1A !important; }
+      .group-copy { color: #4B5563 !important; }
     }
+    .group-shell { background-color: #F5F5F5 !important; }
+    .group-header { background-color: #F5F5F5 !important; }
+    .group-label { color: #1A1A1A !important; }
+    .group-copy { color: #4B5563 !important; }
     /* Uniform 2-up light cards: fixed columns, clamped title/meta, 4:3 photos. */
     .group-grid { table-layout: fixed !important; width: 100% !important; }
-    .group-card { height: 100% !important; background-color: #FFFFFF !important; border-radius: 3px !important; overflow: hidden !important; }
+    .group-card { height: 100% !important; background-color: #FFFFFF !important; border: 1px solid #E5E5E5 !important; border-radius: 3px !important; overflow: hidden !important; }
     .group-meta { background-color: #FFFFFF !important; }
     .group-title {
       color: #111111 !important;
@@ -474,31 +509,31 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
         overflow: hidden !important;
       }
     }
-    u + .body { background-color: #FFFFFF !important; }
-    [data-ogsc] .body { background-color: #FFFFFF !important; }
+    u + .body { background-color: ${pageBg} !important; }
+    [data-ogsc] .body { background-color: ${pageBg} !important; }
   </style>
 </head>
-<body class="body" style="margin:0;padding:0;background-color:#FFFFFF;font-family:${EMAIL_FONT};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<body class="body" style="margin:0;padding:0;background-color:${pageBg};font-family:${EMAIL_FONT};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
 
   <!-- Preheader — hidden inbox preview text -->
   <div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">
     ${escapeHtml(vars.preheaderText)}${preheaderSpacer}
   </div>
 
-  <!-- Outer wrapper table — white background, dark card floats on top -->
-  <table role="presentation" class="body-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FFFFFF;">
+  <!-- Outer wrapper — white for single, light grey for Multiple -->
+  <table role="presentation" class="body-table" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${pageBg};">
     <tr>
       <td align="center" style="padding:32px 16px;">
 
         <!-- Email card — 600px desktop, fluid on mobile -->
-        <table role="presentation" class="card-bg" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#1A1A1A;">
+        <table role="presentation" class="card-bg${isGroup ? " group-shell" : ""}" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:${shellBg};">
 
           <!-- Combined header — Label + Heading on left, CRE8 logo on right -->
           <tr>
-            <td style="background-color:#1A1A1A;padding:${isGroup ? "28px 32px 14px 32px" : "28px 32px"};">
+            <td${isGroup ? ' class="group-header"' : ""} style="background-color:${shellBg};padding:${isGroup ? "28px 32px 14px 32px" : "28px 32px"};">
               <!--[if mso]>
               <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:600px;">
-              <v:fill type="tile" color="#1A1A1A"/>
+              <v:fill type="tile" color="${shellBg}"/>
               <v:textbox style="mso-fit-shape-to-text:true" inset="0,0,0,0">
               <![endif]-->
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -514,11 +549,11 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                          Outlook/Gmail strip web fonts and fall back to the system stack. -->
                     <!-- Big line — the heading typed in the composer ("Just Listed", "Price Reduced", …) -->
                     ${vars.label ? `
-                    <h1 data-field="label" style="margin:0;font-family:${EMAIL_FONT};font-size:30px;font-weight:700;text-transform:uppercase;color:#FFFFFF;line-height:1.15;letter-spacing:1px;">
+                    <h1 data-field="label"${isGroup ? ' class="group-label"' : ""} style="margin:0;font-family:${EMAIL_FONT};font-size:30px;font-weight:700;text-transform:uppercase;color:${headingColor};line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.label)}
                     </h1>` : ""}
                     ${vars.propertyAddress ? `
-                    <p style="margin:6px 0 0 0;font-family:${EMAIL_FONT};font-size:14px;color:#999999;line-height:1.4;">
+                    <p style="margin:6px 0 0 0;font-family:${EMAIL_FONT};font-size:14px;color:${addressColor};line-height:1.4;">
                       ${escapeHtml(vars.propertyAddress)}
                     </p>` : ""}
                   </td>
@@ -549,13 +584,13 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           ${isGroup && vars.introText ? `
           <tr>
             <td style="padding:4px 32px 0 32px;">
-              <p data-field="intro" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
+              <p data-field="intro" class="group-copy" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:${copyColor};line-height:1.65;">
                 ${escapeHtml(vars.introText)}
               </p>
             </td>
           </tr>` : ""}
 
-          <!-- Group grid — two 4:3 landscape light cards per row, 6px gutters -->
+          <!-- Group grid — two 4:3 landscape white cards per row on light grey -->
           ${isGroup ? `
           <tr>
             <td style="padding:20px ${GROUP_INSET}px 0 ${GROUP_INSET}px;">
@@ -569,7 +604,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           ${vars.bodyText ? `
           <tr>
             <td style="padding:${isGroup ? "8px" : "20px"} 32px 0 32px;">
-              <p data-field="body" style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#BFBFBF;line-height:1.65;">
+              <p data-field="body"${isGroup ? ' class="group-copy"' : ""} style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:${copyColor};line-height:1.65;">
                 ${escapeHtml(vars.bodyText)}
               </p>
             </td>
