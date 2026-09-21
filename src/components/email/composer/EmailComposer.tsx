@@ -361,7 +361,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         {/* Left: live email */}
         <div
           data-scroll-pane
-          className={`w-full lg:w-[60%] overflow-y-auto bg-light-gray p-6 lg:p-10 relative ${
+          className={`w-full lg:w-[60%] overflow-y-auto bg-[#E5E5E5] p-6 lg:p-10 relative ${
             mobileTab === "preview" ? "block" : "hidden lg:block"
           }`}
         >
@@ -370,7 +370,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               html={previewHtml}
               activeField={activeField}
               onFieldClick={handleFieldClick}
-              className="rounded-card shadow-sm"
             />
           </div>
           {!revealed && (

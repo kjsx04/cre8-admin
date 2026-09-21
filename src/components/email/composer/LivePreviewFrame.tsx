@@ -29,6 +29,8 @@ interface LivePreviewFrameProps {
  *   listen to its document directly. No script is injected into the email HTML.
  * - Height follows the content, so the surrounding pane scrolls naturally and the
  *   iframe never shows its own scrollbar.
+ * - The wrapper (border + soft shadow on a slightly darker composer canvas) is
+ *   preview-stage chrome so a light email does not blend into the pane.
  */
 export default function LivePreviewFrame({
   html,
@@ -124,13 +126,17 @@ export default function LivePreviewFrame({
   }, [activeField, applyFocus]);
 
   return (
-    <iframe
-      ref={iframeRef}
-      srcDoc={initialHtmlRef.current}
-      onLoad={handleLoad}
-      title="Email preview"
-      className={`w-full border-0 block ${className}`}
-      style={{ height, minHeight: 600 }}
-    />
+    <div
+      className={`rounded-card border border-[#A3A3A3] shadow-[0_4px_24px_rgba(0,0,0,0.14)] overflow-hidden bg-[#F5F5F5] ${className}`}
+    >
+      <iframe
+        ref={iframeRef}
+        srcDoc={initialHtmlRef.current}
+        onLoad={handleLoad}
+        title="Email preview"
+        className="w-full border-0 block"
+        style={{ height, minHeight: 600 }}
+      />
+    </div>
   );
 }

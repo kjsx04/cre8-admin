@@ -66,8 +66,8 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
         </div>
 
         {/* Preview */}
-        <div className="flex-1 overflow-y-auto p-4 bg-light-gray" data-scroll-pane>
-          <LivePreviewFrame html={html} activeField={null} className="rounded-card" />
+        <div className="flex-1 overflow-y-auto p-4 bg-[#E5E5E5]" data-scroll-pane>
+          <LivePreviewFrame html={html} activeField={null} />
         </div>
       </div>
     </div>

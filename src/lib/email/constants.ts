@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-21-2";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-21-3";
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -240,7 +240,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   const bandBg = isGroup ? "#F5F5F5" : "#000000";
   const brokerNameColor = isGroup ? "#1A1A1A" : "#FFFFFF";
   const brokerPhoneColor = isGroup ? "#333333" : "#BFBFBF";
-  const footerBorder = isGroup ? "#E5E5E5" : "#333333";
+  const footerBorder = isGroup ? "#A3A3A3" : "#333333";
   const footerMuted = isGroup ? "#333333" : "#666666";
   const partnerDivider = isGroup ? "#D1D5DB" : "#444444";
   const cre8LogoUrl = isGroup ? CRE8_LOGO_URL_COLOR : CRE8_LOGO_URL;
@@ -455,10 +455,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
       .card-bg { background-color: ${isGroup ? "#F5F5F5" : "#1A1A1A"} !important; }
       .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
       .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
+      .group-rule { border-top: 1px solid #A3A3A3 !important; }
     }
     .group-shell { background-color: #F5F5F5 !important; }
     .group-header { background-color: #F5F5F5 !important; }
     .group-band { background-color: #F5F5F5 !important; }
+    .group-rule { border-top: 1px solid #A3A3A3 !important; }
     .group-label { color: #1A1A1A !important; }
     .group-copy { color: #1A1A1A !important; }
     .group-broker-name { color: #1A1A1A !important; }
@@ -643,7 +645,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
           <!-- Broker band — black on single, light on Multiple -->
           <tr>
-            <td data-field="broker"${isGroup ? ' class="group-band"' : ""} style="background-color:${bandBg};padding:28px 32px;">
+            <td data-field="broker"${isGroup ? ' class="group-band group-rule"' : ""} style="background-color:${bandBg};${isGroup ? `border-top:1px solid ${footerBorder};` : ""}padding:28px 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
                 ${brokerCardsHtml}
               </table>
@@ -652,7 +654,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
           <!-- Footer -->
           <tr>
-            <td${isGroup ? ' class="group-band"' : ""} style="background-color:${bandBg};border-top:1px solid ${footerBorder};padding:28px 32px 24px 32px;text-align:center;">
+            <td${isGroup ? ' class="group-band group-rule"' : ""} style="background-color:${bandBg};border-top:1px solid ${footerBorder};padding:28px 32px 24px 32px;text-align:center;">
               <!-- Small CRE8 logo -->
               <img src="${cre8LogoUrl}" alt="CRE8 Advisors" width="${footerLogoW}" height="${footerLogoH}" style="display:block;width:${footerLogoW}px;height:${footerLogoH}px;margin:0 auto;border:0;outline:none;text-decoration:none;" />
 
