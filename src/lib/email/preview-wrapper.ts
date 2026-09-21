@@ -36,9 +36,8 @@ const PREVIEW_STYLE = `
   html, body { background-color: #F5F5F5 !important; }
   body > table { background-color: #F5F5F5 !important; }
   /* Multiple emails: pin the light shell so OS dark mode cannot restore charcoal chrome */
-  .group-shell, .group-header { background-color: #F5F5F5 !important; }
-  .group-label { color: #1A1A1A !important; }
-  .group-copy { color: #4B5563 !important; }
+  .group-shell, .group-header, .group-band { background-color: #F5F5F5 !important; }
+  .group-label, .group-copy, .group-broker-name { color: #1A1A1A !important; }
   /* Clickable regions */
   [data-field] { cursor: pointer; }
   [data-field] a { cursor: pointer; }
