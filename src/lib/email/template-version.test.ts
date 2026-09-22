@@ -22,7 +22,7 @@ function assert(cond: unknown, msg: string) {
   }
 }
 
-assert(CURRENT_TEMPLATE_VERSION === "2026-09-21-4", "version id");
+assert(/^\d{4}-\d{2}-\d{2}-\d+$/.test(CURRENT_TEMPLATE_VERSION), "version id looks like YYYY-MM-DD-n"); // no hardcoded value — bumps shouldn't break the test
 assert(usesCurrentTemplate({ template_version: CURRENT_TEMPLATE_VERSION }), "current matches");
 assert(usesCurrentTemplate({ template_version: null }), "null is current (pre-version rows)");
 assert(usesCurrentTemplate({}), "missing is current");
