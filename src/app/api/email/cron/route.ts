@@ -4,6 +4,10 @@ import { getSendStatus, cancelSend } from "@/lib/email/provider";
 import { scheduleCampaign, computeNextSendDate, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 import { getSettings } from "@/lib/email/settings-server";
 import { syncContactMirror, backfillCompanies } from "@/lib/email/contact-mirror";
+
+// The nightly run does real work: recurring sends, two week-optimizer passes, the
+// contact mirror rebuild (~30s) and a company backfill. Default 10s is not enough.
+export const maxDuration = 300;
 import { FREQUENCY_LABELS } from "@/lib/email/constants";
 
 /**
