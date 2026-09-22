@@ -189,7 +189,8 @@ export interface EmailTemplateVars {
   partnerLogoWidth: number;    // natural px (0 when unknown)
   partnerLogoHeight: number;
   brokers: BrokerCardVars[];   // one card per broker, primary first
-  groupListings: GroupListing[]; // when non-empty the email renders as stacked Option D strips
+  groupListings: GroupListing[]; // the cards of a Multiple email
+  isGroup: boolean;              // Multiple template (chosen in the composer), even before cards are added
 }
 
 // One broker contact card in the email

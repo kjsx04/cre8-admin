@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-21-4";
+export const CURRENT_TEMPLATE_VERSION = "2026-09-22-1"; // heading 20px, CTA spacing, Multiple template switches on immediately
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -171,6 +171,7 @@ export function buildTemplateVars(
     partnerLogoHeight: Number(data.partner_logo_height) || 0,
     brokers,
     groupListings: data.campaign_kind === "group" && Array.isArray(data.group_listings) ? (data.group_listings as GroupListing[]) : [],
+    isGroup: isGroupData,
   };
 }
 
@@ -229,7 +230,8 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
     statsGridHtml = rows.join("");
   }
 
-  const isGroup = vars.groupListings.length > 0;
+  // Multiple template as soon as the composer says so — not only once cards exist
+  const isGroup = vars.isGroup || vars.groupListings.length > 0;
   // Multiple is black (#000). Single stays the near-black #1A1A1A card.
   // Copy, broker band, and the white logo match the dark chrome.
   const shellBg = isGroup ? "#000000" : "#1A1A1A";
@@ -499,7 +501,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <tr>
             <td style="padding:16px ${GROUP_INSET}px 0 ${GROUP_INSET}px;">
               <table role="presentation" class="group-grid" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;">
-                ${groupGridHtml}
+                ${groupGridHtml || `
+                <tr>
+                  <td data-field="group-0" style="border:1px dashed #3a3a3a;border-radius:3px;padding:28px 16px;text-align:center;font-family:${EMAIL_FONT};font-size:13px;color:#777777;line-height:1.5;">
+                    Your listings will appear here &mdash; add at least two in step 2.
+                  </td>
+                </tr>`}
               </table>
             </td>
           </tr>` : ""}
