@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/email/listing-hydrate.test.ts
  */
 
-import { overlayListingOnCampaign, overlayGroupCard, listingStaysLive, listingSnapshotFields } from "./listing-hydrate";
+import { overlayListingOnCampaign, overlayGroupCard, listingStaysLive, listingSnapshotFields, resolveHeroPhoto } from "./listing-hydrate";
 import type { ListingItem } from "@/lib/admin-constants";
 
 let failed = 0;
@@ -23,7 +23,7 @@ const listing: ListingItem = {
     slug: "live-name",
     "list-price": "$9",
     "square-feet": 10,
-    gallery: [{ url: "https://cdn/hero.jpg", alt: "" }],
+    gallery: [{ url: "https://cdn.prod.website-files.com/x/hero.jpg", alt: "" }],
   },
 };
 
@@ -31,7 +31,7 @@ const campaign = overlayListingOnCampaign(
   {
     listing_id: "list-1",
     listing_name: "Old Name",
-    photo_url: "https://cdn/old.jpg",
+    photo_url: "https://cdn.prod.website-files.com/x/old.jpg", // a CMS photo that no longer exists
     heading_text: "Keep heading",
     intro_text: "Keep intro",
     body_text: "Keep body",
@@ -43,7 +43,7 @@ const campaign = overlayListingOnCampaign(
 );
 
 assert(campaign.listing_name === "Live Name", "listing name is live");
-assert(campaign.photo_url === "https://cdn/hero.jpg", "hero photo is live");
+assert(campaign.photo_url === "https://cdn.prod.website-files.com/x/hero.jpg", "non-gallery photo falls back to first gallery photo");
 assert(campaign.listing_page_url === "https://cre8advisors.com/listings/live-name", "slug url is live");
 assert(campaign.heading_text === "Keep heading", "heading stays campaign copy");
 assert(campaign.intro_text === "Keep intro", "intro stays campaign copy");
@@ -52,6 +52,14 @@ assert(campaign.partner_logo_url === "https://cdn/logo.png", "partner logo stays
 assert(campaign.broker_name === "Kevin Smith", "broker stays");
 assert((campaign.highlights as string[])[0] === "Price: $9", "auto highlight refreshes");
 assert((campaign.highlights as string[])[1] === "Custom: stay", "custom highlight stays");
+
+// Hero photo rules (single emails)
+const twoPhotos = [{ url: "https://cdn.prod.website-files.com/a/1.jpg" }, { url: "https://cdn.prod.website-files.com/a/2.jpg" }];
+assert(resolveHeroPhoto("https://cdn.prod.website-files.com/a/2.jpg", twoPhotos) === "https://cdn.prod.website-files.com/a/2.jpg", "picked gallery photo #2 stays");
+assert(resolveHeroPhoto("https://cdn.prod.website-files.com/a/gone.jpg", twoPhotos) === "https://cdn.prod.website-files.com/a/1.jpg", "stale CMS photo → first gallery photo");
+assert(resolveHeroPhoto("https://example.com/custom.jpg", twoPhotos) === "https://example.com/custom.jpg", "pasted custom URL stays");
+assert(resolveHeroPhoto("", twoPhotos) === "https://cdn.prod.website-files.com/a/1.jpg", "empty → first gallery photo");
+assert(resolveHeroPhoto("https://cdn.prod.website-files.com/a/old.jpg", null) === "https://cdn.prod.website-files.com/a/old.jpg", "listing with no gallery keeps the stored photo");
 
 const keptPhoto = overlayGroupCard(
   { listing_id: "list-1", name: "Old", photo_url: "https://cdn/picked.jpg", url: "", summary: "", chip: "" },
@@ -64,14 +72,14 @@ const filledPhoto = overlayGroupCard(
   { listing_id: "list-1", name: "Old", photo_url: "", url: "", summary: "", chip: "" },
   listing
 );
-assert(filledPhoto.photo_url === "https://cdn/hero.jpg", "empty group photo fills from listing");
+assert(filledPhoto.photo_url === "https://cdn.prod.website-files.com/x/hero.jpg", "empty group photo fills from listing");
 
 assert(listingStaysLive("draft") && listingStaysLive(null) && listingStaysLive(undefined), "drafts stay live");
 assert(!listingStaysLive("scheduled") && !listingStaysLive("active") && !listingStaysLive("completed"), "scheduled+ is frozen");
 
 const snap = listingSnapshotFields(campaign, new Date("2026-09-19T15:00:00.000Z"));
 assert(snap.listing_name === "Live Name", "snapshot name");
-assert(snap.photo_url === "https://cdn/hero.jpg", "snapshot photo");
+assert(snap.photo_url === "https://cdn.prod.website-files.com/x/hero.jpg", "snapshot photo");
 assert(snap.listing_synced_at === "2026-09-19T15:00:00.000Z", "snapshot time");
 assert(!("heading_text" in snap) && !("intro_text" in snap) && !("body_text" in snap), "snapshot omits campaign copy");
 

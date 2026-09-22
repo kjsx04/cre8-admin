@@ -30,11 +30,31 @@ export function overlayListingOnCampaign(campaign: CampaignRow, item: ListingIte
   const fd = item.fieldData || {};
   const next: CampaignRow = { ...campaign };
   if (fd.name) next.listing_name = fd.name;
-  const hero = fd.gallery?.[0]?.url;
-  if (hero) next.photo_url = hero;
+  // Hero photo: keep what the user picked unless it's missing or no longer exists.
+  //   - empty                                   → listing's first gallery photo
+  //   - a Webflow CDN photo no longer in gallery → first gallery photo (it was removed/replaced in the CMS)
+  //   - a gallery photo the user chose, or a pasted URL from elsewhere → kept
+  // (Before this rule the preview always forced photo #1, so picking another photo did nothing.)
+  next.photo_url = resolveHeroPhoto(campaign.photo_url, fd.gallery);
   if (fd.slug) next.listing_page_url = `https://cre8advisors.com/listings/${fd.slug}`;
   next.highlights = refreshHighlights((campaign.highlights as string[]) || [], fd);
   return next;
+}
+
+/** True for images hosted by Webflow (the listing gallery lives there) */
+function isWebflowCdn(url: string): boolean {
+  return /website-files\.com/i.test(url);
+}
+
+/** Decide which hero photo a campaign should show given the listing's current gallery */
+export function resolveHeroPhoto(current: unknown, gallery: { url: string }[] | null | undefined): string {
+  const cur = typeof current === "string" ? current : "";
+  const urls = (gallery || []).map((g) => g.url).filter(Boolean);
+  const first = urls[0] || "";
+  if (!cur) return first;                                    // nothing chosen yet → first gallery photo
+  if (urls.includes(cur)) return cur;                        // still a valid gallery photo → keep
+  if (isWebflowCdn(cur) && first) return first;              // stale CMS photo → first gallery photo
+  return cur;                                                // custom URL from elsewhere → keep
 }
 
 export function overlayGroupCard(card: Record<string, unknown>, item: ListingItem): Record<string, unknown> {
