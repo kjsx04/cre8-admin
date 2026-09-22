@@ -4,18 +4,21 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
+import { Mail } from "lucide-react";
+import { Badge, cn, FOCUS_RING } from "@/components/ui";
 
 // Sidebar modules — add more as new marketing features are built
-const MODULES = [
-  { label: "Email", href: "/marketing/email", icon: "M" },
-];
+const MODULES = [{ label: "Email", href: "/marketing/email", icon: Mail }];
 
+/**
+ * MarketingSidebar — second-level rail for the Marketing section.
+ * Shows the open-alert count on Email (stale content / cadence slowed).
+ */
 export default function MarketingSidebar() {
   const pathname = usePathname();
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
 
-  // Open email alerts (stale content / cadence slowed) → badge on the Email module
   const [alertCount, setAlertCount] = useState(0);
   useEffect(() => {
     if (!userEmail) return;
@@ -40,38 +43,28 @@ export default function MarketingSidebar() {
   if (/^\/marketing\/email\/(new|[^/]+\/edit)/.test(pathname || "")) return null;
 
   return (
-    <aside className="w-48 bg-white border-r border-border-light flex flex-col py-4 shrink-0">
-      <h3 className="px-4 text-xs font-semibold text-muted-gray uppercase tracking-wider mb-3">
-        Modules
-      </h3>
-      <nav className="flex flex-col gap-0.5 px-2">
+    <aside className="w-56 bg-surface border-r border-border flex flex-col py-4 shrink-0 hidden md:flex">
+      <p className="px-5 text-xs font-medium text-text-3 mb-2">Marketing</p>
+      <nav className="flex flex-col gap-0.5 px-3">
         {MODULES.map((mod) => {
           const active = pathname.startsWith(mod.href);
+          const Icon = mod.icon;
           return (
             <Link
               key={mod.href}
               href={mod.href}
-              className={`flex items-center gap-2.5 px-3 py-2 rounded-btn text-sm font-medium transition-colors duration-150
-                ${active
-                  ? "bg-[#F0F0F0] text-[#1A1A1A] border-l-2 border-green"
-                  : "text-medium-gray hover:bg-light-gray hover:text-charcoal"
-                }`}
+              className={cn(
+                "flex items-center gap-2.5 h-9 px-2.5 rounded-control text-sm font-medium transition-colors duration-150",
+                active ? "bg-accent-soft text-text" : "text-text-2 hover:bg-surface-2 hover:text-text",
+                FOCUS_RING
+              )}
             >
-              {/* Icon placeholder — simple letter badge */}
-              <span
-                className={`w-6 h-6 rounded flex items-center justify-center text-xs font-bold
-                  ${active ? "bg-green text-black" : "bg-light-gray text-medium-gray"}`}
-              >
-                {mod.icon}
-              </span>
+              <Icon size={18} strokeWidth={1.75} className={cn("shrink-0", active ? "text-accent-strong" : "text-text-3")} />
               {mod.label}
               {mod.href === "/marketing/email" && alertCount > 0 && (
-                <span
-                  className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700"
-                  title={`${alertCount} campaign${alertCount === 1 ? "" : "s"} need attention`}
-                >
+                <Badge tone="warning" size="sm" className="ml-auto" title={`${alertCount} campaign${alertCount === 1 ? "" : "s"} need attention`}>
                   {alertCount}
-                </span>
+                </Badge>
               )}
             </Link>
           );

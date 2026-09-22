@@ -5,6 +5,7 @@ import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
 import { msalConfig } from "@/lib/msal-config";
 import { useEffect, useState } from "react";
+import Spinner from "@/components/ui/Spinner";
 
 // Create MSAL instance once
 const msalInstance = new PublicClientApplication(msalConfig);
@@ -29,8 +30,7 @@ export default function RootLayout({
   return (
     <html lang="en">
       <head>
-        {/* Google Fonts: Inter (Sep 2026 trial — replaces Bebas Neue + DM Sans across the admin).
-            To revert: restore the Bebas+DM Sans URL here and the fontFamily map in tailwind.config.ts. */}
+        {/* Google Fonts: Inter — the admin's only typeface (see tailwind.config.ts fontFamily) */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link
@@ -45,13 +45,13 @@ export default function RootLayout({
         <title>CRE8 Admin</title>
         <meta name="description" content="CRE8 Advisors admin portal" />
       </head>
-      <body className="font-dm antialiased">
+      <body className="font-sans antialiased">
         {ready ? (
           <MsalProvider instance={msalInstance}>{children}</MsalProvider>
         ) : (
           /* Loading screen while MSAL initializes */
-          <div className="min-h-screen bg-white flex items-center justify-center">
-            <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
+          <div className="min-h-screen bg-canvas flex items-center justify-center">
+            <Spinner size="lg" />
           </div>
         )}
       </body>

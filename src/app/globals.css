@@ -2,55 +2,38 @@
 @tailwind components;
 @tailwind utilities;
 
-/* CRE8 Design System — Custom Properties */
-:root {
-  --black: #000000;
-  --white: #FFFFFF;
-  --green: #8CC644;
-  --charcoal: #1A1A1A;
-  --dark-gray: #2A2A2A;
-  --medium-gray: #666666;
-  --light-gray: #F5F5F5;
-  --border-gray: #333333;
-}
-
-/* Base styles */
+/* ── Base ──
+   Colors and sizes live in tailwind.config.ts. This file only sets the page
+   defaults and a few third-party overrides. */
 body {
   font-family: "Inter", -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
-  background: #FFFFFF;
-  color: #1A1A1A;
+  background: #F7F7F8; /* = canvas token */
+  color: #111113;      /* = text token */
   margin: 0;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Focus states — green border per design system */
-input:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  border-color: var(--green);
-}
-
-/* Scrollbar styling for light theme */
+/* Scrollbars — thin and neutral */
 ::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
-  background: #F5F5F5;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #D0D0D0;
+  background: #D3D3D6; /* = border-strong */
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #AAAAAA;
+  background: #B4B4B9;
 }
 
-/* docx-preview overrides — white document inside dark UI */
+/* ── docx-preview overrides (Template Assistant document preview) ── */
 .docx-preview-container {
   background: white;
-  border-radius: 8px;
+  border-radius: 10px;
   overflow-y: auto;
   max-height: calc(100vh - 180px);
 }
@@ -60,10 +43,10 @@ select:focus {
   }
 }
 .docx-preview-container ::-webkit-scrollbar-track {
-  background: #f0f0f0;
+  background: #F2F2F3;
 }
 .docx-preview-container ::-webkit-scrollbar-thumb {
-  background: #ccc;
+  background: #D3D3D6;
 }
 /* Remove any extra margin docx-preview adds to the wrapper */
 .docx-preview-container .docx-wrapper {
@@ -76,10 +59,9 @@ select:focus {
   margin-bottom: 0 !important;
 }
 
-/* ── Font trial (Sep 2026): headings that used Bebas Neue ──
-   Bebas is a condensed all-caps display face; Inter is not. So every `font-bebas`
-   heading becomes Inter semibold with tight letter-spacing (overriding the
-   `tracking-wide` those headings carry for Bebas). Delete this block to revert. */
+/* ── LEGACY: headings that still use the old `font-bebas` class ──
+   They render as Inter semibold until every page is migrated to `text-lg/xl font-semibold`.
+   Delete this block once `grep -rn font-bebas src` returns nothing. */
 .font-bebas {
   font-weight: 600;
   letter-spacing: -0.01em !important;
