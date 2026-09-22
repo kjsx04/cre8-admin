@@ -453,7 +453,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
                          Outlook/Gmail strip web fonts and fall back to the system stack. -->
                     <!-- Big line — the heading typed in the composer ("Just Listed", "Price Reduced", …) -->
                     ${vars.label ? `
-                    <h1 data-field="label"${isGroup ? ' class="group-label"' : ""} style="margin:0;font-family:${EMAIL_FONT};font-size:30px;font-weight:700;text-transform:uppercase;color:${headingColor};line-height:1.15;letter-spacing:1px;">
+                    <h1 data-field="label"${isGroup ? ' class="group-label"' : ""} style="margin:0;font-family:${EMAIL_FONT};font-size:24px;font-weight:700;text-transform:uppercase;color:${headingColor};line-height:1.15;letter-spacing:1px;">
                       ${escapeHtml(vars.label)}
                     </h1>` : ""}
                     ${vars.propertyAddress ? `
