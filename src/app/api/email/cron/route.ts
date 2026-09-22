@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { getSendStatus, cancelSend } from "@/lib/email/provider";
 import { scheduleCampaign, computeNextSendDate, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 import { getSettings } from "@/lib/email/settings-server";
+import { syncContactMirror, backfillCompanies } from "@/lib/email/contact-mirror";
 import { FREQUENCY_LABELS } from "@/lib/email/constants";
 
 /**
@@ -209,11 +210,24 @@ export async function GET(request: NextRequest) {
       rebalance.push({ error: err instanceof Error ? err.message : "rebalance failed" });
     }
 
+    // Rebuild the local contact mirror so the audience search stays fast and complete
+    let contactMirror: unknown;
+    try {
+      const synced = await syncContactMirror();
+      // Top up company names for a batch of contacts that still lack one
+      const companies = await backfillCompanies();
+      contactMirror = { ...synced, companies };
+    } catch (err) {
+      console.error("[Cron] contact mirror sync failed:", err);
+      contactMirror = { error: err instanceof Error ? err.message : "contact mirror sync failed" };
+    }
+
     return NextResponse.json({
       processed: results.length,
       results,
       housekeeping,
       rebalance,
+      contactMirror,
       timestamp: now.toISOString(),
     });
   } catch (error) {

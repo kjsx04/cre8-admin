@@ -505,6 +505,18 @@ async function hydrateCompanies(rows: ResendContact[]): Promise<ResendContact[]>
 }
 
 /**
+ * Look up ONE contact by email address. Used by the audience search as a
+ * fallback so a contact added to Resend today is findable before the nightly
+ * mirror sync picks it up. Returns null when Resend has no such contact.
+ */
+export async function lookupContactByEmail(email: string): Promise<ResendContact | null> {
+  const res = await resendFetch(`/contacts/${encodeURIComponent(email.toLowerCase())}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Resend contact lookup failed (${res.status}): ${await res.text()}`);
+  return unwrapContact(await res.json());
+}
+
+/**
  * Search Resend contacts by email, name, or company/brokerage (case-insensitive
  * partial match). Pages the live contact list (cached 10 min) so matches are
  * not limited to the first few hundred rows.
