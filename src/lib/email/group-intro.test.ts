@@ -53,15 +53,15 @@ assert(html.includes('data-field="intro"'), "intro is clickable in preview");
 assert(html.includes('data-field="body"'), "body is clickable in preview");
 assert(!html.includes('class="group-col"'), "cards are not a 2-up grid");
 assert(!html.includes('width="50%"'), "no half-width columns");
-assert(html.includes("padding-bottom:100%"), "photos are 1:1");
+assert(html.includes("padding-bottom:64.7059%"), "photos are 17:11 (5100×3300)");
 assert(!html.includes("padding-bottom:75%"), "photos are no longer 4:3");
 assert(html.includes('width="42%"'), "photo column is about 42% wide");
 assert((html.match(/class="group-card"/g) || []).length === 2, "one full-width strip per listing");
 assert(html.includes('class="group-title"'), "title renders");
 assert(html.includes('class="group-summary"'), "summary renders");
 assert(!html.includes('class="group-chip"'), "empty eyebrow is omitted");
-assert((html.match(/class="group-photo"/g) || []).length === 2, "both cards use the 1:1 photo box");
-assert((html.match(/position:relative;width:100%;height:0;padding-bottom:100%/g) || []).length === 2, "empty-photo placeholders match the photo box");
+assert((html.match(/class="group-photo"/g) || []).length === 2, "both cards use the 17:11 photo box");
+assert((html.match(/position:relative;width:100%;height:0;padding-bottom:64\.7059%/g) || []).length === 2, "empty-photo placeholders match the photo box");
 assert(html.includes("padding:16px 32px 0 32px"), "strip stack keeps the 32px inset");
 assert(html.includes("padding:0 0 10px 0"), "10px gap between stacked strips");
 assert(html.includes("border-radius:3px"), "card corners are a few pixels");
@@ -83,7 +83,7 @@ assert(!html.includes("color-scheme: light only"), "Multiple emails are not pinn
 assert(html.includes("cre8-white.png"), "Multiple uses the white CRE8 logo on black");
 assert(!html.includes("cre8-logo-color.png"), "Multiple does not use the color logo");
 assert(html.includes("padding:26px 32px 12px 32px"), "Multiple header is 4px shorter");
-assert(html.includes('data-field="cta" style="padding:16px 32px 0 32px'), "CTA sits closer to the next section");
+assert(html.includes('data-field="cta" style="padding:24px 32px 20px 32px'), "CTA has even space above and below");
 assert(html.includes('data-field="broker"') && html.includes('class="group-band group-rule"') && html.includes("background-color:#000000;border-top:1px solid #333333;padding:12px 32px 20px 32px"), "broker band is black with a short gap under the CTA");
 assert(html.includes("class=\"group-broker-name\"") && html.includes("color:#FFFFFF;line-height:1.3"), "broker name is white on the black band");
 assert((html.match(/class="group-band group-rule"/g) || []).length === 2, "broker and footer each have a section rule");
@@ -111,10 +111,10 @@ const withPhotos = renderEmailHtml(buildTemplateVars({
   broker_name: "Kevin Smith",
   broker_email: "Kevin@cre8advisors.com",
 }));
-assert(withPhotos.includes("padding-bottom:100%"), "photo cards use a 1:1 box");
+assert(withPhotos.includes("padding-bottom:64.7059%"), "photo cards use a 17:11 box");
 assert(withPhotos.includes("object-fit:cover"), "cover crop, not letterbox");
 assert(withPhotos.includes("object-position:center center"), "cover is centered");
-assert(withPhotos.includes('width="225"') && withPhotos.includes('height="225"'), "Outlook 1:1 fallback 225×225");
+assert(withPhotos.includes('width="225"') && withPhotos.includes('height="146"'), "Outlook 17:11 fallback 225×146");
 
 const four = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -158,8 +158,8 @@ assert(mixed.includes("UNDER CONTRACT") === false && mixed.includes("Under Contr
 assert(mixed.includes("Price Reduced"), "custom or stored eyebrow text is kept");
 assert(mixed.includes("color:#f59e0b"), "eyebrow is amber on the dark card");
 assert(!mixed.includes("color:#C2410C"), "preset chip colors are gone");
-assert((mixed.match(/padding-bottom:100%/g) || []).length >= 3, "every card photo box is 1:1 including placeholders");
-assert(mixed.includes('width="225"') && mixed.includes('height="225"') && mixed.includes('bgcolor="#1A1A1A"'), "Outlook empty placeholder is the same 225×225 box");
+assert((mixed.match(/padding-bottom:64\.7059%/g) || []).length >= 3, "every card photo box is 17:11 including placeholders");
+assert(mixed.includes('width="225"') && mixed.includes('height="146"') && mixed.includes('bgcolor="#1A1A1A"'), "Outlook empty placeholder is the same 225×146 box");
 assert(mixed.includes("VIEW ALL LISTINGS"), "group CTA unchanged");
 assert((mixed.match(/class="group-cta"/g) || []).length === 3, "every card has a text-link CTA");
 assert(mixed.includes("Coming Soon") === false, "sanity");

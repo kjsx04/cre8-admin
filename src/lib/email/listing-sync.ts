@@ -97,8 +97,9 @@ export async function syncCampaignsForListing(
       const hero = fieldData.gallery?.[0]?.url;
       if (hero && !card.photo_url) next.photo_url = hero;
       if (fieldData.slug) next.url = `https://cre8advisors.com/listings/${fieldData.slug}`;
+      // Only fill an empty summary — a hand-written one in the composer stays
       const summary = buildGroupSummary(fieldData);
-      if (summary && summary !== card.summary) next.summary = summary;
+      if (summary && !String(card.summary || "").trim()) next.summary = summary;
       if (fieldData["under-contract"] && card.chip !== "Under Contract") next.chip = "Under Contract";
       if (fieldData["under-contract"] === false && card.chip === "Under Contract") next.chip = "";
       if (JSON.stringify(next) !== JSON.stringify(card)) changed = true;

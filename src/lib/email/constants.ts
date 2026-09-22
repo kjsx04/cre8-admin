@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-22-1"; // heading 20px, CTA spacing, Multiple template switches on immediately
+export const CURRENT_TEMPLATE_VERSION = "2026-09-22-2"; // heading 20px, CTA spacing, Multiple template switches on immediately
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -289,17 +289,20 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   // Cards stack vertically with a 10px gap. Empty eyebrow is omitted.
   const GROUP_INSET = 32;
   const GROUP_GAP = 10;
-  const GROUP_PHOTO = 225; // Outlook fallback; 42% of (600 − 32 − 32)
+  // Card photo box is 5100×3300 (17:11) — brochure covers fit exactly; anything else is center-cropped to fill
+  const GROUP_PHOTO = 225;                                   // Outlook fallback width; 42% of (600 − 32 − 32)
+  const GROUP_PHOTO_H = Math.round(GROUP_PHOTO * 3300 / 5100); // 146
+  const GROUP_PHOTO_RATIO = ((3300 / 5100) * 100).toFixed(4);  // padding-bottom % that keeps 17:11
   const GROUP_CARD_RADIUS = 3;
   const groupPhotoBox = (inner: string, bgImage: string) =>
-    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:100%;background-color:#1A1A1A;${bgImage}overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
+    `<div class="group-photo" style="position:relative;width:100%;height:0;padding-bottom:${GROUP_PHOTO_RATIO}%;background-color:#1A1A1A;${bgImage}overflow:hidden;line-height:0;font-size:0;">${inner}</div>`;
   const groupPhoto = (g: GroupListing) => {
     const href = g.url || CRE8_SITE_URL + "/listings";
     const alt = escapeHtml(g.name);
-    const outlookEmpty = `<!--[if mso]><table role="presentation" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" cellpadding="0" cellspacing="0" border="0" bgcolor="#1A1A1A"><tr><td width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" bgcolor="#1A1A1A" style="width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;background-color:#1A1A1A;font-size:0;line-height:0;">&nbsp;</td></tr></table><![endif]-->`;
+    const outlookEmpty = `<!--[if mso]><table role="presentation" width="${GROUP_PHOTO}" height="${GROUP_PHOTO_H}" cellpadding="0" cellspacing="0" border="0" bgcolor="#1A1A1A"><tr><td width="${GROUP_PHOTO}" height="${GROUP_PHOTO_H}" bgcolor="#1A1A1A" style="width:${GROUP_PHOTO}px;height:${GROUP_PHOTO_H}px;background-color:#1A1A1A;font-size:0;line-height:0;">&nbsp;</td></tr></table><![endif]-->`;
     const photo = g.photo_url
-      ? `<!--[if mso]><img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="display:block;width:${GROUP_PHOTO}px;height:${GROUP_PHOTO}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!-->${groupPhotoBox(
-          `<img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center;border:0;outline:none;text-decoration:none;" />`,
+      ? `<!--[if mso]><img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO_H}" style="display:block;width:${GROUP_PHOTO}px;height:${GROUP_PHOTO_H}px;border:0;outline:none;" /><![endif]--><!--[if !mso]><!-->${groupPhotoBox(
+          `<img src="${g.photo_url}" alt="${alt}" width="${GROUP_PHOTO}" height="${GROUP_PHOTO_H}" style="position:absolute;top:0;left:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center center;border:0;outline:none;text-decoration:none;" />`,
           `background-image:url('${g.photo_url}');background-size:cover;background-position:center center;background-repeat:no-repeat;`
         )}<!--<![endif]-->`
       : `${outlookEmpty}<!--[if !mso]><!-->${groupPhotoBox("&nbsp;", "")}<!--<![endif]-->`;

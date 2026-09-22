@@ -64,8 +64,11 @@ export function overlayGroupCard(card: Record<string, unknown>, item: ListingIte
   const hero = fd.gallery?.[0]?.url;
   if (hero && !card.photo_url) next.photo_url = hero;
   if (fd.slug) next.url = `https://cre8advisors.com/listings/${fd.slug}`;
-  const summary = buildGroupSummary(fd);
-  if (summary) next.summary = summary;
+  // Summary is editable in the composer — keep what was typed; only fill an empty one from the CMS
+  if (!String(card.summary || "").trim()) {
+    const summary = buildGroupSummary(fd);
+    if (summary) next.summary = summary;
+  }
   if (fd["under-contract"]) next.chip = "Under Contract";
   if (fd["under-contract"] === false && card.chip === "Under Contract") next.chip = "";
   return next;

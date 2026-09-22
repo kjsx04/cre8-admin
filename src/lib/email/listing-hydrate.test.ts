@@ -74,6 +74,18 @@ const filledPhoto = overlayGroupCard(
 );
 assert(filledPhoto.photo_url === "https://cdn.prod.website-files.com/x/hero.jpg", "empty group photo fills from listing");
 
+// Summary: what was typed in the composer wins; only an empty one is filled from the CMS
+const typedSummary = overlayGroupCard(
+  { listing_id: "list-1", name: "Old", photo_url: "", url: "", summary: "28 Acres · Ironwood & Warner", chip: "" },
+  listing
+);
+assert(typedSummary.summary === "28 Acres · Ironwood & Warner", "hand-typed summary stays");
+const emptySummary = overlayGroupCard(
+  { listing_id: "list-1", name: "Old", photo_url: "", url: "", summary: "", chip: "" },
+  listing
+);
+assert(emptySummary.summary === "10 Acres", "empty summary fills from the listing");
+
 assert(listingStaysLive("draft") && listingStaysLive(null) && listingStaysLive(undefined), "drafts stay live");
 assert(!listingStaysLive("scheduled") && !listingStaysLive("active") && !listingStaysLive("completed"), "scheduled+ is frozen");
 
