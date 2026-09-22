@@ -527,7 +527,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           <!-- CTA button — dark text on green -->
           ${(vars.listingUrl || isGroup) ? `
           <tr>
-            <td data-field="cta" style="padding:16px 32px 0 32px;text-align:center;line-height:0;font-size:0;">
+            <td data-field="cta" style="padding:24px 32px 20px 32px;text-align:center;line-height:0;font-size:0;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">
                 <tr>
                   <td align="center" style="border-radius:4px;background-color:#8CC644;">
