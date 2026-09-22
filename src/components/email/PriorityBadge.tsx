@@ -1,41 +1,20 @@
 "use client";
 
 import { PriorityLevel } from "@/lib/email/types";
+import { Badge } from "@/components/ui";
 
 interface PriorityBadgeProps {
   priority: PriorityLevel;
 }
 
-/** Small badge showing campaign priority — star for featured, "NEW" for new listings */
+/**
+ * PriorityBadge — small tag for a campaign's priority level.
+ *   1 Just Listed · 2 Just Sold · 3 Featured · 4 New · 5 Standard (no badge)
+ */
 export default function PriorityBadge({ priority }: PriorityBadgeProps) {
-  if (priority === 1) {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-blue-100 text-blue-700">
-        JL
-      </span>
-    );
-  }
-  if (priority === 2) {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-red-100 text-red-700">
-        JS
-      </span>
-    );
-  }
-  if (priority === 3) {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-yellow-100 text-yellow-700">
-        &#9733;
-      </span>
-    );
-  }
-  if (priority === 4) {
-    return (
-      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-green-100 text-green-700">
-        NEW
-      </span>
-    );
-  }
-  // Priority 5 (Standard) — no badge
+  if (priority === 1) return <Badge tone="info" size="sm" title="Just Listed">JL</Badge>;
+  if (priority === 2) return <Badge tone="danger" size="sm" title="Just Sold">JS</Badge>;
+  if (priority === 3) return <Badge tone="warning" size="sm" title="Featured">★</Badge>;
+  if (priority === 4) return <Badge tone="success" size="sm" title="New listing">New</Badge>;
   return null;
 }
