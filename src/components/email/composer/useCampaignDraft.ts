@@ -39,7 +39,8 @@ export interface CampaignDraft {
   listingPageUrl: string;
   highlights: HighlightRow[];
   brokerIds: string[];          // ordered — the first one is the sender
-  priority: CampaignPriority;   // "high" = fight for a great slot, "normal" = fit anywhere
+  priority: CampaignPriority;   // "high" = Top, "normal" = Fit, "custom" = exact slot
+  priorityRank: number;         // the slot when priority is "custom" (1 = top)
   segmentIds: string[];         // live Resend segment UUIDs (multi-select)
   extraEmails: string[];        // optional extra recipients
   extraContactNames: Record<string, string>; // email → display name for selected chips
@@ -138,6 +139,7 @@ function emptyDraft(userEmail: string): CampaignDraft {
     highlights: [],
     brokerIds: [brokerIdForEmail(userEmail) || EMAIL_SENDERS[0]?.id || ""].filter(Boolean),
     priority: "normal",
+    priorityRank: 1,
     segmentIds: [],
     extraEmails: [],
     extraContactNames: {},
@@ -170,7 +172,8 @@ function fromCampaign(c: Campaign): CampaignDraft {
     }),
     // Primary first, then any extra brokers stored on the campaign
     brokerIds: Array.from(new Set([c.broker_id, ...(c.broker_ids || [])].filter(Boolean))),
-    priority: c.priority === "high" ? "high" : "normal",
+    priority: c.priority === "high" ? "high" : c.priority === "custom" ? "custom" : "normal",
+    priorityRank: c.priority_rank && c.priority_rank >= 1 ? c.priority_rank : 1,
     segmentIds: parseAudienceTokens(c.segment_id).segmentIds,
     extraEmails: parseAudienceTokens(c.segment_id).extraEmails,
     extraContactNames: {},
@@ -310,6 +313,7 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       broker_phone: sender?.phone || BROKER_CONTACTS[primaryId]?.phone || "",
       broker_ids: draft.brokerIds,
       priority: draft.priority,
+      priority_rank: draft.priority === "custom" ? draft.priorityRank : null,
       segment_id: serializeAudienceTokens(draft.segmentIds, draft.extraEmails) || undefined,
       segment_name: [
         ...draft.segmentIds,

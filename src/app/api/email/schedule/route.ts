@@ -15,7 +15,8 @@ export async function POST(request: NextRequest) {
       campaign_type,
       listing_name,
       frequency,
-      priority,             // "high" | "normal" — the composer's "Top of list" choice
+      priority,             // "high" | "normal" | "custom" — the composer's Priority choice
+      placement,            // "top" | "fit" | "custom" — whether other campaigns may be moved (see below)
       rank,                 // listing rank (1 = most important) from the Priorities list, or null
       rank_total,
       is_announcement,      // bypasses listing spacing
@@ -68,6 +69,13 @@ NEW CAMPAIGN TO SCHEDULE:
 - Frequency: ${frequency || "one-time"}
 - Rank: ${rank != null ? `${rank} of ${rank_total}` : priority === "high" ? "TOP (new, placed at the top of the list)" : "unranked (bottom)"}
 - Announcement: ${is_announcement ? "YES — must go out at the best available slot; listing spacing does not apply to it" : "no"}
+- Placement: ${
+  placement === "fit"
+    ? "FIT — take the best slot that is still free. Do NOT move any existing campaign; calendar_changes MUST be an empty array."
+    : placement === "top"
+      ? "TOP — this campaign outranks everything. Give it the best slot in the next few days; you MAY shift lower-ranked, non-projected campaigns to make room."
+      : "CUSTOM RANK — schedule it where its rank deserves; you MAY shift lower-ranked, non-projected campaigns to make room, never higher-ranked ones."
+}
 ${target_date ? `- TARGET DATE: this is the next occurrence of a recurring campaign. Schedule it in the same week as ${target_date} (same weekday/time as the previous send when possible). If that date is already in the past, pick the next valid business-hours slot at least 24 hours from now.` : ""}
 
 Return ONLY valid JSON (no markdown, no preamble):

@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { syncCampaignToProvider, cancelSend } from "@/lib/email/provider";
-import { scheduleCampaign } from "@/lib/email/scheduler";
+import { scheduleCampaign, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
+import { placeForCampaign, normalizePriority } from "@/lib/email/priorities";
+import { addDays } from "@/lib/email/schedule-dates";
 import { templateStamp } from "@/lib/email/template-version";
 
 // GET /api/email/campaigns/[id] — fetch a single campaign
@@ -74,7 +76,7 @@ export async function PATCH(
       ? Array.from(new Set([primary, ...body.broker_ids].filter(Boolean)))
       : primary ? [primary] : [];
   }
-  if (body.priority !== undefined) updates.priority = body.priority === "high" ? "high" : "normal";
+  if (body.priority !== undefined) Object.assign(updates, normalizePriority(body)); // priority + priority_rank
   if (body.segment_id !== undefined) updates.segment_id = body.segment_id || null;
   if (body.segment_name !== undefined) updates.segment_name = body.segment_name;
   if (body.frequency !== undefined) {
@@ -119,6 +121,16 @@ export async function PATCH(
   // An edit is a refresh — clear any stale-content alert for this campaign
   await supabase.from("email_alerts").delete().eq("campaign_id", params.id).eq("type", "stale");
 
+  // Priority changed → move the listing in the ranked list (Top → #1, Custom → its number, Fit → leave/append)
+  let rebalance = false;
+  if (body.priority !== undefined) {
+    try {
+      rebalance = await placeForCampaign(campaign);
+    } catch (err) {
+      console.error("[PATCH campaign] rank placement failed:", err);
+    }
+  }
+
   try {
     if (campaign.status === "draft" && body.auto_schedule) {
       // Never scheduled yet — treat this like a create
@@ -135,6 +147,18 @@ export async function PATCH(
           .update({ provider_send_id: providerSync.provider_send_id })
           .eq("id", params.id);
         campaign.provider_send_id = providerSync.provider_send_id;
+      }
+    }
+
+    // Top / Custom re-ranked the list → AI rebalances this week + next around the new order
+    if (rebalance && (campaign.status === "scheduled" || campaign.status === "active")) {
+      try {
+        const baseUrl = new URL(request.url).origin;
+        const thisWeek = currentWeekStart();
+        await optimizeWeek(baseUrl, thisWeek);
+        await optimizeWeek(baseUrl, addDays(thisWeek, 7));
+      } catch (err) {
+        console.error("[PATCH campaign] rebalance after placement failed:", err);
       }
     }
   } catch (err) {

@@ -44,8 +44,11 @@ export type EmailLabel = "Just Listed" | "Just Sold" | string;
 // Priority level (auto-derived from listing + label)
 export type PriorityLevel = 1 | 2 | 3 | 4 | 5;
 
-// User-chosen scheduling priority: "high" = grab a great slot, "normal" = fit anywhere
-export type CampaignPriority = "high" | "normal";
+// User-chosen scheduling priority (composer "Priority" section):
+//   "high"   = Top    → listing goes to #1 in the Priorities list; AI may move others to give it the best slot
+//   "normal" = Fit    → listing joins the bottom; AI takes the best slot that's still free, moves nothing
+//   "custom" = Custom → listing goes to exactly `priority_rank`; AI rebalances the others around it
+export type CampaignPriority = "high" | "normal" | "custom";
 
 // ── Campaign record (matches Supabase schema) ──
 export interface Campaign {
@@ -70,7 +73,8 @@ export interface Campaign {
   broker_email: string;
   broker_phone: string | null;
   broker_ids: string[];           // all brokers shown on the email (primary first)
-  priority: CampaignPriority;     // composer "Top of list" choice at creation
+  priority: CampaignPriority;     // composer Priority choice (Top / Fit / Custom)
+  priority_rank?: number | null;  // the exact slot when priority = "custom" (1 = top)
   pinned: boolean;                // exempt from freshness decay
   cadence_changed_at: string | null; // when frequency last changed (decay clock)
   segment_id: string | null;   // comma-separated Resend segment UUIDs and/or extra emails
@@ -112,7 +116,8 @@ export interface CampaignFormData {
   broker_email: string;
   broker_phone?: string;
   broker_ids?: string[];          // optional — defaults to [broker_id]
-  priority?: CampaignPriority;    // defaults to "normal"
+  priority?: CampaignPriority;    // defaults to "normal" (Fit)
+  priority_rank?: number | null;  // required when priority = "custom"
   pinned?: boolean;
   segment_id?: string;         // comma-separated Resend segment UUIDs and/or extra emails
   segment_name?: string;

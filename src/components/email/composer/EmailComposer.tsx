@@ -72,6 +72,22 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
 
+  // Highest number the Custom priority box accepts = listings on the schedule + 1 (room for this one)
+  const [rankMax, setRankMax] = useState(1);
+  useEffect(() => {
+    if (!userEmail) return;
+    let alive = true;
+    fetch("/api/email/priorities", { headers: { "x-user-email": userEmail } })
+      .then((r) => (r.ok ? r.json() : { listings: [] }))
+      .then((d) => {
+        if (!alive) return;
+        const listings: { listing_id: string }[] = d.listings || [];
+        setRankMax(Math.max(1, listings.length + 1));
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [userEmail]);
+
   const {
     draft, set, pickListing,
     addHighlight, updateHighlight, moveHighlight, removeHighlight,
@@ -643,18 +659,41 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
               <Section title="Priority">
                 <div className="space-y-2">
-                  <Segmented
-                    value={draft.priority}
-                    options={[
-                      { id: "high", label: "Top of list" },
-                      { id: "normal", label: "Normal" },
-                    ]}
-                    onChange={(v) => set("priority", v as CampaignPriority)}
-                  />
+                  {/* Top = #1 and the AI moves others · Fit = best free slot, nothing moves · Custom = exact slot, AI rebalances */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Segmented
+                      value={draft.priority}
+                      options={[
+                        { id: "high", label: "Top" },
+                        { id: "normal", label: "Fit" },
+                        { id: "custom", label: "Custom" },
+                      ]}
+                      onChange={(v) => set("priority", v as CampaignPriority)}
+                    />
+                    {draft.priority === "custom" && (
+                      <label className="flex items-center gap-1.5 text-sm text-charcoal composer-reveal">
+                        <span className="text-muted-gray">#</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={rankMax}
+                          value={draft.priorityRank}
+                          onChange={(e) => {
+                            const n = Math.round(Number(e.target.value));
+                            set("priorityRank", Number.isFinite(n) ? Math.max(1, Math.min(rankMax, n)) : 1);
+                          }}
+                          className="w-16 h-8 px-2 text-sm border border-border-light rounded-btn text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-green"
+                        />
+                        <span className="text-xs text-muted-gray">of {rankMax}</span>
+                      </label>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-gray">
                     {draft.priority === "high"
-                      ? "Goes to #1 in the Priorities list — AI grabs the best slot in the next few days, moving others if needed."
-                      : "Joins the bottom of the Priorities list — AI fits it into the next open slot. Reorder anytime from the schedule page."}
+                      ? "Goes to #1 in the Priorities list — AI grabs the best slot in the next few days and moves other emails around it."
+                      : draft.priority === "custom"
+                        ? `Goes to exactly #${draft.priorityRank} in the Priorities list — AI moves the other emails around to match.`
+                        : "Joins the bottom of the Priorities list — AI takes the best slot that's still open and moves nothing else."}
                     {isEdit && campaign?.scheduled_date && (
                       <> Currently {formatScheduleDate(campaign.scheduled_date)}.</>
                     )}

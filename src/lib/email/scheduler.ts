@@ -120,6 +120,8 @@ export async function requestAiSlot(
       listing_name: campaign.listing_name,
       frequency: campaign.frequency,
       priority: campaign.priority || "normal",
+      // "fit" = take the best free slot, move nothing. "top"/"custom" = may shift lower-ranked sends.
+      placement: campaign.priority === "high" ? "top" : campaign.priority === "custom" ? "custom" : "fit",
       rank: ranks.get(campaign.listing_id as string) ?? null,
       rank_total: ranks.size,
       is_announcement: isAnnouncement(campaign.email_label as string, settings),

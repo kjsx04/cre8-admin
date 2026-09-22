@@ -71,9 +71,15 @@ export default function SendCard({ item, onClick }: SendCardProps) {
         >
           {c.email_label || "Group"}
         </span>
+        {/* Priority chip: Top, or the custom slot number */}
         {c.priority === "high" && (
           <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
-            Highest
+            Top
+          </span>
+        )}
+        {c.priority === "custom" && c.priority_rank && (
+          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">
+            #{c.priority_rank}
           </span>
         )}
       </div>

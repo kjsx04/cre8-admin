@@ -86,3 +86,40 @@ export async function pruneRanks(activeListingIds: Set<string>): Promise<void> {
     await setRanks(keep);
   }
 }
+
+/**
+ * Put a listing at an exact rank (1 = top), moving everything else down to make room.
+ * Works whether or not the listing already has a rank. Ranks past the end clamp to the bottom.
+ */
+export async function placeListingAt(listingId: string, listingName: string | null, rank: number): Promise<void> {
+  const existing = (await getRanks()).filter((e) => e.listing_id !== listingId);
+  const idx = Math.max(0, Math.min(existing.length, Math.round(rank) - 1));
+  const entry = { listing_id: listingId, listing_name: listingName };
+  const ordered = [...existing.slice(0, idx), entry, ...existing.slice(idx)];
+  await setRanks(ordered);
+}
+
+/** Priority fields as they should be stored, from whatever the composer sent */
+export function normalizePriority(body: { priority?: unknown; priority_rank?: unknown }): { priority: "high" | "normal" | "custom"; priority_rank: number | null } {
+  const rank = Number(body.priority_rank);
+  if (body.priority === "high") return { priority: "high", priority_rank: null };
+  if (body.priority === "custom" && Number.isFinite(rank) && rank >= 1) return { priority: "custom", priority_rank: Math.round(rank) };
+  return { priority: "normal", priority_rank: null };
+}
+
+/**
+ * Place a campaign's listing in the ranked list according to its priority:
+ *   Top    → #1 (moves it there even if it was already ranked)
+ *   Custom → exactly priority_rank
+ *   Fit    → bottom, but only if the listing isn't ranked yet
+ * Returns true when the caller should also rebalance the weeks (Top / Custom).
+ */
+export async function placeForCampaign(campaign: { listing_id?: unknown; listing_name?: unknown; priority?: unknown; priority_rank?: unknown }): Promise<boolean> {
+  const listingId = typeof campaign.listing_id === "string" ? campaign.listing_id : "";
+  if (!listingId) return false;
+  const name = typeof campaign.listing_name === "string" ? campaign.listing_name : null;
+  if (campaign.priority === "high") { await placeListingAt(listingId, name, 1); return true; }
+  if (campaign.priority === "custom") { await placeListingAt(listingId, name, Number(campaign.priority_rank) || 1); return true; }
+  await placeListing(listingId, name, "bottom");
+  return false;
+}

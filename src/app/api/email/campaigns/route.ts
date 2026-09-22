@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { scheduleCampaign } from "@/lib/email/scheduler";
-import { placeListing } from "@/lib/email/priorities";
+import { placeForCampaign, normalizePriority } from "@/lib/email/priorities";
+import { optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
+import { addDays } from "@/lib/email/schedule-dates";
 import { templateStamp } from "@/lib/email/template-version";
 import { randomUUID } from "crypto";
 
@@ -103,7 +105,7 @@ export async function POST(request: NextRequest) {
       broker_ids: Array.isArray(body.broker_ids) && body.broker_ids.length > 0
         ? Array.from(new Set([body.broker_id, ...body.broker_ids]))
         : [body.broker_id],
-      priority: body.priority === "high" ? "high" : "normal",
+      ...normalizePriority(body), // priority + priority_rank (Top / Fit / Custom)
       pinned: !!body.pinned,
       cadence_changed_at: new Date().toISOString(),
       segment_id: body.segment_id || null,
@@ -120,9 +122,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: insertErr.message }, { status: 500 });
   }
 
-  // Give the listing a spot in the ranked priority list (top for "Top of list", else bottom)
+  // Give the listing its spot in the ranked priority list:
+  //   Top → #1, Custom → the chosen number, Fit → bottom (only if not ranked yet)
+  let rebalance = false;
   try {
-    await placeListing(campaign.listing_id, campaign.listing_name, campaign.priority === "high" ? "top" : "bottom");
+    rebalance = await placeForCampaign(campaign);
   } catch (err) {
     console.error("[POST campaigns] rank placement failed:", err);
   }
@@ -132,6 +136,17 @@ export async function POST(request: NextRequest) {
     try {
       const baseUrl = new URL(request.url).origin;
       const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
+
+      // Top / Custom changed the ranking → let the AI move the other sends around it
+      if (scheduled && rebalance) {
+        try {
+          const thisWeek = currentWeekStart();
+          await optimizeWeek(baseUrl, thisWeek);
+          await optimizeWeek(baseUrl, addDays(thisWeek, 7));
+        } catch (err) {
+          console.error("[POST campaigns] rebalance after placement failed:", err);
+        }
+      }
 
       if (scheduled) {
         return NextResponse.json(
