@@ -58,11 +58,3 @@ body {
   box-shadow: none !important;
   margin-bottom: 0 !important;
 }
-
-/* ── LEGACY: headings that still use the old `font-bebas` class ──
-   They render as Inter semibold until every page is migrated to `text-lg/xl font-semibold`.
-   Delete this block once `grep -rn font-bebas src` returns nothing. */
-.font-bebas {
-  font-weight: 600;
-  letter-spacing: -0.01em !important;
-}

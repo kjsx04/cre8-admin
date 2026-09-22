@@ -47,7 +47,7 @@ export default function Tabs<T extends string>({ items, value, onChange, size = 
           >
             {it.label}
             {it.count !== undefined && (
-              <span className={cn("text-xs tabular-nums", active ? "text-text-3" : "text-text-3/80")}>{it.count}</span>
+              <span className={cn("text-xs tabular-nums", active ? "text-text-3" : "text-text-3/80")}>{it.count.toLocaleString("en-US")}</span>
             )}
           </button>
         );

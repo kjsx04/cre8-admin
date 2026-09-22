@@ -42,12 +42,12 @@ export default function SharePointBreadcrumb({ folderPath }: SharePointBreadcrum
       </svg>
       {segments.map((segment, i) => (
         <span key={i} className="flex items-center gap-1">
-          {i > 0 && <span className="text-border-gray">/</span>}
+          {i > 0 && <span className="text-text-3">/</span>}
           <a
             href={getSharePointUrl(i)}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-medium-gray hover:text-green transition-colors duration-200"
+            className="text-text-2 hover:text-text transition-colors duration-150"
           >
             {segment}
           </a>

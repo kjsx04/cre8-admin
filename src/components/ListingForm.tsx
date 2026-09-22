@@ -4,6 +4,23 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
 import dynamic from "next/dynamic";
+import { AlertCircle, ArrowLeft, Check, MapPin, Trash2 } from "lucide-react";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  PageContainer,
+  PageHeader,
+  Section,
+  Select,
+  Skeleton,
+  cn,
+  FOCUS_RING,
+} from "@/components/ui";
 import {
   ListingItem,
   ListingFieldData,
@@ -36,7 +53,7 @@ import {
 // Dynamic imports — Mapbox uses window/document, can't render server-side
 const ListingMapPicker = dynamic(
   () => import("@/components/ListingMapPicker"),
-  { ssr: false, loading: () => <div className="w-full h-[300px] rounded-btn border border-[#E5E5E5] bg-[#F5F5F5] animate-pulse" /> }
+  { ssr: false, loading: () => <Skeleton className="w-full h-[300px]" /> }
 );
 
 const ParcelPickerModal = dynamic(
@@ -221,6 +238,39 @@ const REQUIRED_KEYS = [
   "name", "slug", "full-address", "city-county", "listing-type-2", "property-type",
   "list-price", "listing-brokers", "property-overview", "latitude", "longitude",
 ];
+
+/* ============================================================
+   DISPLAY LABELS — sentence-case titles for the UI. The SECTIONS
+   config above keeps its original strings because logic checks
+   `section.title === "Property Info"` etc.
+   ============================================================ */
+const SECTION_TITLES: Record<string, string> = {
+  "Property Info": "Property info",
+  Classification: "Classification",
+  "Listing Brokers": "Listing brokers",
+  Status: "Status",
+};
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  slug: "Slug",
+  "full-address": "Full address",
+  "cross-streets": "Cross streets",
+  "city-county": "City / county",
+  "square-feet": "Acres",
+  "building-sqft": "Building sq ft",
+  "traffic-count": "Traffic count",
+  "list-price": "List price",
+  "listing-type-2": "Listing type",
+  "property-type": "Property type",
+  zoning: "Zoning",
+  "zoning-municipality": "Zoning municipality",
+  available: "Available",
+  "under-contract": "Under contract",
+  sold: "Sold",
+  featured: "Featured",
+  "drone-hero": "Drone hero",
+};
 
 /** Compute the geographic centroid of selected parcels */
 function computeCentroid(parcels: SelectedParcel[]): [number, number] | null {
@@ -1039,105 +1089,97 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
   /* ============================================================
      RENDER
      ============================================================ */
+  // Save-status chip shown next to the page title (green only for "Saved" = success)
+  const saveStatusBadge =
+    saveStatus === "saving" ? (
+      <Badge tone="neutral">Saving...</Badge>
+    ) : saveStatus === "saved" ? (
+      <Badge tone="success">Saved</Badge>
+    ) : saveStatus === "error" ? (
+      <Badge tone="danger">Save failed</Badge>
+    ) : null;
+
   return (
-    <div className="max-w-[820px] mx-auto px-6 py-6">
-      {/* ---- Header ---- */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3">
-          {/* Back button */}
-          <button
-            onClick={() => router.push("/")}
-            className="w-8 h-8 rounded-btn border border-[#E5E5E5] flex items-center justify-center
-                       text-[#777] hover:text-[#333] hover:border-[#CCC] transition-colors text-sm"
-            title="Back to listings"
-          >
-            ←
-          </button>
-          <h1 className="text-xl font-bold text-[#1a1a1a]">
-            {isEditMode
-              ? `Edit: ${fields.name || "Listing"}`
-              : "New Listing"}
-          </h1>
+    // PageContainer "default" = form width; PageHeader holds the title + main buttons
+    <PageContainer width="default">
+      <PageHeader
+        title={
+          <span className="inline-flex items-center gap-3">
+            {/* Back button */}
+            <IconButton
+              label="Back to listings"
+              variant="secondary"
+              size="sm"
+              icon={<ArrowLeft size={18} strokeWidth={1.75} />}
+              onClick={() => router.push("/")}
+            />
+            <span className="truncate">
+              {isEditMode
+                ? `Edit: ${fields.name || "Listing"}`
+                : "New listing"}
+            </span>
+            {/* Save status indicator */}
+            {saveStatusBadge}
+          </span>
+        }
+        actions={
+          <>
+            {/* Delete button — edit mode only (the real destructive action is confirmed in the modal) */}
+            {isEditMode && (
+              <Button
+                variant="ghost"
+                icon={<Trash2 size={18} strokeWidth={1.75} />}
+                onClick={() => setShowDeleteConfirm(true)}
+                className="text-danger-fg hover:text-danger-fg hover:bg-danger-bg"
+              >
+                Delete
+              </Button>
+            )}
 
-          {/* Save status indicator */}
-          {saveStatus === "saving" && (
-            <span className="text-xs text-[#B8860B] font-medium ml-2">
-              Saving...
-            </span>
-          )}
-          {saveStatus === "saved" && (
-            <span className="text-xs text-[#4A8C1C] font-medium ml-2">
-              Saved
-            </span>
-          )}
-          {saveStatus === "error" && (
-            <span className="text-xs text-[#CC3333] font-medium ml-2">
-              Save failed
-            </span>
-          )}
-        </div>
+            {/* Save Listing button */}
+            <Button variant="secondary" onClick={handleSaveDraft} disabled={isSaving.current}>
+              Save listing
+            </Button>
 
-        <div className="flex items-center gap-2">
-          {/* Delete button — edit mode only */}
-          {isEditMode && (
-            <button
-              onClick={() => setShowDeleteConfirm(true)}
-              className="text-[#CC3333] text-sm font-medium px-3 py-2 rounded-btn
-                         hover:bg-[#FFF5F5] transition-colors"
+            {/* Publish button — the page's primary action (near-black) */}
+            <Button
+              onClick={() => {
+                // Mark all required as touched so validation shows
+                setTouched(new Set(REQUIRED_KEYS));
+                if (!allRequiredFilled()) return;
+                if (dupeNameWarn || dupeSlugWarn) return;
+                setShowPublishModal(true);
+              }}
+              disabled={!!(dupeNameWarn || dupeSlugWarn)}
             >
-              Delete
-            </button>
-          )}
-
-          {/* Save Listing button */}
-          <button
-            onClick={handleSaveDraft}
-            disabled={isSaving.current}
-            className="bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] font-semibold px-5 py-2 rounded-btn text-sm
-                       hover:bg-[#E0E0E0] transition-colors disabled:opacity-50"
-          >
-            Save Listing
-          </button>
-
-          {/* Publish button */}
-          <button
-            onClick={() => {
-              // Mark all required as touched so validation shows
-              setTouched(new Set(REQUIRED_KEYS));
-              if (!allRequiredFilled()) return;
-              if (dupeNameWarn || dupeSlugWarn) return;
-              setShowPublishModal(true);
-            }}
-            disabled={!!(dupeNameWarn || dupeSlugWarn)}
-            className={`uppercase tracking-wide font-semibold px-5 py-2 rounded-btn text-sm transition-colors
-                       ${dupeNameWarn || dupeSlugWarn
-                         ? "bg-[#E0E0E0] text-[#999] cursor-not-allowed"
-                         : "bg-green text-black hover:bg-green/90"}`}
-          >
-            Publish to Website
-          </button>
-        </div>
-      </div>
+              Publish to website
+            </Button>
+          </>
+        }
+      />
 
       {/* ---- Duplicate warning banner ---- */}
       {(dupeNameWarn || dupeSlugWarn) && (
-        <div className="mb-4 px-4 py-3 bg-[#FFF5F5] border border-[#FFCCCC] rounded-card flex items-center justify-between">
-          <div>
-            <p className="text-sm font-semibold text-[#CC3333]">
-              Duplicate listing detected
-            </p>
-            <p className="text-xs text-[#CC3333] mt-0.5">
-              {dupeNameWarn || dupeSlugWarn}. Publishing is blocked to prevent duplicates in the CMS.
-            </p>
+        <div className="mb-6 px-4 py-3 bg-danger-bg rounded-card flex items-center justify-between gap-4">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle size={16} strokeWidth={1.75} className="text-danger-fg mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-danger-fg">
+                Duplicate listing detected
+              </p>
+              <p className="text-xs text-danger-fg mt-0.5">
+                {dupeNameWarn || dupeSlugWarn}. Publishing is blocked to prevent duplicates in the CMS.
+              </p>
+            </div>
           </div>
           {dupeExistingId && (
-            <button
+            <Button
+              variant="secondary"
+              size="sm"
               onClick={() => router.push(`/listings/${dupeExistingId}/edit`)}
-              className="ml-4 px-3 py-1.5 text-xs font-semibold text-[#CC3333] border border-[#CC3333] rounded-btn
-                         hover:bg-[#CC3333] hover:text-white transition-colors whitespace-nowrap"
             >
-              Edit Existing Listing
-            </button>
+              Edit existing listing
+            </Button>
           )}
         </div>
       )}
@@ -1165,207 +1207,197 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         const sectionHasError = section.fields.some((f) => showError(f.key as string))
           || (section.title === "Property Info" && (showError("latitude") || showError("longitude")));
         return (
-        <div
-          key={section.title}
-          className={`mb-6 border rounded-card bg-white ${sectionHasError ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}
-        >
-          {/* Section header */}
-          <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card flex items-center justify-between">
-            <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-              {section.title}
-            </h2>
-            {/* Pick from Map button — Property Info section only */}
-            {section.title === "Property Info" && (
-              <button
-                type="button"
-                onClick={() => setShowParcelPicker(true)}
-                className="flex items-center gap-1.5 text-xs font-semibold text-green hover:text-[#7AB800] transition-colors"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                Pick from Map
-              </button>
-            )}
-          </div>
-
-          {/* Section body */}
-          <div className="px-5 py-4">
-            {/* Render fields — wrap halfs in a flex row */}
-            {renderFields(section.fields)}
+        // Card per section — red border when a required field inside is missing
+        <Card key={section.title} className={cn("mb-6", sectionHasError && "border-danger")}>
+          <Section
+            title={SECTION_TITLES[section.title] || section.title}
+            actions={
+              /* Pick from Map button — Property Info section only */
+              section.title === "Property Info" ? (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  icon={<MapPin size={18} strokeWidth={1.75} />}
+                  onClick={() => setShowParcelPicker(true)}
+                >
+                  Pick from map
+                </Button>
+              ) : undefined
+            }
+          >
+            {/* Render fields — wrap halfs in a two-column grid; fields stack with space-y-4 */}
+            <div className="space-y-4">{renderFields(section.fields)}</div>
 
             {/* "New Listing" toggle — Status section only.
                 NOT a Webflow field (checklist state lives in Supabase),
                 so it can't go through SECTIONS/buildPayload. */}
             {section.title === "Status" && (
-              <div className="flex flex-wrap gap-8 py-1 mt-3 pt-4 border-t border-[#F0F0F0]">
+              <div className="flex flex-wrap gap-8 py-1 mt-4 pt-4 border-t border-border">
                 <button
                   type="button"
                   onClick={handleNewToggle}
                   disabled={!draftId}
-                  className="flex items-center gap-2.5 select-none disabled:opacity-50"
+                  className={cn("flex items-center gap-2.5 select-none disabled:opacity-50 rounded-control", FOCUS_RING)}
                   title={
                     !draftId
                       ? "New listings are tagged automatically on first save"
                       : undefined
                   }
                 >
+                  {/* Switch track — green when on (status) */}
                   <span
-                    className={`relative inline-block w-10 h-[22px] rounded-full transition-colors duration-200
-                      ${checklist?.is_new ? "bg-green" : "bg-[#DDD]"}`}
+                    className={cn(
+                      "relative inline-block w-10 h-[22px] rounded-pill transition-colors duration-200",
+                      checklist?.is_new ? "bg-accent" : "bg-border-strong"
+                    )}
                   >
                     <span
-                      className={`absolute left-0 top-[2px] w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200
-                        ${checklist?.is_new ? "translate-x-[20px]" : "translate-x-[2px]"}`}
+                      className={cn(
+                        "absolute left-0 top-[2px] w-[18px] h-[18px] rounded-full bg-white transition-transform duration-200",
+                        checklist?.is_new ? "translate-x-[20px]" : "translate-x-[2px]"
+                      )}
                     />
                   </span>
-                  <span className="text-sm text-[#333]">New Listing</span>
+                  <span className="text-sm text-text">New listing</span>
                 </button>
               </div>
             )}
 
             {/* Location map — merged into Property Info section */}
             {section.title === "Property Info" && (
-              <div className="mt-4 pt-4 border-t border-[#F0F0F0]">
-                <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-2">
-                  Pin Location<span className="text-[#CC3333] ml-0.5">*</span>
-                </label>
-                {(showError("latitude") || showError("longitude")) && (
-                  <p className="text-[10px] text-[#CC3333] mb-2">Click the map or pick a parcel to set the pin location</p>
-                )}
-                {MAPBOX_TOKEN ? (
-                  <ListingMapPicker
-                    mapboxToken={MAPBOX_TOKEN}
-                    latitude={fields.latitude as number | null}
-                    longitude={fields.longitude as number | null}
-                    onChange={(lat, lng) => {
-                      // Round to 6 decimals — Webflow number fields reject high precision
-                      const lat6 = Math.round(lat * 1e6) / 1e6;
-                      const lng6 = Math.round(lng * 1e6) / 1e6;
-                      setFields((prev) => ({
-                        ...prev,
-                        latitude: lat6,
-                        longitude: lng6,
-                        "google-maps-link": `https://www.google.com/maps?q=${lat6},${lng6}`,
-                      }));
-                      scheduleAutoSave();
-                    }}
-                  />
-                ) : (
-                  <p className="text-sm text-[#777]">
-                    Mapbox token not configured — map unavailable.
-                  </p>
-                )}
+              <div className="mt-4 pt-4 border-t border-border">
+                <Field
+                  label="Pin location"
+                  required
+                  error={
+                    showError("latitude") || showError("longitude")
+                      ? "Click the map or pick a parcel to set the pin location"
+                      : undefined
+                  }
+                >
+                  {MAPBOX_TOKEN ? (
+                    <ListingMapPicker
+                      mapboxToken={MAPBOX_TOKEN}
+                      latitude={fields.latitude as number | null}
+                      longitude={fields.longitude as number | null}
+                      onChange={(lat, lng) => {
+                        // Round to 6 decimals — Webflow number fields reject high precision
+                        const lat6 = Math.round(lat * 1e6) / 1e6;
+                        const lng6 = Math.round(lng * 1e6) / 1e6;
+                        setFields((prev) => ({
+                          ...prev,
+                          latitude: lat6,
+                          longitude: lng6,
+                          "google-maps-link": `https://www.google.com/maps?q=${lat6},${lng6}`,
+                        }));
+                        scheduleAutoSave();
+                      }}
+                    />
+                  ) : (
+                    <p className="text-sm text-text-3">
+                      Mapbox token not configured — map unavailable.
+                    </p>
+                  )}
+                </Field>
               </div>
             )}
-          </div>
-        </div>
+          </Section>
+        </Card>
       );
       })}
 
       {/* ---- Property Overview (rich text) ---- */}
-      <div className={`mb-6 border rounded-card bg-white ${showError("property-overview") ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}>
-        <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
-          <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            Property Overview<span className="text-[#CC3333] ml-0.5">*</span>
-          </h2>
-        </div>
-        <div className="px-5 py-4">
+      <Card className={cn("mb-6", showError("property-overview") && "border-danger")}>
+        <Section
+          title={
+            <>
+              Property overview<span className="text-danger-fg ml-0.5">*</span>
+            </>
+          }
+        >
           <RichTextEditor
             value={String(fields["property-overview"] || "")}
             onChange={(html) => updateField("property-overview", html)}
             placeholder="Enter property overview..."
           />
           {showError("property-overview") && (
-            <p className="text-[10px] text-[#CC3333] mt-1">Required</p>
+            <p className="text-xs text-danger-fg mt-1.5">Required</p>
           )}
-        </div>
-      </div>
+        </Section>
+      </Card>
 
       {/* ---- Available Spaces ---- */}
-      <div className="mb-6 border border-[#E5E5E5] rounded-card bg-white">
-        <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
-          <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            Available Spaces
-          </h2>
-        </div>
-        <div className="px-5 py-4">
+      <Card className="mb-6">
+        <Section title="Available spaces">
           <SpacesTable
             value={String(fields["spaces-available"] || "")}
             onChange={(html) => updateField("spaces-available", html)}
           />
-        </div>
-      </div>
+        </Section>
+      </Card>
 
       {/* ---- Package & Assets ---- */}
-      <div className="mb-6 border border-[#E5E5E5] rounded-card bg-white">
-        <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card">
-          <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            Package & Assets
-          </h2>
-        </div>
-        <div className="px-5 py-4 space-y-6">
-          {/* Marketing Package PDF */}
-          <div>
-            <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-1.5">
-              Marketing Package PDF
-            </label>
-            <PackageUploader
-              assets={packageAssets}
-              onChange={(newAssets) => {
-                setPackageAssets(newAssets);
-                // Auto-check "Marketing flyer" on the new-listing checklist
-                if (
-                  newAssets.packageFile &&
-                  checklist?.is_new &&
-                  !checklist.items.flyer
-                ) {
-                  patchChecklist({ items: { flyer: true } });
-                }
+      <Card className="mb-6">
+        <Section title="Package & assets">
+          <div className="space-y-6">
+            {/* Marketing Package PDF */}
+            <Field label="Marketing package PDF">
+              <PackageUploader
+                assets={packageAssets}
+                onChange={(newAssets) => {
+                  setPackageAssets(newAssets);
+                  // Auto-check "Marketing flyer" on the new-listing checklist
+                  if (
+                    newAssets.packageFile &&
+                    checklist?.is_new &&
+                    !checklist.items.flyer
+                  ) {
+                    patchChecklist({ items: { flyer: true } });
+                  }
+                  scheduleAutoSave();
+                }}
+                existingPackageUrl={item?.fieldData?.["package-2"] || undefined}
+              />
+            </Field>
+
+            {/* Alta Survey + Site Plan — side by side */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <FileUploadZone
+                label="Alta Survey"
+                file={altaFile}
+                onFileSelect={(f) => {
+                  setAltaFile(f);
+                  scheduleAutoSave();
+                }}
+                existingUrl={item?.fieldData?.["alta-survey-2"] || undefined}
+              />
+              <FileUploadZone
+                label="Site Plan"
+                file={sitePlanFile}
+                onFileSelect={(f) => {
+                  setSitePlanFile(f);
+                  scheduleAutoSave();
+                }}
+                existingUrl={item?.fieldData?.["site-plan-2"] || undefined}
+              />
+            </div>
+
+            {/* Additional Photos */}
+            <PhotoUploader
+              galleryImages={packageAssets.galleryImages}
+              marketingIdx={packageAssets.marketingIdx}
+              onChange={(images, marketingIdx) => {
+                setPackageAssets((prev) => ({
+                  ...prev,
+                  galleryImages: images,
+                  marketingIdx,
+                }));
                 scheduleAutoSave();
               }}
-              existingPackageUrl={item?.fieldData?.["package-2"] || undefined}
             />
           </div>
-
-          {/* Alta Survey + Site Plan — side by side */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FileUploadZone
-              label="Alta Survey"
-              file={altaFile}
-              onFileSelect={(f) => {
-                setAltaFile(f);
-                scheduleAutoSave();
-              }}
-              existingUrl={item?.fieldData?.["alta-survey-2"] || undefined}
-            />
-            <FileUploadZone
-              label="Site Plan"
-              file={sitePlanFile}
-              onFileSelect={(f) => {
-                setSitePlanFile(f);
-                scheduleAutoSave();
-              }}
-              existingUrl={item?.fieldData?.["site-plan-2"] || undefined}
-            />
-          </div>
-
-          {/* Additional Photos */}
-          <PhotoUploader
-            galleryImages={packageAssets.galleryImages}
-            marketingIdx={packageAssets.marketingIdx}
-            onChange={(images, marketingIdx) => {
-              setPackageAssets((prev) => ({
-                ...prev,
-                galleryImages: images,
-                marketingIdx,
-              }));
-              scheduleAutoSave();
-            }}
-          />
-        </div>
-      </div>
+        </Section>
+      </Card>
 
       {/* ---- Parcel Picker Modal ---- */}
       {showParcelPicker && (
@@ -1378,48 +1410,32 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         />
       )}
 
-      {/* ---- Delete Confirmation Modal ---- */}
-      {showDeleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/50"
-            onClick={() => !isDeleting && setShowDeleteConfirm(false)}
-          />
-          <div className="relative w-full max-w-[420px] mx-4 bg-white rounded-card shadow-xl">
-            <div className="px-6 py-5">
-              <h3 className="text-base font-bold text-[#1a1a1a] mb-2">
-                Delete this listing?
-              </h3>
-              <p className="text-sm text-[#666] leading-relaxed">
-                This will permanently remove it from the CMS and the live site. This cannot be undone.
-              </p>
-              {deleteError && (
-                <p className="mt-3 text-xs text-[#CC3333] bg-[#FFF5F5] border border-[#FFCCCC] rounded-btn px-3 py-2">
-                  {deleteError}
-                </p>
-              )}
-            </div>
-            <div className="px-6 py-4 border-t border-[#F0F0F0] flex justify-end gap-3">
-              <button
-                onClick={() => setShowDeleteConfirm(false)}
-                disabled={isDeleting}
-                className="px-4 py-2 text-sm font-semibold text-[#1A1A1A] bg-[#F0F0F0] border border-[#E0E0E0] rounded-btn
-                           hover:bg-[#E0E0E0] transition-colors disabled:opacity-50"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={isDeleting}
-                className="px-4 py-2 text-sm font-semibold text-white bg-[#CC3333] rounded-btn
-                           hover:bg-[#B02020] transition-colors disabled:opacity-50"
-              >
-                {isDeleting ? "Deleting..." : "Delete Permanently"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ---- Delete Confirmation Modal (shared Modal primitive; same state vars) ---- */}
+      <Modal
+        open={showDeleteConfirm}
+        onClose={() => !isDeleting && setShowDeleteConfirm(false)}
+        size="sm"
+        title="Delete this listing?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowDeleteConfirm(false)} disabled={isDeleting}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={handleDelete} loading={isDeleting}>
+              {isDeleting ? "Deleting..." : "Delete permanently"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-text-2 leading-relaxed">
+          This will permanently remove it from the CMS and the live site. This cannot be undone.
+        </p>
+        {deleteError && (
+          <p className="mt-3 text-xs text-danger-fg bg-danger-bg rounded-control px-3 py-2">
+            {deleteError}
+          </p>
+        )}
+      </Modal>
 
       {/* ---- Publish Modal ---- */}
       {showPublishModal && (
@@ -1449,7 +1465,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           onClose={() => setShowPublishModal(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 
   /* ============================================================
@@ -1477,7 +1493,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           i++;
         }
         elements.push(
-          <div key="toggles" className="flex flex-wrap gap-8 py-1 mt-1">
+          <div key="toggles" className="flex flex-wrap gap-8 py-1">
             {toggles.map((t) => renderToggle(t))}
           </div>
         );
@@ -1509,20 +1525,17 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     const hasError = showError(key);
     const isDupeName = key === "name" && dupeNameWarn;
     const isDupeSlug = key === "slug" && dupeSlugWarn;
+    // Sentence-case label (the SECTIONS config keeps its original Title Case strings)
+    const label = FIELD_LABELS[key] || f.label;
 
     if (f.type === "select") {
       return (
-        <div key={key} className="mb-4">
-          <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-1.5">
-            {f.label}
-            {f.required && <span className="text-[#CC3333] ml-0.5">*</span>}
-          </label>
-          <select
+        // Field = label + control + error message
+        <Field key={key} label={label} required={f.required} error={hasError ? "Required" : undefined}>
+          <Select
             value={value}
             onChange={(e) => updateField(key, e.target.value)}
-            className={`w-full bg-white border rounded-btn px-3 py-2 text-sm text-[#333]
-                        outline-none focus:border-green transition-colors
-                        ${hasError ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}
+            invalid={hasError}
           >
             <option value="">Select...</option>
             {f.options?.map((opt) => (
@@ -1530,46 +1543,34 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
                 {opt.label}
               </option>
             ))}
-          </select>
-          {hasError && (
-            <p className="text-[10px] text-[#CC3333] mt-1">Required</p>
-          )}
-        </div>
+          </Select>
+        </Field>
       );
     }
 
     // Text or number input
+    // Error priority: duplicate warnings first, then "Required"
+    const errorText = isDupeName
+      ? dupeNameWarn
+      : isDupeSlug
+        ? dupeSlugWarn
+        : hasError
+          ? "Required"
+          : undefined;
+    // Slug shows the public URL as a hint
+    const hint = key === "slug" && !isDupeSlug && value ? `cre8advisors.com/listings/${value}` : undefined;
+
     return (
-      <div key={key} className="mb-4">
-        <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-1.5">
-          {f.label}
-          {f.required && <span className="text-[#CC3333] ml-0.5">*</span>}
-        </label>
-        <input
+      <Field key={key} label={label} required={f.required} error={errorText} hint={hint}>
+        <Input
           type="text"
           inputMode={f.type === "number" ? "decimal" : undefined}
           value={value}
           onChange={(e) => updateField(key, e.target.value)}
           placeholder={f.placeholder}
-          className={`w-full bg-white border rounded-btn px-3 py-2 text-sm text-[#333]
-                      placeholder:text-[#BBB] outline-none focus:border-green transition-colors
-                      ${hasError || isDupeName || isDupeSlug ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}
+          invalid={!!(hasError || isDupeName || isDupeSlug)}
         />
-        {hasError && !isDupeName && !isDupeSlug && (
-          <p className="text-[10px] text-[#CC3333] mt-1">Required</p>
-        )}
-        {isDupeName && (
-          <p className="text-[10px] text-[#CC3333] mt-1">{dupeNameWarn}</p>
-        )}
-        {isDupeSlug && (
-          <p className="text-[10px] text-[#CC3333] mt-1">{dupeSlugWarn}</p>
-        )}
-        {key === "slug" && !isDupeSlug && value && (
-          <p className="text-[10px] text-[#777] mt-1">
-            cre8advisors.com/listings/{value}
-          </p>
-        )}
-      </div>
+      </Field>
     );
   }
 
@@ -1578,7 +1579,8 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     const hasError = showError("listing-brokers");
 
     return (
-      <div key={`brokers-${idx}`} className="mb-2">
+      <div key={`brokers-${idx}`}>
+        {/* Broker chips — soft green = selected (status), plain outline otherwise */}
         <div className="flex flex-wrap gap-3">
           {brokerEntries.map(({ id, name }) => {
             const isChecked = selected.includes(id);
@@ -1592,23 +1594,22 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
                     : [...selected, id];
                   updateField("listing-brokers", next);
                 }}
-                className={`flex items-center gap-2 px-3 py-2 rounded-btn border text-sm transition-colors
-                  ${
-                    isChecked
-                      ? "border-green bg-[#F0F9E5] text-[#333] font-semibold"
-                      : "border-[#E5E5E5] text-[#666] hover:border-[#CCC]"
-                  }`}
+                className={cn(
+                  "flex items-center gap-2 h-control px-3 rounded-control border text-sm transition-colors",
+                  isChecked
+                    ? "border-accent bg-accent-soft text-text font-medium"
+                    : "border-border text-text-2 hover:border-border-strong",
+                  FOCUS_RING
+                )}
               >
                 {/* Checkbox indicator */}
                 <span
-                  className={`w-4 h-4 rounded-sm border-[1.5px] flex items-center justify-center flex-shrink-0 text-[10px]
-                    ${
-                      isChecked
-                        ? "bg-green border-green text-black"
-                        : "border-[#CCC]"
-                    }`}
+                  className={cn(
+                    "w-4 h-4 rounded-sm border flex items-center justify-center shrink-0",
+                    isChecked ? "bg-accent border-accent text-black" : "border-border-strong"
+                  )}
                 >
-                  {isChecked && "✓"}
+                  {isChecked && <Check size={12} strokeWidth={2.5} />}
                 </span>
                 {name}
               </button>
@@ -1616,7 +1617,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           })}
         </div>
         {hasError && (
-          <p className="text-[10px] text-[#CC3333] mt-1">Select at least one broker</p>
+          <p className="text-xs text-danger-fg mt-1.5">Select at least one broker</p>
         )}
       </div>
     );
@@ -1631,20 +1632,24 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         key={key}
         type="button"
         onClick={() => updateField(key, !isOn)}
-        className="flex items-center gap-2.5 select-none"
+        className={cn("flex items-center gap-2.5 select-none rounded-control", FOCUS_RING)}
       >
-        {/* Toggle track */}
+        {/* Toggle track — green when on (status) */}
         <span
-          className={`relative inline-block w-10 h-[22px] rounded-full transition-colors duration-200
-            ${isOn ? "bg-green" : "bg-[#DDD]"}`}
+          className={cn(
+            "relative inline-block w-10 h-[22px] rounded-pill transition-colors duration-200",
+            isOn ? "bg-accent" : "bg-border-strong"
+          )}
         >
           {/* Toggle knob */}
           <span
-            className={`absolute left-0 top-[2px] w-[18px] h-[18px] rounded-full bg-white shadow transition-transform duration-200
-              ${isOn ? "translate-x-[20px]" : "translate-x-[2px]"}`}
+            className={cn(
+              "absolute left-0 top-[2px] w-[18px] h-[18px] rounded-full bg-white transition-transform duration-200",
+              isOn ? "translate-x-[20px]" : "translate-x-[2px]"
+            )}
           />
         </span>
-        <span className="text-sm text-[#333]">{f.label}</span>
+        <span className="text-sm text-text">{FIELD_LABELS[key] || f.label}</span>
       </button>
     );
   }

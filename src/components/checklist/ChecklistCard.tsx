@@ -5,6 +5,7 @@ import { CHECKLIST_ITEMS } from "@/lib/checklist/constants";
 import { countChecked, type ChecklistItems } from "@/lib/checklist/types";
 import ChecklistItemRow from "@/components/checklist/ChecklistItemRow";
 import FileUploadZone from "@/components/FileUploadZone";
+import { Badge, Button, Card, Spinner } from "@/components/ui";
 
 /* ============================================================
    New Listing Checklist card — rendered at the top of the
@@ -66,43 +67,31 @@ export default function ChecklistCard({
   };
 
   return (
-    <div className="mb-6 border border-green rounded-card bg-white">
+    // Card primitive — green border marks this listing as "New" (status)
+    <Card padding="none" className="mb-6 border-accent">
       {/* Header */}
-      <div className="px-5 py-3 border-b border-[#F0F0F0] bg-[#FAFAFA] rounded-t-card flex items-center justify-between">
+      <div className="px-5 py-3 border-b border-border bg-surface-2 rounded-t-card flex items-center justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <span className="bg-green text-black text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded">
-            New
-          </span>
-          <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
-            New Listing Checklist
-          </h2>
+          <Badge tone="accent">New</Badge>
+          <h2 className="text-sm font-semibold text-text">New listing checklist</h2>
         </div>
         <div className="flex items-center gap-3">
           {/* Complete Listing — manual move out of New (inline confirm) */}
           {!laDisabled && (
-            <button
-              type="button"
+            <Button
+              variant={confirming ? "danger" : "secondary"}
+              size="sm"
               onClick={handleCompleteClick}
-              className={`text-xs font-semibold transition-colors cursor-pointer ${
-                confirming
-                  ? "text-[#CC3333] hover:text-[#B02020]"
-                  : "text-[#4A8C1C] hover:text-[#3A7010]"
-              }`}
             >
               {confirming
                 ? `Confirm — ${total - done} unchecked`
-                : "Complete Listing"}
-            </button>
+                : "Complete listing"}
+            </Button>
           )}
-          <span
-            className={`text-xs font-bold px-2.5 py-1 rounded ${
-              complete
-                ? "bg-[#E8F5D4] text-[#4A8C1C]"
-                : "bg-[#F0F0F0] text-[#666]"
-            }`}
-          >
+          {/* Progress count — green once every item is checked */}
+          <Badge tone={complete ? "success" : "neutral"}>
             {done}/{total}
-          </span>
+          </Badge>
         </div>
       </div>
 
@@ -122,9 +111,9 @@ export default function ChecklistCard({
         ))}
 
         {/* Listing agreement upload slot */}
-        <div className="mt-3 mx-2 pt-4 border-t border-[#F0F0F0]">
+        <div className="mt-3 mx-2 pt-4 border-t border-border">
           {laDisabled ? (
-            <p className="text-xs text-[#999]">
+            <p className="text-xs text-text-3">
               Save the listing first to upload the executed listing agreement.
             </p>
           ) : (
@@ -136,13 +125,13 @@ export default function ChecklistCard({
                 existingUrl={listingAgreementUrl || undefined}
               />
               {laUploadState === "uploading" && (
-                <p className="text-xs text-[#B8860B] mt-1.5 flex items-center gap-1.5">
-                  <span className="w-3 h-3 border-2 border-[#E5E5E5] border-t-[#B8860B] rounded-full animate-spin inline-block" />
+                <p className="text-xs text-text-2 mt-1.5 flex items-center gap-1.5">
+                  <Spinner size="sm" className="w-3 h-3" />
                   Uploading to SharePoint...
                 </p>
               )}
               {laUploadState === "error" && (
-                <p className="text-xs text-[#CC3333] mt-1.5">
+                <p className="text-xs text-danger-fg mt-1.5">
                   Upload failed — click the zone to try again.
                 </p>
               )}
@@ -150,6 +139,6 @@ export default function ChecklistCard({
           )}
         </div>
       </div>
-    </div>
+    </Card>
   );
 }

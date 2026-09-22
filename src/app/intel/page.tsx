@@ -1,7 +1,24 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { ExternalLink, Plus, X } from "lucide-react";
 import AppShell from "@/components/AppShell";
+import {
+  Badge,
+  Button,
+  Card,
+  EmptyState,
+  Field,
+  Input,
+  LoadingBlock,
+  PageContainer,
+  PageHeader,
+  Select,
+  Tabs,
+  Textarea,
+  Tone,
+  cn,
+} from "@/components/ui";
 
 /**
  * /intel — Market Intel approval queue.
@@ -40,18 +57,18 @@ interface Brief {
 /* ── Tab config ── */
 const TABS = [
   { label: "Pending", status: "pending" },
-  { label: "Needs Text", status: "needs_text" },
+  { label: "Needs text", status: "needs_text" },
   { label: "Live", status: "live" },
   { label: "Deleted", status: "deleted" },
 ];
 
-/* ── Category colors for badges ── */
-const CATEGORY_COLORS: Record<string, string> = {
-  "data-center": "bg-blue-500/15 text-blue-500 border-blue-500/30",
-  retail: "bg-green/15 text-green border-green/30",
-  land: "bg-amber-500/15 text-amber-600 border-amber-500/30",
-  market: "bg-purple-500/15 text-purple-500 border-purple-500/30",
-  infrastructure: "bg-orange-500/15 text-orange-500 border-orange-500/30",
+/* ── Category → Badge tone (design-system tones instead of raw palette colors) ── */
+const CATEGORY_TONES: Record<string, Tone> = {
+  "data-center": "info",
+  retail: "success",
+  land: "warning",
+  market: "neutral",
+  infrastructure: "accent",
 };
 
 /* ── Format date ── */
@@ -296,139 +313,132 @@ export default function IntelPage() {
     return acc;
   }, {});
 
+  /* ── Tab items for the Tabs primitive (counts only for pending / needs_text, as before) ── */
+  const tabItems = TABS.map((tab) => ({
+    value: tab.status,
+    label: tab.label,
+    count:
+      (tab.status === "needs_text" || tab.status === "pending") && (tabCounts[tab.status] || 0) > 0
+        ? tabCounts[tab.status]
+        : undefined,
+  }));
+
   return (
     <AppShell>
-      <div className="px-6 py-6 max-w-[1000px] mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="font-dm text-xl font-bold text-charcoal">Market Intel</h1>
-            <p className="font-dm text-sm text-medium-gray mt-1">
-              Review, edit, and approve news briefs before they go live.
-            </p>
-          </div>
-          <button
-            onClick={() => setShowManualForm(!showManualForm)}
-            className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors"
-          >
-            {showManualForm ? "Cancel" : "+ Submit Article"}
-          </button>
-        </div>
+      {/* Shared page wrapper + header */}
+      <PageContainer width="default">
+        <PageHeader
+          title="Market Intel"
+          description="Review, edit, and approve news briefs before they go live."
+          actions={
+            <Button
+              variant={showManualForm ? "secondary" : "primary"}
+              onClick={() => setShowManualForm(!showManualForm)}
+              icon={showManualForm ? <X size={18} strokeWidth={1.75} /> : <Plus size={18} strokeWidth={1.75} />}
+            >
+              {showManualForm ? "Cancel" : "Submit article"}
+            </Button>
+          }
+        >
+          {/* Status tabs */}
+          <Tabs
+            items={tabItems}
+            value={TABS[activeTab].status}
+            onChange={(status) => {
+              const i = TABS.findIndex((t) => t.status === status);
+              setActiveTab(i);
+              setEditingId(null);
+              setCategoryFilter("all");
+              setPasteTextId(null);
+            }}
+          />
+        </PageHeader>
 
         {/* Manual submit form — collapsible */}
         {showManualForm && (
-          <div className="bg-white rounded-card border border-border-light p-5 mb-6">
-            <h3 className="font-dm text-sm font-semibold text-charcoal mb-3">
+          <Card className="mb-6">
+            <h3 className="text-md font-semibold text-text mb-4">
               Paste an article to generate a brief
             </h3>
-            <input
-              type="text"
-              value={manualHeadline}
-              onChange={(e) => setManualHeadline(e.target.value)}
-              placeholder="Article headline (optional)"
-              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn mb-3 focus:outline-none focus:border-green"
-            />
-            <textarea
-              value={manualText}
-              onChange={(e) => setManualText(e.target.value)}
-              placeholder="Paste the full article text here..."
-              rows={6}
-              className="w-full px-3 py-2 text-sm border border-border-light rounded-btn mb-3 focus:outline-none focus:border-green resize-y"
-            />
-            <button
-              onClick={handleManualSubmit}
-              disabled={!manualText.trim() || manualSubmitting}
-              className="px-5 py-2.5 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-            >
-              {manualSubmitting ? "Processing..." : "Generate Brief"}
-            </button>
-          </div>
+            <div className="space-y-4">
+              <Field label="Headline" action="Optional">
+                <Input
+                  type="text"
+                  value={manualHeadline}
+                  onChange={(e) => setManualHeadline(e.target.value)}
+                  placeholder="Article headline (optional)"
+                />
+              </Field>
+              <Field label="Article text">
+                <Textarea
+                  value={manualText}
+                  onChange={(e) => setManualText(e.target.value)}
+                  placeholder="Paste the full article text here..."
+                  rows={6}
+                />
+              </Field>
+              <Button
+                onClick={handleManualSubmit}
+                disabled={!manualText.trim() || manualSubmitting}
+                loading={manualSubmitting}
+              >
+                {manualSubmitting ? "Processing..." : "Generate brief"}
+              </Button>
+            </div>
+          </Card>
         )}
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 mb-5 border-b border-border-light pb-0">
-          {TABS.map((tab, i) => (
-            <button
-              key={tab.status}
-              onClick={() => {
-                setActiveTab(i);
-                setEditingId(null);
-                setCategoryFilter("all");
-                setPasteTextId(null);
-              }}
-              className={`px-4 py-2.5 text-sm font-medium transition-colors relative flex items-center gap-2
-                ${activeTab === i ? "text-charcoal" : "text-medium-gray hover:text-charcoal"}`}
-            >
-              {tab.label}
-              {/* Show count badge for needs_text and pending */}
-              {(tab.status === "needs_text" || tab.status === "pending") &&
-                (tabCounts[tab.status] || 0) > 0 && (
-                  <span
-                    className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                      tab.status === "needs_text"
-                        ? "bg-amber-100 text-amber-600"
-                        : "bg-green/10 text-green"
-                    }`}
-                  >
-                    {tabCounts[tab.status]}
-                  </span>
-                )}
-              {activeTab === i && (
-                <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-green rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
-
-        {/* Category filter chips (not shown on needs_text tab) */}
+        {/* Category filter chips (not shown on needs_text tab) — selected chip is black (action) */}
         {briefs.length > 0 && TABS[activeTab].status !== "needs_text" && (
           <div className="flex items-center gap-2 mb-5 flex-wrap">
-            <button
+            <Button
+              size="sm"
+              variant={categoryFilter === "all" ? "primary" : "secondary"}
               onClick={() => setCategoryFilter("all")}
-              className={`px-3 py-1 rounded-btn text-xs font-medium transition-colors border
-                ${categoryFilter === "all"
-                  ? "bg-charcoal text-white border-charcoal"
-                  : "bg-white text-medium-gray border-border-light hover:border-border-medium"}`}
             >
               All ({briefs.length})
-            </button>
+            </Button>
             {Object.entries(categoryCounts)
               .sort(([, a], [, b]) => b - a)
               .map(([cat, count]) => (
-                <button
+                <Button
                   key={cat}
+                  size="sm"
+                  variant={categoryFilter === cat ? "primary" : "secondary"}
                   onClick={() => setCategoryFilter(cat === categoryFilter ? "all" : cat)}
-                  className={`px-3 py-1 rounded-btn text-xs font-medium transition-colors border capitalize
-                    ${categoryFilter === cat
-                      ? "bg-charcoal text-white border-charcoal"
-                      : "bg-white text-medium-gray border-border-light hover:border-border-medium"}`}
+                  className="capitalize"
                 >
                   {cat.replace("-", " ")} ({count})
-                </button>
+                </Button>
               ))}
           </div>
         )}
 
         {/* Loading state */}
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
-          </div>
-        )}
+        {loading && <LoadingBlock />}
 
         {/* Empty state */}
         {!loading && filteredBriefs.length === 0 && (
-          <div className="text-center py-20">
-            <p className="font-dm text-medium-gray text-sm">
-              {TABS[activeTab].status === "pending"
-                ? "No pending briefs. Check back tomorrow morning."
+          <EmptyState
+            title={
+              TABS[activeTab].status === "pending"
+                ? "No pending briefs"
                 : TABS[activeTab].status === "needs_text"
-                  ? "No articles waiting for text. All caught up."
+                  ? "No articles waiting for text"
                   : TABS[activeTab].status === "live"
-                    ? "No live briefs yet. Approve some from the Pending tab."
-                    : "No deleted briefs."}
-            </p>
-          </div>
+                    ? "No live briefs yet"
+                    : "No deleted briefs"
+            }
+            description={
+              TABS[activeTab].status === "pending"
+                ? "Check back tomorrow morning."
+                : TABS[activeTab].status === "needs_text"
+                  ? "All caught up."
+                  : TABS[activeTab].status === "live"
+                    ? "Approve some from the Pending tab."
+                    : undefined
+            }
+          />
         )}
 
         {/* Brief cards */}
@@ -442,101 +452,96 @@ export default function IntelPage() {
               const isProcessing = processing === brief.id;
 
               return (
-                <div
+                <Card
                   key={brief.id}
-                  className={`bg-white rounded-card border overflow-hidden ${
-                    isNeedsText ? "border-amber-300/50" : "border-border-light"
-                  }`}
+                  // Needs-text briefs get a warning-tinted border so they stand out
+                  className={cn(isNeedsText && "border-warning-fg/40")}
                 >
-                  <div className="px-5 py-5">
-                    {/* Row 1: Title + category badge */}
-                    <div className="flex items-start gap-3 mb-2">
-                      {isEditing ? (
-                        <input
+                  {/* Row 1: Title + category badge */}
+                  <div className="flex items-start gap-3 mb-2">
+                    {isEditing ? (
+                      <Field className="flex-1">
+                        <Input
                           type="text"
                           value={editForm.title || ""}
                           onChange={(e) => setEditForm((f) => ({ ...f, title: e.target.value }))}
-                          className="flex-1 px-3 py-1.5 text-[15px] font-semibold border border-border-light rounded-btn focus:outline-none focus:border-green"
+                          className="font-semibold text-md"
                         />
+                      </Field>
+                    ) : (
+                      <h3 className="flex-1 text-md font-semibold text-text leading-snug">
+                        {brief.title}
+                      </h3>
+                    )}
+                    {/* Category badge + relevance score */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      {isNeedsText && <Badge tone="warning">Needs text</Badge>}
+                      {isEditing ? (
+                        <Select
+                          small
+                          value={editForm.category || ""}
+                          onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
+                          className="w-40"
+                        >
+                          <option value="data-center">Data Center</option>
+                          <option value="retail">Retail</option>
+                          <option value="land">Land</option>
+                          <option value="market">Market</option>
+                          <option value="infrastructure">Infrastructure</option>
+                        </Select>
                       ) : (
-                        <h3 className="flex-1 font-dm text-[15px] font-semibold text-charcoal leading-snug">
-                          {brief.title}
-                        </h3>
+                        <Badge tone={CATEGORY_TONES[brief.category] || "neutral"} className="capitalize">
+                          {brief.category.replace("-", " ")}
+                        </Badge>
                       )}
-                      {/* Category badge + relevance score */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {isNeedsText && (
-                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border bg-amber-100 text-amber-600 border-amber-300/50">
-                            Needs Text
-                          </span>
-                        )}
-                        <span
-                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-btn border ${
-                            CATEGORY_COLORS[brief.category] || "bg-white/5 text-medium-gray border-border-light"
-                          }`}
-                        >
-                          {isEditing ? (
-                            <select
-                              value={editForm.category || ""}
-                              onChange={(e) => setEditForm((f) => ({ ...f, category: e.target.value }))}
-                              className="bg-transparent text-[10px] font-bold uppercase border-none focus:outline-none cursor-pointer"
-                            >
-                              <option value="data-center">Data Center</option>
-                              <option value="retail">Retail</option>
-                              <option value="land">Land</option>
-                              <option value="market">Market</option>
-                              <option value="infrastructure">Infrastructure</option>
-                            </select>
-                          ) : (
-                            brief.category.replace("-", " ")
-                          )}
-                        </span>
-                        <span
-                          className={`text-[10px] font-bold px-1.5 py-0.5 rounded-btn ${
-                            brief.relevance_score >= 70
-                              ? "bg-green/10 text-green"
-                              : brief.relevance_score >= 40
-                                ? "bg-amber-500/10 text-amber-500"
-                                : "bg-red-500/10 text-red-400"
-                          }`}
-                        >
-                          {brief.relevance_score}
-                        </span>
-                      </div>
+                      {/* Relevance score — green / amber / red by threshold */}
+                      <Badge
+                        tone={
+                          brief.relevance_score >= 70
+                            ? "success"
+                            : brief.relevance_score >= 40
+                              ? "warning"
+                              : "danger"
+                        }
+                        title="Relevance score"
+                      >
+                        {brief.relevance_score}
+                      </Badge>
                     </div>
+                  </div>
 
-                    {/* Row 2: Date · Source · link to article */}
-                    <div className="flex items-center gap-2 mb-4 text-[12px] text-medium-gray">
-                      <span>{formatShortDate(brief.source_date || brief.created_at)}</span>
-                      {brief.source_name && (
-                        <>
-                          <span className="text-border-medium">·</span>
-                          <span>{brief.source_name}</span>
-                        </>
-                      )}
-                      {brief.source_url && (
-                        <>
-                          <span className="text-border-medium">·</span>
-                          <a
-                            href={brief.source_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-blue-500 hover:text-blue-700 transition-colors"
-                          >
-                            Source
-                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                            </svg>
-                          </a>
-                        </>
-                      )}
-                      {/* Tags inline */}
-                      {brief.tags.length > 0 && (
-                        <>
-                          <span className="text-border-medium">·</span>
-                          {isEditing ? (
-                            <input
+                  {/* Row 2: Date · Source · link to article */}
+                  <div className="flex items-center gap-2 mb-4 text-xs text-text-2 flex-wrap">
+                    <span>{formatShortDate(brief.source_date || brief.created_at)}</span>
+                    {brief.source_name && (
+                      <>
+                        <span className="text-text-3">·</span>
+                        <span>{brief.source_name}</span>
+                      </>
+                    )}
+                    {brief.source_url && (
+                      <>
+                        <span className="text-text-3">·</span>
+                        <a
+                          href={brief.source_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-info-fg hover:underline transition-colors"
+                        >
+                          Source
+                          <ExternalLink size={12} strokeWidth={1.75} />
+                        </a>
+                      </>
+                    )}
+                    {/* Tags inline */}
+                    {brief.tags.length > 0 && (
+                      <>
+                        <span className="text-text-3">·</span>
+                        {isEditing ? (
+                          <Field className="flex-1 min-w-[200px]">
+                            <Input
                               type="text"
+                              small
                               value={(editForm.tags || []).join(", ")}
                               onChange={(e) =>
                                 setEditForm((f) => ({
@@ -544,239 +549,224 @@ export default function IntelPage() {
                                   tags: e.target.value.split(",").map((t) => t.trim()).filter(Boolean),
                                 }))
                               }
-                              className="flex-1 px-2 py-0.5 text-[12px] border border-border-light rounded-btn focus:outline-none focus:border-green"
                               placeholder="Tags (comma-separated)"
                             />
-                          ) : (
-                            <span className="text-medium-gray/60">
-                              {brief.tags.join(", ")}
-                            </span>
-                          )}
-                        </>
-                      )}
-                    </div>
+                          </Field>
+                        ) : (
+                          <span className="text-text-3">
+                            {brief.tags.join(", ")}
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </div>
 
-                    {/* ── NEEDS TEXT: show paste area instead of summary/impact ── */}
-                    {isNeedsText ? (
-                      <div className="mb-4">
-                        {isPasting ? (
-                          <>
-                            <p className="font-dm text-[12px] text-medium-gray mb-3">
-                              Open the source article, copy the text, and paste it below. GPT will generate the full brief.
-                            </p>
-                            <textarea
+                  {/* ── NEEDS TEXT: show paste area instead of summary/impact ── */}
+                  {isNeedsText ? (
+                    <div className="mb-4">
+                      {isPasting ? (
+                        <div className="space-y-4">
+                          <p className="text-xs text-text-2">
+                            Open the source article, copy the text, and paste it below. GPT will generate the full brief.
+                          </p>
+                          <Field label="Article text">
+                            <Textarea
                               value={pasteText}
                               onChange={(e) => setPasteText(e.target.value)}
                               placeholder="Paste the full article text here..."
                               rows={6}
-                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y mb-3"
+                              className="text-sm leading-relaxed"
                               autoFocus
                             />
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => handleProcessText(brief.id)}
-                                disabled={!pasteText.trim() || isProcessing}
-                                className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                              >
-                                {isProcessing ? "Processing..." : "Generate Brief"}
-                              </button>
-                              <button
-                                onClick={() => {
-                                  setPasteTextId(null);
-                                  setPasteText("");
-                                }}
-                                className="px-4 py-2 text-medium-gray text-xs font-medium hover:text-charcoal transition-colors"
-                              >
-                                Cancel
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <div className="bg-amber-50 rounded-btn px-4 py-3 border border-amber-200/50">
-                            <p className="font-dm text-[13px] text-amber-700">
-                              Headline only — article text needed for full brief.
-                            </p>
+                          </Field>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              onClick={() => handleProcessText(brief.id)}
+                              disabled={!pasteText.trim() || isProcessing}
+                              loading={isProcessing}
+                            >
+                              {isProcessing ? "Processing..." : "Generate brief"}
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => {
+                                setPasteTextId(null);
+                                setPasteText("");
+                              }}
+                            >
+                              Cancel
+                            </Button>
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <>
-                        {/* Summary — What Happened */}
-                        <div className="mb-4">
-                          <span className="text-[10px] font-bold text-medium-gray/50 uppercase tracking-wider block mb-1.5">
-                            What Happened
-                          </span>
-                          {isEditing ? (
-                            <textarea
+                        </div>
+                      ) : (
+                        <div className="bg-warning-bg rounded-control px-4 py-3">
+                          <p className="text-sm text-warning-fg">
+                            Headline only — article text needed for full brief.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <>
+                      {/* Summary — What Happened */}
+                      <div className="mb-4">
+                        {isEditing ? (
+                          <Field label="What happened">
+                            <Textarea
                               value={editForm.summary || ""}
                               onChange={(e) => setEditForm((f) => ({ ...f, summary: e.target.value }))}
                               rows={4}
-                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                              className="text-sm leading-relaxed"
                             />
-                          ) : (
-                            <p className="font-dm text-[13px] text-charcoal/75 leading-relaxed">
+                          </Field>
+                        ) : (
+                          <>
+                            <span className="text-xs font-medium text-text-3 block mb-1.5">
+                              What happened
+                            </span>
+                            <p className="text-sm text-text-2 leading-relaxed">
                               {brief.summary}
                             </p>
-                          )}
-                        </div>
+                          </>
+                        )}
+                      </div>
 
-                        {/* Impact — What This Means */}
-                        <div className="mb-5 border-l-2 border-green/30 pl-4">
-                          <span className="text-[10px] font-bold text-green/60 uppercase tracking-wider block mb-1.5">
-                            What This Means
-                          </span>
-                          {isEditing ? (
-                            <textarea
+                      {/* Impact — What This Means (green rule = the "so what" callout) */}
+                      <div className="mb-5 border-l-2 border-accent/40 pl-4">
+                        {isEditing ? (
+                          <Field label="What this means">
+                            <Textarea
                               value={editForm.impact || ""}
                               onChange={(e) => setEditForm((f) => ({ ...f, impact: e.target.value }))}
                               rows={4}
-                              className="w-full px-3 py-2 text-[13px] leading-relaxed border border-border-light rounded-btn focus:outline-none focus:border-green resize-y"
+                              className="text-sm leading-relaxed"
                             />
-                          ) : (
-                            <p className="font-dm text-[13px] text-charcoal/55 leading-relaxed">
+                          </Field>
+                        ) : (
+                          <>
+                            <span className="text-xs font-medium text-accent-strong block mb-1.5">
+                              What this means
+                            </span>
+                            <p className="text-sm text-text-2 leading-relaxed">
                               {brief.impact}
                             </p>
-                          )}
-                        </div>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* Actions */}
+                  <div className="flex items-center gap-2 border-t border-border mt-1 pt-4">
+                    {isEditing ? (
+                      <>
+                        <Button onClick={() => saveAndApprove(brief.id)} disabled={isSaving} loading={isSaving}>
+                          Save & approve
+                        </Button>
+                        <Button variant="secondary" onClick={() => saveEdits(brief.id)} disabled={isSaving}>
+                          Save draft
+                        </Button>
+                        <Button variant="ghost" onClick={() => setEditingId(null)}>
+                          Cancel
+                        </Button>
+                      </>
+                    ) : (
+                      <>
+                        {/* Pending tab actions */}
+                        {TABS[activeTab].status === "pending" && (
+                          <>
+                            <Button onClick={() => handleApprove(brief.id)} disabled={isSaving} loading={isSaving}>
+                              Approve
+                            </Button>
+                            <Button variant="secondary" onClick={() => startEditing(brief)}>
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDelete(brief.id)}
+                              disabled={isSaving}
+                              className="ml-auto text-danger-fg hover:text-danger-fg"
+                            >
+                              Delete
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Needs Text tab actions */}
+                        {TABS[activeTab].status === "needs_text" && (
+                          <>
+                            {!isPasting && (
+                              <Button
+                                onClick={() => {
+                                  setPasteTextId(brief.id);
+                                  setPasteText("");
+                                }}
+                              >
+                                Paste article text
+                              </Button>
+                            )}
+                            {brief.source_url && (
+                              <a
+                                href={brief.source_url}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="inline-flex items-center justify-center gap-2 h-control px-3.5 text-base font-medium rounded-control bg-surface text-text border border-border hover:bg-surface-2 hover:border-border-strong transition-colors duration-150"
+                              >
+                                Open article
+                                <ExternalLink size={16} strokeWidth={1.75} />
+                              </a>
+                            )}
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDelete(brief.id)}
+                              disabled={isSaving}
+                              className="ml-auto text-danger-fg hover:text-danger-fg"
+                            >
+                              Skip
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Live tab actions */}
+                        {TABS[activeTab].status === "live" && (
+                          <>
+                            <Button variant="secondary" onClick={() => startEditing(brief)}>
+                              Edit
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleUnpublish(brief.id)}
+                              disabled={isSaving}
+                              className="text-warning-fg hover:text-warning-fg"
+                            >
+                              Unpublish
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              onClick={() => handleDelete(brief.id)}
+                              disabled={isSaving}
+                              className="ml-auto text-danger-fg hover:text-danger-fg"
+                            >
+                              Delete
+                            </Button>
+                          </>
+                        )}
+
+                        {/* Deleted tab actions */}
+                        {TABS[activeTab].status === "deleted" && (
+                          <Button variant="secondary" onClick={() => handleRestore(brief.id)} disabled={isSaving}>
+                            Restore to pending
+                          </Button>
+                        )}
                       </>
                     )}
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 pt-1 border-t border-border-light/60 mt-1 pt-3">
-                      {isEditing ? (
-                        <>
-                          <button
-                            onClick={() => saveAndApprove(brief.id)}
-                            disabled={isSaving}
-                            className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                          >
-                            {isSaving ? "..." : "Save & Approve"}
-                          </button>
-                          <button
-                            onClick={() => saveEdits(brief.id)}
-                            disabled={isSaving}
-                            className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors disabled:opacity-50"
-                          >
-                            Save Draft
-                          </button>
-                          <button
-                            onClick={() => setEditingId(null)}
-                            className="px-4 py-2 text-medium-gray text-xs font-medium hover:text-charcoal transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          {/* Pending tab actions */}
-                          {TABS[activeTab].status === "pending" && (
-                            <>
-                              <button
-                                onClick={() => handleApprove(brief.id)}
-                                disabled={isSaving}
-                                className="px-4 py-2 bg-green text-white text-xs font-medium rounded-btn hover:bg-green-dark transition-colors disabled:opacity-50"
-                              >
-                                {isSaving ? "..." : "Approve"}
-                              </button>
-                              <button
-                                onClick={() => startEditing(brief)}
-                                className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleDelete(brief.id)}
-                                disabled={isSaving}
-                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-
-                          {/* Needs Text tab actions */}
-                          {TABS[activeTab].status === "needs_text" && (
-                            <>
-                              {!isPasting && (
-                                <button
-                                  onClick={() => {
-                                    setPasteTextId(brief.id);
-                                    setPasteText("");
-                                  }}
-                                  className="px-4 py-2 bg-charcoal text-white text-xs font-medium rounded-btn hover:bg-black transition-colors"
-                                >
-                                  Paste Article Text
-                                </button>
-                              )}
-                              {brief.source_url && (
-                                <a
-                                  href={brief.source_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="px-4 py-2 bg-white text-blue-500 text-xs font-medium rounded-btn border border-border-light hover:border-blue-300 transition-colors inline-flex items-center gap-1"
-                                >
-                                  Open Article
-                                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                                  </svg>
-                                </a>
-                              )}
-                              <button
-                                onClick={() => handleDelete(brief.id)}
-                                disabled={isSaving}
-                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
-                              >
-                                Skip
-                              </button>
-                            </>
-                          )}
-
-                          {/* Live tab actions */}
-                          {TABS[activeTab].status === "live" && (
-                            <>
-                              <button
-                                onClick={() => startEditing(brief)}
-                                className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors"
-                              >
-                                Edit
-                              </button>
-                              <button
-                                onClick={() => handleUnpublish(brief.id)}
-                                disabled={isSaving}
-                                className="px-4 py-2 text-amber-600 text-xs font-medium hover:text-amber-800 transition-colors disabled:opacity-50"
-                              >
-                                Unpublish
-                              </button>
-                              <button
-                                onClick={() => handleDelete(brief.id)}
-                                disabled={isSaving}
-                                className="ml-auto px-4 py-2 text-red-400 text-xs font-medium hover:text-red-600 transition-colors disabled:opacity-50"
-                              >
-                                Delete
-                              </button>
-                            </>
-                          )}
-
-                          {/* Deleted tab actions */}
-                          {TABS[activeTab].status === "deleted" && (
-                            <button
-                              onClick={() => handleRestore(brief.id)}
-                              disabled={isSaving}
-                              className="px-4 py-2 bg-white text-charcoal text-xs font-medium rounded-btn border border-border-light hover:border-border-medium transition-colors disabled:opacity-50"
-                            >
-                              Restore to Pending
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
                   </div>
-                </div>
+                </Card>
               );
             })}
           </div>
         )}
-      </div>
+      </PageContainer>
     </AppShell>
   );
 }

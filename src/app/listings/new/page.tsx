@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
+import { LoadingBlock } from "@/components/ui";
 import ListingForm from "@/components/ListingForm";
 import { ListingItem } from "@/lib/admin-constants";
 
@@ -36,10 +37,7 @@ export default function NewListingPage() {
       <div>
         {/* Brief loading while fetching listing list */}
         {loading && (
-          <div className="flex items-center justify-center py-20 text-[#777] text-sm">
-            <div className="w-[18px] h-[18px] border-2 border-[#E5E5E5] border-t-green rounded-full animate-spin mr-2.5" />
-            Loading...
-          </div>
+          <LoadingBlock message="Loading…" />
         )}
 
         {/* Form in create mode */}

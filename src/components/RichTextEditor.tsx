@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useEffect, useCallback, useState } from "react";
+import { Bold, Italic, List, ListOrdered } from "lucide-react";
+import { IconButton, cn, FOCUS_RING } from "@/components/ui";
 import { sanitizeRichText, plainTextToRichText } from "@/lib/rich-text";
 
 /* ============================================================
@@ -122,33 +124,49 @@ export default function RichTextEditor({
     [emit, refreshState]
   );
 
-  const btn = (on: boolean) =>
-    `w-8 h-8 rounded-btn border flex items-center justify-center text-sm transition-colors ${
-      on
-        ? "border-green bg-[#F0F9E5] text-[#1A1A1A]"
-        : "border-[#E5E5E5] text-[#666] hover:bg-[#F5F5F5] hover:text-[#333]"
-    }`;
+  // Active toolbar button = soft green (selected state); otherwise the plain ghost icon button
+  const activeClass = (on: boolean) => (on ? "bg-accent-soft text-accent-strong hover:bg-accent-soft hover:text-accent-strong" : undefined);
 
   return (
     <div>
-      {/* Toolbar */}
+      {/* Toolbar — IconButtons hold one lucide icon each; onMouseDown preventDefault keeps the caret in the editor */}
       <div className="flex items-center gap-1 mb-1.5">
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd("bold")} className={`${btn(active.bold)} font-bold`} title="Bold (⌘B)">
-          B
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd("italic")} className={`${btn(active.italic)} italic`} title="Italic (⌘I)">
-          I
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd("insertUnorderedList")} className={`${btn(active.ul)} text-xs`} title="Bullet list">
-          &#8226;&#8801;
-        </button>
-        <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd("insertOrderedList")} className={`${btn(active.ol)} text-[11px] font-semibold`} title="Numbered list">
-          1.
-        </button>
-        <span className="ml-2 text-[11px] text-[#999]">Paste anything — it takes the site&apos;s formatting</span>
+        <IconButton
+          size="sm"
+          label="Bold (⌘B)"
+          icon={<Bold size={16} strokeWidth={1.75} />}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => execCmd("bold")}
+          className={activeClass(active.bold)}
+        />
+        <IconButton
+          size="sm"
+          label="Italic (⌘I)"
+          icon={<Italic size={16} strokeWidth={1.75} />}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => execCmd("italic")}
+          className={activeClass(active.italic)}
+        />
+        <IconButton
+          size="sm"
+          label="Bullet list"
+          icon={<List size={16} strokeWidth={1.75} />}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => execCmd("insertUnorderedList")}
+          className={activeClass(active.ul)}
+        />
+        <IconButton
+          size="sm"
+          label="Numbered list"
+          icon={<ListOrdered size={16} strokeWidth={1.75} />}
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={() => execCmd("insertOrderedList")}
+          className={activeClass(active.ol)}
+        />
+        <span className="ml-2 text-xs text-text-3">Paste anything — it takes the site&apos;s formatting</span>
       </div>
 
-      {/* Editable area — styled like the site's overview so lists and paragraphs look the same here */}
+      {/* Editable area — styled like a text control, with the site's overview list/paragraph look inside */}
       <div className="relative">
         <div
           ref={editorRef}
@@ -158,12 +176,15 @@ export default function RichTextEditor({
           onPaste={handlePaste}
           onKeyUp={refreshState}
           onMouseUp={refreshState}
-          className="w-full min-h-[200px] bg-white border border-[#E5E5E5] rounded-btn px-3 py-2
-                     text-sm text-[#333] leading-relaxed outline-none focus:border-green transition-colors
-                     [&_p]:mb-3 [&_p:last-child]:mb-0
-                     [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3
-                     [&_li]:mb-1 [&_strong]:font-semibold [&_strong]:text-[#1A1A1A] [&_em]:italic
-                     [&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-[#BBB]"
+          className={cn(
+            "w-full min-h-[200px] bg-surface border border-border rounded-control px-3 py-2",
+            "text-base text-text leading-relaxed hover:border-border-strong transition-colors",
+            FOCUS_RING,
+            "[&_p]:mb-3 [&_p:last-child]:mb-0",
+            "[&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3",
+            "[&_li]:mb-1 [&_strong]:font-semibold [&_strong]:text-text [&_em]:italic",
+            "[&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-text-3"
+          )}
           data-placeholder={placeholder}
           suppressContentEditableWarning
         />

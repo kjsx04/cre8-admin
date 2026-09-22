@@ -2,6 +2,8 @@
 
 import { ClauseState } from "@/lib/types";
 import { useState } from "react";
+import { AlertTriangle, Check, ChevronRight } from "lucide-react";
+import { Badge, Button, Field, Input, Textarea, cn } from "@/components/ui";
 
 interface ClauseCardProps {
   clause: ClauseState;
@@ -10,6 +12,10 @@ interface ClauseCardProps {
   onVariableChange: (id: string, varToken: string, value: string) => void;
 }
 
+/**
+ * ClauseCard — one optional clause (flexible-mode LOIs). Toggle it on/off,
+ * fill its variables, expand to read or edit the text.
+ */
 export default function ClauseCard({
   clause,
   onToggle,
@@ -25,126 +31,91 @@ export default function ClauseCard({
       ? "Standard"
       : clause.source === "library"
       ? "Library"
-      : "AI Drafted — Review Carefully";
-
-  const sourceBadgeClass =
-    clause.source === "ai_drafted"
-      ? "bg-yellow-500/15 text-yellow-400"
-      : "bg-white/10 text-medium-gray";
+      : "AI drafted — review carefully";
 
   return (
     <div
-      className={`border rounded-card p-4 transition-all duration-200 ${
-        clause.included
-          ? "border-[#E0E0E0] bg-white"
-          : "border-[#E0E0E0]/50 bg-[#F5F5F5] opacity-60"
-      }`}
+      className={cn(
+        "border rounded-card p-4 transition-colors duration-200 bg-surface",
+        clause.included ? "border-border" : "border-border bg-surface-2 opacity-60"
+      )}
     >
       {/* Header row */}
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-3 flex-1">
-          {/* Toggle checkbox */}
+          {/* Toggle checkbox — green = included (status) */}
           <button
+            type="button"
             onClick={() => onToggle(clause.id)}
-            className={`mt-0.5 w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors ${
-              clause.included
-                ? "bg-green border-green"
-                : "bg-transparent border-border-gray"
-            }`}
-          >
-            {clause.included && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path
-                  d="M2 6L5 9L10 3"
-                  stroke="black"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
+            aria-pressed={clause.included}
+            aria-label={clause.included ? "Exclude clause" : "Include clause"}
+            className={cn(
+              "mt-0.5 w-5 h-5 rounded border flex items-center justify-center flex-shrink-0 transition-colors",
+              clause.included ? "bg-accent border-accent text-white" : "bg-surface border-border-strong"
             )}
+          >
+            {clause.included && <Check size={12} strokeWidth={2.5} />}
           </button>
 
           <div className="flex-1">
             {/* Clause name + source badge */}
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-[#1A1A1A] text-sm font-semibold">{clause.label}</span>
-              <span className={`text-xs px-2 py-0.5 rounded ${sourceBadgeClass}`}>
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-text text-sm font-semibold">{clause.label}</span>
+              <Badge tone={clause.source === "ai_drafted" ? "warning" : "neutral"}>
                 {sourceLabel}
-              </span>
+              </Badge>
 
               {/* Warning icon for AI drafted */}
               {clause.source === "ai_drafted" && (
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#EAB308"
-                  strokeWidth="2"
-                  className="flex-shrink-0"
-                >
-                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
-                  <line x1="12" y1="9" x2="12" y2="13" />
-                  <line x1="12" y1="17" x2="12.01" y2="17" />
-                </svg>
+                <AlertTriangle size={14} strokeWidth={1.75} className="text-warning-fg flex-shrink-0" />
               )}
             </div>
 
             {/* Summary */}
-            <p className="text-medium-gray text-xs">{clause.summary}</p>
+            <p className="text-text-2 text-xs">{clause.summary}</p>
           </div>
         </div>
       </div>
 
       {/* Clause variables (if any) */}
       {clause.included && Object.keys(clause.variables).length > 0 && (
-        <div className="mt-3 ml-8 flex flex-wrap gap-3">
+        <div className="mt-4 ml-8 flex flex-wrap gap-4">
           {Object.entries(clause.variables).map(([varToken, value]) => (
-            <div key={varToken} className="flex flex-col gap-0.5">
-              <label className="text-xs text-medium-gray">
-                {varToken.replace(/_/g, " ")}
-              </label>
-              <input
+            // Field + Input primitives — same value/onChange as before
+            <Field key={varToken} label={varToken.replace(/_/g, " ")} className="w-36">
+              <Input
                 type="text"
+                small
                 value={value}
                 onChange={(e) => onVariableChange(clause.id, varToken, e.target.value)}
-                className="px-2 py-1 text-xs bg-white border border-[#E0E0E0] rounded text-[#1A1A1A]
-                           focus:border-green transition-colors w-32"
               />
-            </div>
+            </Field>
           ))}
         </div>
       )}
 
       {/* Expand/collapse + edit controls */}
       {clause.included && (
-        <div className="mt-3 ml-8 flex items-center gap-3">
-          <button
+        <div className="mt-3 ml-8 flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={() => setExpanded(!expanded)}
-            className="text-xs text-medium-gray hover:text-[#1A1A1A] transition-colors flex items-center gap-1"
+            icon={
+              <ChevronRight
+                size={16}
+                strokeWidth={1.75}
+                className={cn("transition-transform", expanded && "rotate-90")}
+              />
+            }
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 12 12"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              className={`transition-transform ${expanded ? "rotate-90" : ""}`}
-            >
-              <path d="M4 2L8 6L4 10" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
             {expanded ? "Hide clause" : "View clause"}
-          </button>
+          </Button>
 
           {(clause.source === "library" || clause.source === "ai_drafted") && (
-            <button
-              onClick={() => setEditing(!editing)}
-              className="text-xs text-medium-gray hover:text-green transition-colors"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setEditing(!editing)}>
               {editing ? "Done" : "Edit"}
-            </button>
+            </Button>
           )}
         </div>
       )}
@@ -153,15 +124,14 @@ export default function ClauseCard({
       {clause.included && expanded && (
         <div className="mt-3 ml-8">
           {editing ? (
-            <textarea
+            <Textarea
               value={clause.text}
               onChange={(e) => onTextChange(clause.id, e.target.value)}
               rows={6}
-              className="w-full px-3 py-2 text-xs bg-white border border-[#E0E0E0] rounded
-                         text-[#1A1A1A] focus:border-green transition-colors font-dm leading-relaxed"
+              className="text-xs leading-relaxed"
             />
           ) : (
-            <p className="text-xs text-medium-gray leading-relaxed bg-[#F5F5F5] rounded p-3">
+            <p className="text-xs text-text-2 leading-relaxed bg-surface-2 rounded-control p-3">
               {clause.text}
             </p>
           )}

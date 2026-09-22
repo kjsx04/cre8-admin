@@ -1,5 +1,7 @@
 "use client";
 
+import { Check } from "lucide-react";
+import { Badge, cn } from "@/components/ui";
 import type { ChecklistItemDef } from "@/lib/checklist/constants";
 
 /* ============================================================
@@ -31,35 +33,33 @@ export default function ChecklistItemRow({
       type="button"
       onClick={interactive ? onToggle : undefined}
       disabled={!interactive}
-      className={`w-full flex items-center gap-2.5 px-2 py-1.5 rounded-btn text-left transition-colors
-        ${interactive ? "hover:bg-[#F5F5F5] cursor-pointer" : "cursor-default"}`}
+      className={cn(
+        "w-full flex items-center gap-2.5 px-2 py-1.5 rounded-control text-left transition-colors",
+        interactive ? "hover:bg-surface-2 cursor-pointer" : "cursor-default"
+      )}
     >
-      {/* Checkbox */}
+      {/* Checkbox — green fill = done (green is status) */}
       <span
-        className={`w-[18px] h-[18px] rounded-sm border-[1.5px] flex items-center justify-center flex-shrink-0 text-[11px]
-          ${checked ? "bg-green border-green text-black" : "border-[#CCC] bg-white"}`}
+        className={cn(
+          "w-[18px] h-[18px] rounded-sm border flex items-center justify-center shrink-0",
+          checked ? "bg-accent border-accent text-black" : "border-border-strong bg-surface"
+        )}
       >
-        {checked && "✓"}
+        {checked && <Check size={12} strokeWidth={2.5} />}
       </span>
 
       {/* Label */}
       <span
-        className={`text-[13px] flex-1 min-w-0 ${
-          checked ? "text-[#999] line-through" : "text-[#333]"
-        }`}
+        className={cn("text-sm flex-1 min-w-0", checked ? "text-text-3 line-through" : "text-text")}
       >
         {item.label}
       </span>
 
       {/* Auto tag + hint */}
       {item.auto && (
-        <span
-          className="text-[10px] font-semibold uppercase tracking-wide text-[#999] bg-[#F0F0F0]
-                     px-1.5 py-0.5 rounded flex-shrink-0"
-          title={item.autoHint}
-        >
-          auto
-        </span>
+        <Badge tone="neutral" size="sm" title={item.autoHint}>
+          Auto
+        </Badge>
       )}
     </button>
   );

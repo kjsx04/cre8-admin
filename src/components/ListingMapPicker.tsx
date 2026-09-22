@@ -197,30 +197,30 @@ export default function ListingMapPicker({
       {/* Map container */}
       <div
         ref={containerRef}
-        className="w-full h-[300px] rounded-btn border border-[#E5E5E5] overflow-hidden"
+        className="w-full h-[300px] rounded-control border border-border overflow-hidden"
       />
 
       {/* Lat/lng display */}
       {latitude != null && longitude != null && (
-        <div className="flex items-center gap-4 mt-2 text-xs text-[#777]">
+        <div className="flex items-center gap-4 mt-2 text-xs text-text-3">
           <span>
-            Lat: <span className="text-[#333] font-medium">{latitude.toFixed(6)}</span>
+            Lat: <span className="text-text font-medium font-mono">{latitude.toFixed(6)}</span>
           </span>
           <span>
-            Lng: <span className="text-[#333] font-medium">{longitude.toFixed(6)}</span>
+            Lng: <span className="text-text font-medium font-mono">{longitude.toFixed(6)}</span>
           </span>
           <a
             href={`https://www.google.com/maps?q=${latitude},${longitude}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-green hover:underline"
+            className="text-text-2 underline hover:text-text"
           >
             Open in Google Maps
           </a>
         </div>
       )}
       {latitude == null && (
-        <p className="text-xs text-[#777] mt-2">
+        <p className="text-xs text-text-3 mt-2">
           Click the map to place a pin
         </p>
       )}

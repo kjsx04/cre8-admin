@@ -23,21 +23,32 @@ interface ModalProps {
 
 const SIZE = { sm: "max-w-[420px]", md: "max-w-[560px]", lg: "max-w-[760px]" };
 
+// Stack of open layers (Modal / SlideOver). Only the top one reacts to Escape,
+// so a Modal opened from inside a SlideOver closes alone.
+const layerStack: symbol[] = [];
+
 /**
  * useLayerBehavior — shared by Modal and SlideOver:
- * Escape closes, and the page behind stops scrolling while open.
+ * Escape closes the TOP layer only, and the page behind stops scrolling while any layer is open.
  */
 export function useLayerBehavior(open: boolean, onClose: () => void) {
   useEffect(() => {
     if (!open) return;
+    const id = Symbol("layer");
+    layerStack.push(id);
+
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape" && layerStack[layerStack.length - 1] === id) onClose();
     };
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     window.addEventListener("keydown", onKey);
+
     return () => {
-      document.body.style.overflow = prev;
+      const i = layerStack.indexOf(id);
+      if (i >= 0) layerStack.splice(i, 1);
+      // Restore page scroll only when the last layer closes
+      if (layerStack.length === 0) document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);

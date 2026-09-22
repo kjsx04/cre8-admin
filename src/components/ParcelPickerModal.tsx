@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { X } from "lucide-react";
+import { Button, IconButton, Spinner } from "@/components/ui";
 
 // ── Types ──
 
@@ -700,43 +702,33 @@ export default function ParcelPickerModal({
   const firstParcel = selectedParcels[0] || null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    // Full-screen container kept on purpose (Mapbox needs a fixed-size box) — chrome uses the shared tokens
+    <div className="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true">
       {/* Dark backdrop */}
       <div
-        className="absolute inset-0 bg-black/70"
+        className="absolute inset-0 bg-black/40 backdrop-blur-[2px] animate-fade-in"
         onClick={onClose}
       />
 
       {/* Modal container */}
-      <div className="relative max-w-4xl w-full mx-4 h-[80vh] bg-white border border-[#E0E0E0] rounded-card flex flex-col overflow-hidden">
+      <div className="relative max-w-4xl w-full mx-4 h-[80vh] bg-surface rounded-modal shadow-modal flex flex-col overflow-hidden animate-scale-in">
 
         {/* ── Header ── */}
-        <div className="flex items-center justify-between px-5 py-3 border-b border-[#E0E0E0] flex-shrink-0">
-          <h2 className="font-bebas text-xl tracking-wide text-[#1A1A1A]">
-            SELECT <span className="text-green">PARCEL</span>
-          </h2>
-          <button
-            onClick={onClose}
-            className="text-medium-gray hover:text-[#1A1A1A] transition-colors p-1"
-            title="Close"
-          >
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-border shrink-0">
+          <h2 className="text-md font-semibold text-text">Select parcel</h2>
+          <IconButton label="Close" size="sm" icon={<X size={18} strokeWidth={1.75} />} onClick={onClose} />
         </div>
 
         {/* ── Map container ── */}
         <div className="flex-1 min-h-0 relative">
           <div ref={mapContainerRef} style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, width: "100%", height: "100%" }} />
 
-          {/* "Zoom in" overlay — fades out as you approach z14 */}
+          {/* "Zoom in" overlay — fades out as you approach z14 (sits on the dark satellite map, so it stays dark) */}
           <div
             className="absolute inset-0 flex items-start justify-center pointer-events-none z-10 pt-16 transition-opacity duration-500"
             style={{ opacity: currentZoom < 13.5 ? 1 : 0 }}
           >
-            <div className="bg-black/70 text-medium-gray text-sm px-4 py-2 rounded-card border border-border-gray">
+            <div className="bg-black/70 text-white/80 text-sm px-4 py-2 rounded-card border border-white/10">
               Zoom in to see parcels
             </div>
           </div>
@@ -744,8 +736,8 @@ export default function ParcelPickerModal({
           {/* Loading indicator */}
           {loadingParcels && currentZoom >= 14 && (
             <div className="absolute top-3 left-3 z-10">
-              <div className="flex items-center gap-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-card border border-border-gray">
-                <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
+              <div className="flex items-center gap-2 bg-black/70 text-white text-xs px-3 py-1.5 rounded-card border border-white/10">
+                <Spinner size="sm" className="w-3 h-3 border-white/30 border-t-white" />
                 Loading parcels...
               </div>
             </div>
@@ -754,24 +746,23 @@ export default function ParcelPickerModal({
 
         {/* ── Selection bar — shows selected parcel chips + summary ── */}
         {selectedParcels.length > 0 && (
-          <div className="border-t border-[#E0E0E0] px-5 py-3 flex-shrink-0 bg-[#F5F5F5]">
-            {/* APN chips */}
+          <div className="border-t border-border px-5 py-3 shrink-0 bg-surface-2">
+            {/* APN chips — green tint = selected (status) */}
             <div className="flex flex-wrap gap-2 mb-2">
               {selectedParcels.map((p) => (
                 <span
                   key={p.key}
-                  className="inline-flex items-center gap-1.5 bg-[#F0F0F0] border border-green/40 text-[#1A1A1A] text-xs px-2.5 py-1 rounded"
+                  className="inline-flex items-center gap-1.5 bg-accent-soft text-accent-strong text-xs font-medium px-2.5 py-1 rounded-control"
                 >
                   {p.id}
                   <button
+                    type="button"
                     onClick={() => handleRemoveParcel(p.key)}
-                    className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
+                    className="text-accent-strong/70 hover:text-accent-strong transition-colors"
                     title="Remove"
+                    aria-label="Remove"
                   >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
+                    <X size={12} strokeWidth={2} />
                   </button>
                 </span>
               ))}
@@ -779,23 +770,23 @@ export default function ParcelPickerModal({
 
             {/* Summary from first parcel */}
             {firstParcel && (
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-text-2">
                 {firstParcel.address && (
                   <span>
-                    <span className="text-[#777]">Address:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.address}</span>
+                    <span className="text-text-3">Address:</span>{" "}
+                    <span className="text-text">{firstParcel.address}</span>
                   </span>
                 )}
                 {firstParcel.owner && (
                   <span>
-                    <span className="text-[#777]">Owner:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.owner}</span>
+                    <span className="text-text-3">Owner:</span>{" "}
+                    <span className="text-text">{firstParcel.owner}</span>
                   </span>
                 )}
                 {includeAcreage && firstParcel.acreage && (
                   <span>
-                    <span className="text-[#777]">Acreage:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.acreage} ac</span>
+                    <span className="text-text-3">Acreage:</span>{" "}
+                    <span className="text-text">{firstParcel.acreage} ac</span>
                   </span>
                 )}
               </div>
@@ -804,30 +795,17 @@ export default function ParcelPickerModal({
         )}
 
         {/* ── Footer — Done + Cancel ── */}
-        <div className="flex items-center justify-end gap-3 px-5 py-3 border-t border-[#E0E0E0] flex-shrink-0">
-          <button
-            onClick={onClose}
-            className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2 rounded-btn
-                       hover:border-[#999] transition-colors duration-200"
-          >
+        <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-border shrink-0">
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
+          </Button>
+          <Button
             onClick={handleDone}
-            disabled={selectedParcels.length === 0 || capturing}
-            className="bg-green text-black font-semibold text-sm px-5 py-2 rounded-btn
-                       hover:brightness-110 transition-all duration-200
-                       disabled:opacity-50 disabled:cursor-not-allowed"
+            disabled={selectedParcels.length === 0}
+            loading={capturing}
           >
-            {capturing ? (
-              <span className="flex items-center gap-2">
-                <span className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                Capturing...
-              </span>
-            ) : (
-              <>Done{selectedParcels.length > 0 ? ` (${selectedParcels.length})` : ""}</>
-            )}
-          </button>
+            {capturing ? "Capturing..." : <>Done{selectedParcels.length > 0 ? ` (${selectedParcels.length})` : ""}</>}
+          </Button>
         </div>
       </div>
     </div>

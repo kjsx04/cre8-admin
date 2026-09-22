@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
+import { Badge, IconButton } from "@/components/ui";
 
 interface Alert {
   id: string;
@@ -50,31 +52,24 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
   };
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-2">
       {alerts.map((a) => (
-        <div
-          key={a.id}
-          className={`flex items-center gap-3 rounded-card border px-3 py-2 text-sm ${
-            a.type === "decay" ? "border-blue-200 bg-blue-50" : "border-amber-200 bg-amber-50"
-          }`}
-        >
-          <span className={`text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0 ${
-            a.type === "decay" ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
-          }`}>
+        <div key={a.id} className="flex items-center gap-3 rounded-card border border-border bg-surface pl-4 pr-2 py-2 text-sm">
+          {/* Kind badge: decay = info tone, stale = warning tone */}
+          <Badge tone={a.type === "decay" ? "info" : "warning"} size="sm" className="shrink-0">
             {a.type === "decay" ? "Slowed" : "Stale"}
-          </span>
+          </Badge>
+          {/* Whole message opens the editor — a plain text link, not a boxed button */}
           <button
             type="button"
             onClick={() => router.push(`/marketing/email/${a.campaign_id}/edit`)}
-            className="min-w-0 flex-1 text-left text-charcoal hover:underline truncate"
+            className="min-w-0 flex-1 text-left text-text hover:underline truncate"
             title="Open in the editor"
           >
             <span className="font-medium">{a.email_label ? `${a.email_label}: ` : ""}{a.listing_name}</span>
-            <span className="text-medium-gray"> — {a.message}</span>
+            <span className="text-text-2"> — {a.message}</span>
           </button>
-          <button type="button" onClick={() => dismiss(a.id)} className="text-muted-gray hover:text-charcoal text-base leading-none shrink-0" title="Dismiss for two weeks">
-            &times;
-          </button>
+          <IconButton size="sm" label="Dismiss for two weeks" icon={<X size={16} strokeWidth={1.75} />} onClick={() => dismiss(a.id)} />
         </div>
       ))}
     </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, Search } from "lucide-react";
 import { ListingItem } from "@/lib/admin-constants";
+import { Badge, Input } from "@/components/ui";
 
 interface ListingPickerProps {
   listings: ListingItem[];
@@ -12,8 +14,6 @@ interface ListingPickerProps {
   fallbackName: string;
   onPick: (listing: ListingItem) => void;
 }
-
-const INPUT = "w-full border border-border-light rounded-btn pl-9 pr-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 
 /**
  * Section 2 (single emails) — pick the listing.
@@ -80,33 +80,32 @@ export default function ListingPicker({
   const hasSelection = !!selected || !!fallbackName;
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-3">
       {/* Search box — always visible, results drop down beneath it */}
       <div ref={containerRef} className="relative">
         <div className="relative">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-gray pointer-events-none">
-            <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <input
+          <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3 pointer-events-none" />
+          {/* Shared Input with room for the search icon */}
+          <Input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setHighlightIdx(0); setOpen(true); }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
             placeholder={loading ? "Loading listings…" : hasSelection ? "Search to change the listing" : "Search listings"}
-            className={INPUT}
+            className="pl-9"
           />
         </div>
 
+        {/* Results — a floating layer, so it gets the popover shadow */}
         {open && (
-          <div className="absolute z-30 mt-1 w-full bg-white border border-border-light rounded-card shadow-lg overflow-hidden">
+          <div className="absolute z-30 mt-1 w-full bg-surface border border-border rounded-card shadow-popover overflow-hidden">
             <ul className="max-h-72 overflow-y-auto py-1">
               {loading && filtered.length === 0 && (
-                <li className="px-3 py-3 text-sm text-muted-gray">Loading…</li>
+                <li className="px-3 py-3 text-sm text-text-3">Loading…</li>
               )}
               {!loading && filtered.length === 0 && (
-                <li className="px-3 py-3 text-sm text-muted-gray">No matches</li>
+                <li className="px-3 py-3 text-sm text-text-3">No matches</li>
               )}
               {filtered.map((l, i) => {
                 const fd = l.fieldData;
@@ -115,26 +114,27 @@ export default function ListingPicker({
                 const isCurrent = selected?.id === l.id;
                 return (
                   <li key={l.id}>
+                    {/* Option row — a bare button because it holds a thumbnail + two lines */}
                     <button
                       type="button"
                       onMouseEnter={() => setHighlightIdx(i)}
                       onClick={() => choose(l)}
                       className={`w-full flex items-center gap-3 px-3 py-2 text-left ${
-                        i === highlightIdx ? "bg-light-gray" : ""
+                        i === highlightIdx ? "bg-surface-2" : ""
                       }`}
                     >
-                      <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
+                      <div className="w-12 h-8 rounded overflow-hidden bg-surface-2 shrink-0">
                         {t && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={t} alt="" className="w-full h-full object-cover" />
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
-                        {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
+                        <div className="text-sm text-text truncate">{fd.name || l.id}</div>
+                        {sub && <div className="text-xs text-text-3 truncate">{sub}</div>}
                       </div>
-                      {isCurrent && <span className="ml-auto text-[10px] uppercase tracking-wide text-green shrink-0">Selected</span>}
-                      {!isCurrent && l.isDraft && <span className="ml-auto text-[10px] uppercase tracking-wide text-muted-gray shrink-0">Draft</span>}
+                      {isCurrent && <Badge tone="success" size="sm" className="ml-auto shrink-0">Selected</Badge>}
+                      {!isCurrent && l.isDraft && <Badge size="sm" className="ml-auto shrink-0">Draft</Badge>}
                     </button>
                   </li>
                 );
@@ -144,24 +144,22 @@ export default function ListingPicker({
         )}
       </div>
 
-      {/* The chosen listing */}
+      {/* The chosen listing — green border = selected (status) */}
       {hasSelection && (
-        <div className="flex items-center gap-3 border border-green rounded-btn px-3 py-2 bg-white">
-          <div className="w-11 h-8 rounded overflow-hidden bg-border-light shrink-0">
+        <div className="flex items-center gap-3 border border-accent-strong bg-accent-soft/40 rounded-control px-3 py-2">
+          <div className="w-11 h-8 rounded overflow-hidden bg-surface-2 shrink-0">
             {thumb && (
               // eslint-disable-next-line @next/next/no-img-element
               <img src={thumb} alt="" className="w-full h-full object-cover" />
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-sm text-charcoal truncate">{selected?.fieldData.name || fallbackName}</div>
-            <div className="text-xs text-muted-gray truncate">
+            <div className="text-sm text-text truncate">{selected?.fieldData.name || fallbackName}</div>
+            <div className="text-xs text-text-3 truncate">
               {selected ? (selected.fieldData["city-county"] || selected.fieldData["list-price"] || " ") : "Not in CMS — stored details will be used"}
             </div>
           </div>
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" className="text-green shrink-0">
-            <path d="M3.5 8.5l3 3 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
+          <Check size={16} strokeWidth={1.75} className="text-accent-strong shrink-0" />
         </div>
       )}
     </div>

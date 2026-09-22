@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { ChevronDown, Image as ImageIcon, Sparkles } from "lucide-react";
+import { Button, Card, StatusDot, Textarea, cn } from "@/components/ui";
 
 interface AIAssistBarProps {
   docTypeId: string;
@@ -117,36 +119,32 @@ export default function AIAssistBar({
   }
 
   return (
-    <div className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden">
+    // Card primitive, flush padding so the header row can be a full-width toggle
+    <Card padding="none" className="overflow-hidden">
       {/* Header — click to expand/collapse */}
       <button
+        type="button"
         onClick={() => setCollapsed(!collapsed)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
+        aria-expanded={!collapsed}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors"
       >
         <div className="flex items-center gap-2">
-          <div className="w-2 h-2 rounded-full bg-green" />
-          <span className="text-[#1A1A1A] text-sm font-semibold">AI ASSIST</span>
+          {/* Green dot = "AI available" status */}
+          <StatusDot tone="success" />
+          <span className="text-text text-sm font-semibold">AI assist</span>
         </div>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`text-medium-gray transition-transform duration-200 ${
-            collapsed ? "" : "rotate-180"
-          }`}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <ChevronDown
+          size={16}
+          strokeWidth={1.75}
+          className={cn("text-text-2 transition-transform duration-200", !collapsed && "rotate-180")}
+        />
       </button>
 
       {/* Body — shown when expanded */}
       {!collapsed && (
-        <div className="px-4 pb-4 space-y-3">
-          {/* Textarea */}
-          <textarea
+        <div className="px-4 pb-4 space-y-4">
+          {/* Textarea — shared primitive, same value/onChange/placeholder/disabled */}
+          <Textarea
             value={rawInput}
             onChange={(e) => setRawInput(e.target.value)}
             placeholder={
@@ -156,52 +154,36 @@ export default function AIAssistBar({
             }
             rows={3}
             disabled={isExtracting}
-            className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-2
-                       text-[#1A1A1A] text-sm placeholder:text-medium-gray
-                       focus:border-green transition-colors resize-y leading-relaxed
-                       disabled:opacity-50"
+            className="text-sm"
           />
 
           {/* Action buttons row */}
           <div className="flex items-center gap-2">
-            {/* Extract button (primary) */}
-            <button
+            {/* Extract button (primary — black is action) */}
+            <Button
               onClick={handleExtract}
               disabled={!rawInput.trim() || isExtracting}
-              className="flex-1 bg-green text-black font-semibold text-sm py-2 px-4 rounded-btn
-                         hover:brightness-110 transition-all duration-200
-                         disabled:opacity-40 disabled:cursor-not-allowed
-                         flex items-center justify-center gap-2"
+              loading={isExtracting}
+              icon={<Sparkles size={18} strokeWidth={1.75} />}
+              className="flex-1"
             >
-              {isExtracting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-black border-t-transparent rounded-full animate-spin" />
-                  {statusMessage}
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                    <path d="M2 17l10 5 10-5" />
-                    <path d="M2 12l10 5 10-5" />
-                  </svg>
-                  {docTypeId.startsWith("listing_") ? "Extract Fields" : "Update LOI"}
-                </>
-              )}
-            </button>
+              {isExtracting
+                ? statusMessage
+                : docTypeId.startsWith("listing_")
+                  ? "Extract fields"
+                  : "Update LOI"}
+            </Button>
 
             {/* Photo button — file input for image/document */}
             <label
               title="Upload photo or document"
-              className={`bg-[#F0F0F0] border border-[#E0E0E0] text-medium-gray p-2 rounded-btn
-                         hover:border-green hover:text-[#1A1A1A] transition-colors cursor-pointer
-                         ${isExtracting ? "opacity-40 pointer-events-none" : ""}`}
+              className={cn(
+                "inline-flex items-center justify-center w-control h-control rounded-control",
+                "bg-surface text-text-2 border border-border hover:bg-surface-2 hover:text-text transition-colors cursor-pointer shrink-0",
+                isExtracting && "opacity-40 pointer-events-none"
+              )}
             >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-                <circle cx="8.5" cy="8.5" r="1.5" />
-                <polyline points="21 15 16 10 5 21" />
-              </svg>
+              <ImageIcon size={18} strokeWidth={1.75} />
               <input
                 type="file"
                 accept="image/*"
@@ -213,11 +195,11 @@ export default function AIAssistBar({
 
           {/* Error message */}
           {error && (
-            <p className="text-red-400 text-xs">{error}</p>
+            <p className="text-danger-fg text-xs">{error}</p>
           )}
 
         </div>
       )}
-    </div>
+    </Card>
   );
 }

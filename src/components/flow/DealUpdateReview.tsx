@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ArrowRight, Check, FileText } from "lucide-react";
 import { DealDiffItem, StageSuggestion, DealStatus } from "@/lib/flow/types";
+import { Badge, Button, Card, Tone, cn } from "@/components/ui";
 
 interface DealUpdateReviewProps {
   /** The diff items to review */
@@ -18,6 +20,24 @@ interface DealUpdateReviewProps {
   onApprove: (items: DealDiffItem[], newStatus?: DealStatus) => void;
   /** Called when user cancels the review */
   onCancel: () => void;
+}
+
+// Small square check control used for each diff row + the stage suggestion (selected = ink)
+function CheckBox({ checked, onClick }: { checked: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      onClick={onClick}
+      className={cn(
+        "mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors",
+        checked ? "bg-ink border-ink" : "border-border-strong hover:border-text-3"
+      )}
+    >
+      {checked && <Check size={10} strokeWidth={3} className="text-white" />}
+    </button>
+  );
 }
 
 export default function DealUpdateReview({
@@ -69,50 +89,37 @@ export default function DealUpdateReview({
   // How many items are accepted
   const acceptedCount = items.filter((i) => i.accepted).length;
 
-  // Doc type badge label
+  // Doc type badge label + tone (PSA = info, LOI = warning, other = neutral)
   const docLabel =
     documentType === "psa" ? "PSA" : documentType === "loi" ? "LOI" : "Document";
-  const docBadgeColor =
-    documentType === "psa"
-      ? "bg-blue-50 text-blue-700 border-blue-200"
-      : documentType === "loi"
-        ? "bg-amber-50 text-amber-700 border-amber-200"
-        : "bg-gray-50 text-gray-600 border-gray-200";
+  const docTone: Tone =
+    documentType === "psa" ? "info" : documentType === "loi" ? "warning" : "neutral";
 
   return (
     <div className="space-y-4">
       {/* Header card */}
-      <div className="bg-white border border-border-light rounded-card p-4">
+      <Card padding="sm">
         <div className="flex items-center gap-3 mb-1">
           {/* Document icon */}
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="2" className="flex-shrink-0">
-            <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-            <polyline points="14 2 14 8 20 8" />
-          </svg>
+          <FileText size={20} strokeWidth={1.75} className="flex-shrink-0 text-text-2" />
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-charcoal truncate">{fileName}</p>
+            <p className="text-sm font-medium text-text truncate">{fileName}</p>
           </div>
-          <span className={`text-[10px] font-semibold uppercase tracking-wider px-2 py-0.5 rounded border ${docBadgeColor}`}>
-            {docLabel}
-          </span>
+          <Badge tone={docTone}>{docLabel}</Badge>
         </div>
-        <p className="text-xs text-medium-gray ml-8">
+        <p className="text-xs text-text-2 ml-8">
           {items.length} change{items.length !== 1 ? "s" : ""} detected — review below
         </p>
-      </div>
+      </Card>
 
       {/* Select/deselect all */}
       <div className="flex items-center justify-between px-1">
-        <p className="text-xs font-medium text-charcoal">
+        <p className="text-xs font-medium text-text">
           {acceptedCount} of {items.length} selected
         </p>
-        <button
-          type="button"
-          onClick={() => toggleAll(acceptedCount < items.length)}
-          className="text-xs text-green hover:underline"
-        >
-          {acceptedCount < items.length ? "Select All" : "Deselect All"}
-        </button>
+        <Button variant="ghost" size="sm" onClick={() => toggleAll(acceptedCount < items.length)}>
+          {acceptedCount < items.length ? "Select all" : "Deselect all"}
+        </Button>
       </div>
 
       {/* Diff items list */}
@@ -120,44 +127,28 @@ export default function DealUpdateReview({
         {items.map((item, index) => (
           <div
             key={item.field}
-            className={`bg-white border rounded-card p-3 transition-all duration-200 ${
-              item.accepted
-                ? "border-green/30 bg-green/[0.02]"
-                : "border-border-light opacity-60"
-            }`}
+            className={cn(
+              "bg-surface border rounded-card p-4 transition-all duration-150",
+              // Accepted rows get the green (selected) tint; unselected rows fade
+              item.accepted ? "border-accent/40 bg-accent-soft/40" : "border-border opacity-60"
+            )}
           >
             <div className="flex items-start gap-3">
               {/* Checkbox */}
-              <button
-                type="button"
-                onClick={() => toggleItem(index)}
-                className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                  item.accepted
-                    ? "bg-green border-green"
-                    : "border-[#ccc] hover:border-[#999]"
-                }`}
-              >
-                {item.accepted && (
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                )}
-              </button>
+              <CheckBox checked={item.accepted} onClick={() => toggleItem(index)} />
 
               {/* Field content */}
               <div className="flex-1 min-w-0">
-                <p className="text-xs font-medium text-charcoal mb-1.5">{item.label}</p>
+                <p className="text-xs font-medium text-text mb-1.5">{item.label}</p>
 
                 <div className="flex items-center gap-2 text-sm">
                   {/* Current value */}
-                  <span className={`text-medium-gray ${item.accepted ? "line-through" : ""}`}>
+                  <span className={cn("text-text-2", item.accepted && "line-through")}>
                     {item.currentValue}
                   </span>
 
                   {/* Arrow */}
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" className="flex-shrink-0">
-                    <path d="M5 12h14M12 5l7 7-7 7" />
-                  </svg>
+                  <ArrowRight size={14} strokeWidth={2} className="flex-shrink-0 text-text-3" />
 
                   {/* Proposed value — click to edit */}
                   {item.edited ? (
@@ -166,8 +157,8 @@ export default function DealUpdateReview({
                       value={item.editedValue ?? ""}
                       onChange={(e) => updateEdit(index, e.target.value)}
                       autoFocus
-                      className="text-sm font-medium text-green bg-green/5 border border-green/30 rounded px-1.5 py-0.5
-                                 focus:outline-none focus:ring-1 focus:ring-green/50 min-w-[80px]"
+                      className="text-sm font-medium text-accent-strong bg-accent-soft border border-accent/40 rounded-control px-1.5 py-0.5
+                                 focus:outline-none focus:ring-1 focus:ring-accent/50 min-w-[80px]"
                       onKeyDown={(e) => {
                         if (e.key === "Escape") {
                           // Cancel edit — revert to original
@@ -183,7 +174,7 @@ export default function DealUpdateReview({
                     <button
                       type="button"
                       onClick={() => startEdit(index)}
-                      className="text-sm font-medium text-green hover:underline text-left"
+                      className="text-sm font-medium text-accent-strong hover:underline text-left"
                       title="Click to edit"
                     >
                       {item.proposedValue}
@@ -198,26 +189,12 @@ export default function DealUpdateReview({
 
       {/* Stage move suggestion */}
       {stageSuggestion && (
-        <div className="bg-blue-50 border border-blue-200 rounded-card p-4">
+        <div className="bg-info-bg border border-info-fg/20 rounded-card p-4">
           <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => setAcceptStageMove(!acceptStageMove)}
-              className={`mt-0.5 w-4 h-4 rounded border flex-shrink-0 flex items-center justify-center transition-colors ${
-                acceptStageMove
-                  ? "bg-blue-600 border-blue-600"
-                  : "border-blue-300 hover:border-blue-400"
-              }`}
-            >
-              {acceptStageMove && (
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3">
-                  <polyline points="20 6 9 17 4 12" />
-                </svg>
-              )}
-            </button>
+            <CheckBox checked={acceptStageMove} onClick={() => setAcceptStageMove(!acceptStageMove)} />
             <div>
-              <p className="text-sm font-medium text-blue-800">{stageSuggestion.message}</p>
-              <p className="text-xs text-blue-600 mt-0.5">
+              <p className="text-sm font-medium text-info-fg">{stageSuggestion.message}</p>
+              <p className="text-xs text-info-fg/80 mt-0.5">
                 Uncheck to apply changes without moving the deal.
               </p>
             </div>
@@ -227,16 +204,12 @@ export default function DealUpdateReview({
 
       {/* Action buttons */}
       <div className="flex items-center justify-between pt-2">
-        <button
-          type="button"
-          onClick={onCancel}
-          disabled={approving}
-          className="text-sm text-medium-gray hover:text-charcoal transition-colors"
-        >
+        <Button variant="ghost" onClick={onCancel} disabled={approving}>
           Cancel
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          variant="primary"
+          loading={approving}
           onClick={() =>
             onApprove(
               items,
@@ -244,17 +217,11 @@ export default function DealUpdateReview({
             )
           }
           disabled={acceptedCount === 0 || approving}
-          className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                     hover:bg-green/90 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed
-                     flex items-center gap-2"
         >
-          {approving && (
-            <div className="w-3 h-3 border-2 border-black border-t-transparent rounded-full animate-spin" />
-          )}
           {approving
             ? "Updating..."
-            : `Approve ${acceptedCount} Change${acceptedCount !== 1 ? "s" : ""}`}
-        </button>
+            : `Approve ${acceptedCount} change${acceptedCount !== 1 ? "s" : ""}`}
+        </Button>
       </div>
     </div>
   );

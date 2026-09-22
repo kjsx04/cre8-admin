@@ -3,6 +3,7 @@
 import { Campaign } from "@/lib/email/types";
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, weekKeys, isWeekend, dayParts } from "@/lib/email/schedule-dates";
+import { Badge, EmptyState } from "@/components/ui";
 import SendCard from "./SendCard";
 
 interface WeekPlannerProps {
@@ -25,8 +26,8 @@ export default function WeekPlanner({ weekStart, itemsByDay, today, maxPerDay, o
   const keys = weekKeys(weekStart);
 
   return (
-    <div className="bg-white rounded-card border border-border-light">
-      <div className="flex flex-col lg:grid lg:grid-cols-[1fr_1fr_1fr_1fr_1fr_0.6fr_0.6fr] divide-y lg:divide-y-0 lg:divide-x divide-border-light">
+    <div className="bg-surface rounded-card border border-border">
+      <div className="flex flex-col lg:grid lg:grid-cols-[1fr_1fr_1fr_1fr_1fr_0.6fr_0.6fr] divide-y lg:divide-y-0 lg:divide-x divide-border">
         {keys.map((key, i) => (
           <DayColumn
             key={key}
@@ -68,31 +69,31 @@ function DayColumn({
 
   return (
     <div
-      className={`flex flex-col lg:min-h-[480px] ${weekend ? "bg-subtle-gray" : ""} ${isToday ? "bg-[#f7fdf0]" : ""} ${
+      className={`flex flex-col lg:min-h-[480px] ${weekend ? "bg-canvas" : ""} ${isToday ? "bg-accent-soft/40" : ""} ${
         weekend && count === 0 ? "hidden lg:flex" : ""
       }`}
     >
-      {/* Day header — sticky within the marketing content scroll area */}
+      {/* Day header — sticky within the marketing content scroll area. Today is tinted green (status). */}
       <div
-        className={`lg:sticky lg:top-0 z-10 flex items-center justify-between px-2.5 py-2 border-b border-border-light ${
-          isToday ? "bg-[#f0fce8]" : weekend ? "bg-subtle-gray" : "bg-white"
+        className={`lg:sticky lg:top-0 z-10 flex items-center justify-between px-2.5 py-2 border-b border-border ${
+          isToday ? "bg-accent-soft" : weekend ? "bg-canvas" : "bg-surface"
         } ${isFirst ? "lg:rounded-tl-card" : ""} ${isLast ? "lg:rounded-tr-card" : ""}`}
       >
         <div className="flex items-baseline gap-1.5">
-          <span className={`font-bebas text-2xl leading-none ${isToday ? "text-green-dark" : weekend ? "text-muted-gray" : "text-charcoal"}`}>
+          <span className={`text-lg font-semibold leading-none ${isToday ? "text-accent-strong" : weekend ? "text-text-3" : "text-text"}`}>
             {dayNum}
           </span>
-          <span className="text-[10px] uppercase tracking-wider text-muted-gray">{weekday}</span>
+          <span className="text-xs text-text-3">{weekday}</span>
         </div>
         {(count > 0 || !weekend) && (
-          <span
-            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${
-              over ? "bg-amber-100 text-amber-700" : "bg-light-gray text-medium-gray"
-            }`}
+          // Count chip — amber past the per-day cap
+          <Badge
+            tone={over ? "warning" : "neutral"}
+            size="sm"
             title={over ? `Over the ${maxPerDay}-per-day cap` : `${count} send${count === 1 ? "" : "s"}`}
           >
             {count}
-          </span>
+          </Badge>
         )}
       </div>
 
@@ -102,7 +103,7 @@ function DayColumn({
           <SendCard key={it.key} item={it} onClick={onSelect} />
         ))}
         {count === 0 && !weekend && (
-          <p className="text-[11px] text-muted-gray/70 text-center pt-6 col-span-full">No sends</p>
+          <EmptyState compact title="No sends" className="col-span-full" />
         )}
       </div>
     </div>

@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, Circle, Minus } from "lucide-react";
 import { Deal } from "@/lib/flow/types";
 import {
   formatCurrency,
@@ -13,28 +14,17 @@ import {
   isLeasePaymentPhase,
   leasePaymentLabel,
 } from "@/lib/flow/utils";
+import { cn } from "@/components/ui";
 
-// Small check/circle/dash indicator for the lease payment checklist
+// Small check/circle/dash indicator for the lease payment checklist (lucide icons, token colors)
 function ChecklistDot({ state }: { state: "done" | "pending" | "na" }) {
   if (state === "done") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="3" className="flex-shrink-0">
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    );
+    return <Check size={13} strokeWidth={3} className="flex-shrink-0 text-accent" />;
   }
   if (state === "na") {
-    return (
-      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2.5" className="flex-shrink-0">
-        <line x1="5" y1="12" x2="19" y2="12" />
-      </svg>
-    );
+    return <Minus size={13} strokeWidth={2.5} className="flex-shrink-0 text-text-3" />;
   }
-  return (
-    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#BBB" strokeWidth="2" className="flex-shrink-0">
-      <circle cx="12" cy="12" r="9" />
-    </svg>
-  );
+  return <Circle size={13} strokeWidth={2} className="flex-shrink-0 text-border-strong" />;
 }
 
 interface DealCardProps {
@@ -45,6 +35,22 @@ interface DealCardProps {
   draggable?: boolean;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: (e: React.DragEvent) => void;
+}
+
+// Urgency → text color (green = on track, amber = soon, red = urgent/overdue, grey = no date)
+function urgencyText(urgency: string): string {
+  return urgency === "red" ? "text-danger-fg" :
+    urgency === "yellow" ? "text-warning-fg" :
+    urgency === "gray" ? "text-text-3" :
+    "text-accent-strong";
+}
+
+// Urgency → dot color
+function urgencyDot(urgency: string): string {
+  return urgency === "red" ? "bg-danger" :
+    urgency === "yellow" ? "bg-warning-fg" :
+    urgency === "gray" ? "bg-border-strong" :
+    "bg-accent";
 }
 
 export default function DealCard({ deal, brokerId, onClick, draggable, onDragStart, onDragEnd }: DealCardProps) {
@@ -78,20 +84,23 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
       : [];
 
   return (
+    // The card is a button (whole card is clickable + draggable) — styled like the Card primitive
     <button
       onClick={onClick}
       draggable={draggable}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`w-full text-left bg-white border border-border-light rounded-card overflow-hidden
-                 hover:border-border-medium transition-colors duration-200
-                 ${draggable ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={cn(
+        "w-full text-left bg-surface border border-border rounded-card overflow-hidden",
+        "hover:border-border-strong transition-colors duration-150",
+        draggable && "cursor-grab active:cursor-grabbing"
+      )}
     >
-      {/* Inner wrapper with green accent bar on the left */}
-      <div className="border-l-[3px] border-green p-4">
+      {/* Inner wrapper with green accent strip on the left (status marker) */}
+      <div className="border-l-[3px] border-accent p-4">
         {/* Top row — deal name */}
         <div className="mb-3">
-          <h3 className="font-dm font-semibold text-[15px] text-charcoal truncate">{deal.deal_name}</h3>
+          <h3 className="font-semibold text-base text-text truncate">{deal.deal_name}</h3>
         </div>
 
         {/* Invoiced lease card — just the payment due dates with amounts */}
@@ -107,20 +116,20 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
                 daysAway = daysBetween(today, new Date(lp.payment_date + "T00:00:00"));
               }
               const urgencyColor =
-                lp.received ? "text-green" :
-                daysAway === null ? "text-muted-gray" :
-                daysAway <= 3 ? "text-red-600" :
-                daysAway <= 30 ? "text-amber-600" : "text-green";
+                lp.received ? "text-accent-strong" :
+                daysAway === null ? "text-text-3" :
+                daysAway <= 3 ? "text-danger-fg" :
+                daysAway <= 30 ? "text-warning-fg" : "text-accent-strong";
               return (
                 <div key={lp.id} className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <ChecklistDot state={lp.received ? "done" : "pending"} />
-                    <span className="text-xs text-medium-gray whitespace-nowrap">
+                    <span className="text-xs text-text-2 whitespace-nowrap">
                       {leasePaymentLabel(i, sortedPayments.length)}
                     </span>
-                    <span className="text-xs font-bold text-charcoal">{formatCurrency(amount)}</span>
+                    <span className="text-xs font-semibold text-text tabular-nums">{formatCurrency(amount)}</span>
                   </div>
-                  <span className={`text-xs font-medium flex-shrink-0 ${urgencyColor}`}>
+                  <span className={cn("text-xs font-medium flex-shrink-0", urgencyColor)}>
                     {lp.received
                       ? "Paid"
                       : lp.payment_date
@@ -134,7 +143,7 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
             {deal.w9_status === "pending" && (
               <div className="flex items-center gap-2">
                 <ChecklistDot state="pending" />
-                <span className="text-xs text-medium-gray">W9 / Invoice from Outside Broker</span>
+                <span className="text-xs text-text-2">W9 / Invoice from outside broker</span>
               </div>
             )}
           </div>
@@ -144,64 +153,54 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
         {!isInvoiced && (
         <div className="flex items-baseline gap-4 mb-3">
           <div>
-            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Price</span>
-            <span className="text-sm font-medium text-charcoal">{formatCurrency(deal.price)}</span>
+            <span className="text-xs text-text-3 block">Price</span>
+            <span className="text-sm font-medium text-text tabular-nums">{formatCurrency(deal.price)}</span>
           </div>
           <div>
-            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Take-Home</span>
-            <span className="text-sm font-bold text-green">{formatCurrency(takeHome)}</span>
+            <span className="text-xs text-text-3 block">Take-home</span>
+            <span className="text-sm font-semibold text-accent-strong tabular-nums">{formatCurrency(takeHome)}</span>
           </div>
         </div>
         )}
 
         {/* Bottom — all timeline dates with countdowns, or placeholder if none */}
         {!isInvoiced && isActive && (
-          <div className="pt-3 border-t border-border-light">
+          <div className="pt-3 border-t border-border">
             {allDates.length > 0 ? (
               <div className="space-y-1.5">
                 {allDates.map((d, i) => (
                   <div key={i} className="flex items-center gap-2">
-                    <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0
-                      ${d.urgency === "red" ? "bg-red-500" :
-                        d.urgency === "yellow" ? "bg-amber-500" :
-                        d.urgency === "gray" ? "bg-border-medium" :
-                        "bg-green"}`}
-                    />
-                    <span className="text-xs text-medium-gray truncate">{d.label}</span>
-                    <span className={`text-xs font-medium ml-auto flex-shrink-0
-                      ${d.urgency === "red" ? "text-red-600" :
-                        d.urgency === "yellow" ? "text-amber-600" :
-                        d.urgency === "gray" ? "text-muted-gray" :
-                        "text-green"}`}
-                    >
+                    <div className={cn("w-1.5 h-1.5 rounded-full flex-shrink-0", urgencyDot(d.urgency))} />
+                    <span className="text-xs text-text-2 truncate">{d.label}</span>
+                    <span className={cn("text-xs font-medium ml-auto flex-shrink-0", urgencyText(d.urgency))}>
                       {countdownText(d.daysAway)}
                     </span>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="text-xs text-muted-gray italic">No dates yet — enter when deal progresses</p>
+              <p className="text-xs text-text-3">No dates yet — enter when deal progresses</p>
             )}
           </div>
         )}
 
         {/* Lease commission checklist — payment received + W9 status once the lease is signed */}
         {isActive && showPaymentChecklist && (
-          <div className="pt-3 mt-3 border-t border-border-light space-y-1.5">
+          <div className="pt-3 mt-3 border-t border-border space-y-1.5">
             {sortedPayments.map((lp, i) => (
               <div key={lp.id}>
                 <div className="flex items-center gap-2">
                   <ChecklistDot state={lp.received ? "done" : "pending"} />
-                  <span className={`text-xs ${lp.received ? "text-charcoal" : "text-medium-gray"}`}>
-                    {leasePaymentLabel(i, sortedPayments.length)} Paid
+                  <span className={cn("text-xs", lp.received ? "text-text" : "text-text-2")}>
+                    {leasePaymentLabel(i, sortedPayments.length)} paid
                   </span>
                 </div>
                 {/* W9 row sits between the 1st and 2nd payments, matching the flow order */}
                 {i === 0 && (
                   <div className="flex items-center gap-2 mt-1.5">
                     <ChecklistDot state={deal.w9_status === "received" ? "done" : deal.w9_status === "na" ? "na" : "pending"} />
-                    <span className={`text-xs ${deal.w9_status === "received" ? "text-charcoal" : "text-medium-gray"}`}>
-                      W9 / Invoice from Outside Broker{deal.w9_status === "na" ? " (N/A)" : ""}
+                    <span className={cn("text-xs", deal.w9_status === "received" ? "text-text" : "text-text-2")}>
+                      W9 / Invoice from outside broker{deal.w9_status === "na" ? " (N/A)" : ""}
                     </span>
                   </div>
                 )}

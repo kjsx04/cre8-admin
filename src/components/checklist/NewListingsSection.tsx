@@ -2,10 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { ChevronDown } from "lucide-react";
 import { CHECKLIST_ITEMS } from "@/lib/checklist/constants";
 import { countChecked, type ListingChecklist } from "@/lib/checklist/types";
 import ChecklistItemRow from "@/components/checklist/ChecklistItemRow";
 import type { ListingItem } from "@/lib/admin-constants";
+import { Badge, Button, Card, cn } from "@/components/ui";
 
 /* ============================================================
    New Listings section — pinned above the main dashboard table.
@@ -54,20 +56,18 @@ export default function NewListingsSection({
   const total = CHECKLIST_ITEMS.length;
 
   return (
-    <div className="mb-5">
+    <div className="mb-6">
       {/* Section heading */}
-      <div className="flex items-center gap-2 mb-2.5">
-        {/* Green badge is now the section title itself */}
-        <span className="bg-green text-black text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded">
-          New Listings
-        </span>
-        <span className="text-xs text-[#777]">
+      <div className="flex items-center gap-2 mb-3">
+        {/* Green badge marks these as "new" (status) */}
+        <Badge tone="accent">New listings</Badge>
+        <span className="text-xs text-text-3">
           {visible.length} in progress
         </span>
       </div>
 
       {/* Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {visible.map((cl) => {
           const item = listingsById.get(cl.listing_id);
           const fd = item?.fieldData || {};
@@ -76,14 +76,12 @@ export default function NewListingsSection({
           const name = fd.name || cl.listing_name || "Untitled listing";
 
           return (
-            <div
-              key={cl.listing_id}
-              className="border border-[#E5E5E5] rounded-card bg-white overflow-hidden"
-            >
+            // Card primitive — no padding so the header row sits flush
+            <Card key={cl.listing_id} padding="none" className="overflow-hidden">
               {/* Card header — click to expand/collapse; click name to open */}
               <div
                 onClick={() => toggleExpanded(cl.listing_id)}
-                className="w-full px-4 py-3 text-left hover:bg-[#FAFAFA] transition-colors cursor-pointer"
+                className="w-full px-4 py-3 text-left hover:bg-surface-2/60 transition-colors cursor-pointer"
               >
                 <div className="flex items-center justify-between gap-2">
                   <button
@@ -92,27 +90,27 @@ export default function NewListingsSection({
                       e.stopPropagation();
                       router.push(`/listings/${cl.listing_id}/edit`);
                     }}
-                    className="font-semibold text-[#1a1a1a] text-sm truncate text-left hover:text-[#4A8C1C] cursor-pointer"
+                    className="font-semibold text-text text-sm truncate text-left hover:text-accent-strong cursor-pointer"
                     title="Open listing"
                   >
                     {name}
                   </button>
-                  <span className="flex items-center gap-2 flex-shrink-0">
-                    <span className="text-xs font-bold text-[#666]">
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-semibold text-text-2 tabular-nums">
                       {done}/{total}
                     </span>
-                    <span
-                      className={`text-[#999] text-[10px] transition-transform ${expanded ? "rotate-180" : ""}`}
-                    >
-                      ▼
-                    </span>
+                    <ChevronDown
+                      size={16}
+                      strokeWidth={1.75}
+                      className={cn("text-text-3 transition-transform", expanded && "rotate-180")}
+                    />
                   </span>
                 </div>
 
-                {/* Progress bar */}
-                <div className="mt-2 h-1.5 bg-[#F0F0F0] rounded-full overflow-hidden">
+                {/* Progress bar — green fill = progress (status) */}
+                <div className="mt-2 h-1.5 bg-surface-2 rounded-pill overflow-hidden">
                   <div
-                    className="h-full bg-green rounded-full transition-all duration-300"
+                    className="h-full bg-accent rounded-pill transition-all duration-300"
                     style={{ width: `${(done / total) * 100}%` }}
                   />
                 </div>
@@ -120,7 +118,7 @@ export default function NewListingsSection({
 
               {/* Expanded checklist */}
               {expanded && (
-                <div className="px-2 pb-2.5 border-t border-[#F0F0F0]">
+                <div className="px-2 pb-2.5 border-t border-border">
                   {CHECKLIST_ITEMS.map((def) => (
                     <ChecklistItemRow
                       key={def.key}
@@ -140,31 +138,31 @@ export default function NewListingsSection({
                   ))}
 
                   {/* Complete Listing — manual move out of New (inline confirm) */}
-                  <div className="flex justify-end mt-1.5 pt-2 mx-2 border-t border-[#F0F0F0]">
+                  <div className="flex justify-end mt-1.5 pt-2 mx-2 border-t border-border">
                     {confirmingId === cl.listing_id ? (
-                      <button
-                        type="button"
+                      <Button
+                        variant="danger"
+                        size="sm"
                         onClick={() => {
                           setConfirmingId(null);
                           onComplete(cl.listing_id);
                         }}
-                        className="text-xs font-semibold text-[#CC3333] hover:text-[#B02020] transition-colors cursor-pointer"
                       >
                         Confirm — {total - done} unchecked
-                      </button>
+                      </Button>
                     ) : (
-                      <button
-                        type="button"
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => setConfirmingId(cl.listing_id)}
-                        className="text-xs font-semibold text-[#4A8C1C] hover:text-[#3A7010] transition-colors cursor-pointer"
                       >
-                        Complete Listing
-                      </button>
+                        Complete listing
+                      </Button>
                     )}
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           );
         })}
       </div>

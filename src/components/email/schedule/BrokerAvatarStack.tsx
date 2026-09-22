@@ -24,7 +24,7 @@ export default function BrokerAvatarStack({ brokerIds, primaryId, max = 3 }: Bro
           <span
             key={id}
             title={name}
-            className="w-5 h-5 rounded-full ring-2 ring-white overflow-hidden bg-charcoal text-white text-[8px] font-semibold flex items-center justify-center shrink-0"
+            className="w-5 h-5 rounded-full ring-2 ring-surface overflow-hidden bg-ink text-white text-label font-semibold flex items-center justify-center shrink-0"
           >
             {src ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -36,7 +36,7 @@ export default function BrokerAvatarStack({ brokerIds, primaryId, max = 3 }: Bro
         );
       })}
       {extra > 0 && (
-        <span className="w-5 h-5 rounded-full ring-2 ring-white bg-light-gray text-medium-gray text-[8px] font-semibold flex items-center justify-center shrink-0">
+        <span className="w-5 h-5 rounded-full ring-2 ring-surface bg-surface-2 text-text-2 text-label font-semibold flex items-center justify-center shrink-0">
           +{extra}
         </span>
       )}

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { ChevronLeft, Folder } from "lucide-react";
 import { listFolderChildren, FolderItem } from "@/lib/graph";
+import { Button, EmptyState, LoadingBlock, Modal, cn, FOCUS_RING } from "@/components/ui";
 
 interface FolderPickerProps {
   /** Graph API access token */
@@ -18,6 +20,7 @@ interface FolderPickerProps {
 
 /**
  * Modal that lets the user browse SharePoint folders and pick a save location.
+ * Built on the shared <Modal> primitive — same props as before.
  */
 export default function FolderPicker({
   accessToken,
@@ -83,119 +86,69 @@ export default function FolderPicker({
   // Split the current path into breadcrumb segments
   const pathSegments = browsePath.split("/").filter(Boolean);
 
+  // Shared look for the breadcrumb links
+  const crumb = cn("text-text-2 hover:text-text transition-colors shrink-0 rounded-control", FOCUS_RING);
+  // Shared look for each folder row
+  const row = cn("w-full flex items-center gap-3 px-3 py-2 rounded-control hover:bg-surface-2 transition-colors text-left", FOCUS_RING);
+
   return (
-    // Backdrop
-    <div
-      className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
+    <Modal
+      open
+      onClose={onClose}
+      size="sm"
+      title="Choose folder"
+      footer={
+        <Button block onClick={selectCurrent}>
+          Save here{browsePath ? `: ${pathSegments[pathSegments.length - 1]}` : ": Root"}
+        </Button>
+      }
     >
-      {/* Modal */}
-      <div
-        className="bg-white border border-[#E0E0E0] rounded-card w-full max-w-md max-h-[70vh] flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="p-4 border-b border-[#E0E0E0] flex items-center justify-between">
-          <h2 className="font-bebas text-xl tracking-wide text-[#1A1A1A]">CHOOSE FOLDER</h2>
-          <button
-            onClick={onClose}
-            className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
-          >
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Breadcrumb path */}
-        <div className="px-4 py-2 border-b border-[#E0E0E0] flex items-center gap-1 text-xs overflow-x-auto">
-          <button
-            onClick={() => setBrowsePath("")}
-            className="text-medium-gray hover:text-green transition-colors flex-shrink-0"
-          >
-            Root
-          </button>
-          {pathSegments.map((seg, i) => (
-            <span key={i} className="flex items-center gap-1 flex-shrink-0">
-              <span className="text-[#CCCCCC]">/</span>
-              <button
-                onClick={() => setBrowsePath(pathSegments.slice(0, i + 1).join("/"))}
-                className="text-medium-gray hover:text-green transition-colors"
-              >
-                {seg}
-              </button>
-            </span>
-          ))}
-        </div>
-
-        {/* Folder list */}
-        <div className="flex-1 overflow-y-auto p-2 min-h-[200px]">
-          {/* Up button (if not at root) */}
-          {browsePath && (
+      {/* Breadcrumb path */}
+      <div className="flex items-center gap-1 text-xs overflow-x-auto pb-3 border-b border-border">
+        <button type="button" onClick={() => setBrowsePath("")} className={crumb}>
+          Root
+        </button>
+        {pathSegments.map((seg, i) => (
+          <span key={i} className="flex items-center gap-1 shrink-0">
+            <span className="text-text-3">/</span>
             <button
-              onClick={navigateUp}
-              className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-[#F5F5F5] transition-colors text-left"
+              type="button"
+              onClick={() => setBrowsePath(pathSegments.slice(0, i + 1).join("/"))}
+              className={crumb}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#666" strokeWidth="2">
-                <polyline points="15 18 9 12 15 6" />
-              </svg>
-              <span className="text-medium-gray text-sm">..</span>
+              {seg}
             </button>
-          )}
-
-          {loading && (
-            <div className="flex items-center justify-center py-8">
-              <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
-            </div>
-          )}
-
-          {error && (
-            <p className="text-red-400 text-sm text-center py-4">{error}</p>
-          )}
-
-          {!loading && !error && folders.length === 0 && (
-            <p className="text-medium-gray text-sm text-center py-4">No subfolders</p>
-          )}
-
-          {!loading &&
-            !error &&
-            folders.map((folder) => (
-              <button
-                key={folder.id}
-                onClick={() => navigateInto(folder.name)}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded hover:bg-[#F5F5F5] transition-colors text-left"
-              >
-                {/* Folder icon */}
-                <svg
-                  width="16"
-                  height="16"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#8CC644"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="flex-shrink-0"
-                >
-                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                </svg>
-                <span className="text-[#1A1A1A] text-sm truncate">{folder.name}</span>
-              </button>
-            ))}
-        </div>
-
-        {/* Footer — select this folder */}
-        <div className="p-4 border-t border-[#E0E0E0]">
-          <button
-            onClick={selectCurrent}
-            className="w-full bg-green text-black font-semibold text-sm py-2.5 rounded-btn
-                       hover:brightness-110 transition-all duration-200"
-          >
-            Save Here{browsePath ? `: ${pathSegments[pathSegments.length - 1]}` : ": Root"}
-          </button>
-        </div>
+          </span>
+        ))}
       </div>
-    </div>
+
+      {/* Folder list */}
+      <div className="min-h-[200px] max-h-[45vh] overflow-y-auto pt-2 -mx-2">
+        {/* Up button (if not at root) */}
+        {browsePath && (
+          <button type="button" onClick={navigateUp} className={row}>
+            <ChevronLeft size={16} strokeWidth={1.75} className="text-text-3" />
+            <span className="text-text-2 text-sm">..</span>
+          </button>
+        )}
+
+        {loading && <LoadingBlock className="py-8" />}
+
+        {error && <p className="text-danger-fg text-sm text-center py-4">{error}</p>}
+
+        {!loading && !error && folders.length === 0 && (
+          <EmptyState compact title="No subfolders" />
+        )}
+
+        {!loading &&
+          !error &&
+          folders.map((folder) => (
+            <button key={folder.id} type="button" onClick={() => navigateInto(folder.name)} className={row}>
+              <Folder size={16} strokeWidth={1.75} className="text-text-3 shrink-0" />
+              <span className="text-text text-sm truncate">{folder.name}</span>
+            </button>
+          ))}
+      </div>
+    </Modal>
   );
 }

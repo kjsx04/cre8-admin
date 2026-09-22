@@ -16,6 +16,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
+import { ChevronLeft } from "lucide-react";
 import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml, EMAIL_SEGMENTS } from "@/lib/email/constants";
@@ -23,6 +24,7 @@ import { useAudienceCounts, formatCount, recipientLine } from "@/lib/email/audie
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
 import { submitCampaign } from "@/lib/email/submit";
+import { Button, Card, Field, IconButton, Input, Modal, Section, Tabs, Textarea, useConfirm } from "@/components/ui";
 import SchedulingAnimation from "../SchedulingAnimation";
 import LivePreviewFrame from "./LivePreviewFrame";
 import TestSendControl from "./TestSendControl";
@@ -41,8 +43,6 @@ interface EmailComposerProps {
   listings: ListingItem[];
   listingsLoading: boolean;
 }
-
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 
 const MISSING_COPY: Record<MissingField, string> = {
   type: "the email type",
@@ -64,6 +64,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const router = useRouter();
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
+  // Shared confirm dialog — replaces the browser's native confirm on "Discard changes?"
+  const confirmDialog = useConfirm();
 
   const {
     draft, set, pickListing,
@@ -196,9 +198,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const goBack = () => router.push("/marketing/email");
 
   // ── Unsaved-changes guard ──
-  const handleBack = () => {
+  const handleBack = async () => {
     if (dirty && !submittedRef.current) {
-      if (!window.confirm("Discard changes?")) return;
+      const ok = await confirmDialog({ title: "Discard changes?", confirmLabel: "Discard", tone: "danger" });
+      if (!ok) return;
       forgetStored();
     }
     goBack();
@@ -221,26 +224,23 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const hint = missingHint(missing);
 
   return (
-    <div className="flex flex-col h-full bg-white">
+    <div className="flex flex-col h-full bg-surface">
       {/* ── Header ── */}
-      <div className="shrink-0 flex items-center justify-between gap-4 px-5 py-3 border-b border-border-light">
+      <div className="shrink-0 flex items-center justify-between gap-4 px-6 py-3 border-b border-border">
         <div className="flex items-center gap-3 min-w-0">
-          <button
-            type="button"
+          <IconButton
+            variant="secondary"
+            size="sm"
+            label="Back to campaigns"
+            icon={<ChevronLeft size={18} strokeWidth={1.75} />}
             onClick={handleBack}
             disabled={submitting}
-            className="w-8 h-8 flex items-center justify-center rounded-btn border border-border-light text-charcoal hover:bg-light-gray transition-colors disabled:opacity-40"
-            title="Back to campaigns"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <h1 className="font-bebas text-2xl tracking-wide text-charcoal whitespace-nowrap">
-            {isEdit ? "Edit Campaign" : "New Campaign"}
+          />
+          <h1 className="text-lg font-semibold text-text whitespace-nowrap">
+            {isEdit ? "Edit campaign" : "New campaign"}
           </h1>
           {isEdit && draft.listingName && (
-            <span className="text-sm text-muted-gray truncate hidden sm:inline">{draft.listingName}</span>
+            <span className="text-sm text-text-3 truncate hidden sm:inline">{draft.listingName}</span>
           )}
         </div>
 
@@ -250,56 +250,47 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </div>
           <div className="flex flex-col items-end">
             <div className="flex items-center gap-2">
-              {/* Send now — skips the AI */}
-              <button
-                type="button"
+              {/* Send now — skips the AI. Secondary so Schedule/Update stays the one primary action. */}
+              <Button
+                variant="secondary"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow}
-                className="px-4 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black transition disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of letting the AI pick a time"
               >
                 Send now
-              </button>
-              <button
-                type="button"
-                onClick={handleSubmit}
-                disabled={!isValid || submitting || sendingNow}
-                className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:brightness-100"
-              >
+              </Button>
+              <Button onClick={handleSubmit} disabled={!isValid || submitting || sendingNow}>
                 {isEdit ? "Update" : "Schedule"}
-              </button>
+              </Button>
             </div>
-            {hint && <span className="text-[11px] text-muted-gray mt-1">{hint}</span>}
+            {hint && <span className="text-xs text-text-3 mt-1">{hint}</span>}
           </div>
         </div>
       </div>
 
-      {/* ── Mobile tabs ── */}
-      <div className="flex lg:hidden border-b border-border-light shrink-0">
-        {(["edit", "preview"] as const).map((tab) => (
-          <button
-            key={tab}
-            type="button"
-            onClick={() => setMobileTab(tab)}
-            className={`flex-1 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
-              mobileTab === tab ? "text-charcoal border-green" : "text-medium-gray border-transparent"
-            }`}
-          >
-            {tab === "edit" ? "Edit" : "Preview"}
-          </button>
-        ))}
+      {/* ── Mobile tabs (Edit | Preview) ── */}
+      <div className="flex lg:hidden px-4 py-2 border-b border-border shrink-0">
+        <Tabs
+          items={[
+            { value: "edit", label: "Edit" },
+            { value: "preview", label: "Preview" },
+          ]}
+          value={mobileTab}
+          onChange={setMobileTab}
+          className="w-full [&>button]:flex-1"
+        />
       </div>
 
-      {/* Restored-draft notice */}
+      {/* Restored-draft notice — green tint = a good thing happened */}
       {restored && (
-        <div className="shrink-0 flex items-center justify-between gap-3 px-5 py-2 bg-[#f0fce8] border-b border-border-light text-xs text-charcoal">
+        <div className="shrink-0 flex items-center justify-between gap-3 px-6 py-2 bg-accent-soft border-b border-border text-xs text-text">
           <span>
             Restored your unsaved work
-            {restoredAt && <span className="text-muted-gray"> from {new Date(restoredAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
+            {restoredAt && <span className="text-text-3"> from {new Date(restoredAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>}
           </span>
-          <button type="button" onClick={discardRestored} className="text-xs font-medium text-muted-gray hover:text-charcoal underline">
+          <Button variant="ghost" size="sm" onClick={discardRestored}>
             Start fresh
-          </button>
+          </Button>
         </div>
       )}
 
@@ -308,7 +299,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         {/* Left: live email */}
         <div
           data-scroll-pane
-          className={`w-full lg:w-[60%] overflow-y-auto bg-light-gray p-6 lg:p-10 relative ${
+          className={`w-full lg:w-[60%] overflow-y-auto bg-canvas p-6 lg:p-10 relative ${
             mobileTab === "preview" ? "block" : "hidden lg:block"
           }`}
         >
@@ -317,12 +308,12 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               html={previewHtml}
               activeField={activeField}
               onFieldClick={handleFieldClick}
-              className="rounded-card shadow-sm"
+              className="rounded-card"
             />
           </div>
           {!revealed && (
             <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-24">
-              <span className="px-4 py-2 rounded-full bg-white/90 border border-border-light text-sm text-muted-gray shadow-sm">
+              <span className="px-4 py-2 rounded-pill bg-surface/90 border border-border text-sm text-text-3">
                 Choose a listing to begin
               </span>
             </div>
@@ -331,7 +322,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
         {/* Right: controls */}
         <div
-          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border-light px-6 lg:px-8 py-6 space-y-8 ${
+          className={`w-full lg:w-[40%] shrink-0 overflow-y-auto border-t lg:border-t-0 lg:border-l border-border px-6 lg:px-8 py-6 space-y-8 ${
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
@@ -341,18 +332,18 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           </div>
 
           {/* 1 — what kind of email. Everything else appears once this is chosen. */}
-          <Section n={1} title="Type" note={isEdit ? "can't change after creating" : undefined}>
+          <Section step={1} title="Type" description={isEdit ? "can't change after creating" : undefined}>
             {isEdit ? (
-              <p className="text-sm text-charcoal">{isGroup ? "Multiple" : "Single"}</p>
+              <p className="text-sm text-text">{isGroup ? "Multiple" : "Single"}</p>
             ) : (
               <TypeChoice value={draft.kind} onChange={(v) => set("kind", v)} />
             )}
           </Section>
 
           {revealed && (
-            <div className="space-y-8 composer-reveal">
+            <div className="space-y-8 animate-slide-up">
               {/* 2 — the listing(s). Search box first; results drop down as you type. */}
-              <Section n={2} title={isGroup ? "Listings" : "Listing"}>
+              <Section step={2} title={isGroup ? "Listings" : "Listing"}>
                 {isGroup ? (
                   <GroupListingsPicker
                     listings={listings}
@@ -373,29 +364,31 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {/* Same order as the email, top to bottom */}
-              <Section n={3} title="Heading" note={isGroup ? "all optional" : undefined}>
-                <div className="space-y-2.5">
+              <Section step={3} title="Heading" description={isGroup ? "all optional" : undefined}>
+                <div className="space-y-4">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
                   {/* Same order as the email: small green top line first, big white heading second */}
-                  <input
-                    {...fieldProps("heading")}
-                    value={draft.headingText}
-                    onChange={(e) => set("headingText", e.target.value)}
-                    placeholder={isGroup ? "TYPE OR LOCATION — e.g. LAND · WEST VALLEY" : (draft.listingName || "Property Name").toUpperCase()}
-                    className={`${INPUT} text-xs uppercase tracking-wide`}
-                  />
-                  <input
-                    {...fieldProps("label")}
-                    value={draft.emailLabel}
-                    onChange={(e) => set("emailLabel", e.target.value)}
-                    placeholder={isGroup ? "Heading — e.g. West Valley Land & Retail" : "Just Listed"}
-                    className={INPUT}
-                  />
+                  <Field label={isGroup ? "Type or location" : "Top line"}>
+                    <Input
+                      {...fieldProps("heading")}
+                      value={draft.headingText}
+                      onChange={(e) => set("headingText", e.target.value)}
+                      placeholder={isGroup ? "TYPE OR LOCATION — e.g. LAND · WEST VALLEY" : (draft.listingName || "Property Name").toUpperCase()}
+                    />
+                  </Field>
+                  <Field label="Heading">
+                    <Input
+                      {...fieldProps("label")}
+                      value={draft.emailLabel}
+                      onChange={(e) => set("emailLabel", e.target.value)}
+                      placeholder={isGroup ? "Heading — e.g. West Valley Land & Retail" : "Just Listed"}
+                    />
+                  </Field>
                 </div>
               </Section>
 
-              <Section n={4} title="Partner Logo" note="optional">
+              <Section step={4} title="Partner logo" description="optional">
                 <PartnerLogoPicker
                   url={draft.partnerLogoUrl}
                   onPreview={(dataUrl, w, h) => {
@@ -418,7 +411,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {!isGroup && (
-              <Section n={5} title="Photo">
+              <Section step={5} title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
                   photoUrl={draft.photoUrl}
@@ -428,19 +421,20 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section n={6} title={isGroup ? "Intro" : "Body"}>
-                <textarea
-                  {...fieldProps("body")}
-                  value={draft.bodyText}
-                  onChange={(e) => set("bodyText", e.target.value)}
-                  placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
-                  rows={4}
-                  className={`${INPUT} resize-y`}
-                />
+              <Section step={6} title={isGroup ? "Intro" : "Body"}>
+                <Field>
+                  <Textarea
+                    {...fieldProps("body")}
+                    value={draft.bodyText}
+                    onChange={(e) => set("bodyText", e.target.value)}
+                    placeholder={isGroup ? "Optional — a short intro above the listings" : "Optional — a short paragraph under the photo"}
+                    rows={4}
+                  />
+                </Field>
               </Section>
 
               {!isGroup && (
-              <Section n={7} title="Details">
+              <Section step={7} title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
                   chips={chips}
@@ -455,19 +449,20 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               )}
 
               {!isGroup && (
-              <Section n={8} title="Listing Link">
-                <input
-                  {...fieldProps("cta")}
-                  value={draft.listingPageUrl}
-                  onChange={(e) => set("listingPageUrl", e.target.value)}
-                  placeholder="https://cre8advisors.com/listings/…"
-                  className={`${INPUT} text-xs`}
-                />
+              <Section step={8} title="Listing link">
+                <Field>
+                  <Input
+                    {...fieldProps("cta")}
+                    value={draft.listingPageUrl}
+                    onChange={(e) => set("listingPageUrl", e.target.value)}
+                    placeholder="https://cre8advisors.com/listings/…"
+                  />
+                </Field>
               </Section>
 
               )}
 
-              <Section n={9} title="Broker">
+              <Section step={9} title="Broker">
                 <BrokerPicker
                   brokerIds={draft.brokerIds}
                   onChange={(ids) => set("brokerIds", ids)}
@@ -475,78 +470,83 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section n={10} title="Audience">
-                <Segmented
+              <Section step={10} title="Audience">
+                {/* Segmented choice — the recipient count rides along as the tab count */}
+                <Tabs
                   value={draft.segmentId}
-                  options={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({
-                    id: s.id,
-                    label: s.name,
-                    // count badge appears once /api/email/audience has answered
-                    badge: audience[s.id] ? formatCount(audience[s.id].subscribed) : undefined,
-                  }))}
                   onChange={(v) => set("segmentId", v)}
+                  items={EMAIL_SEGMENTS.filter((s) => s.enabled).map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                    // count appears once /api/email/audience has answered
+                    count: audience[s.id] ? audience[s.id].subscribed : undefined,
+                  }))}
                 />
                 {/* "860 recipients · 2 unsubscribed won't receive it" */}
-                <p className="mt-2 text-xs text-muted-gray min-h-[1rem]">
+                <p className="mt-2 text-xs text-text-3 min-h-[1rem]">
                   {audience[draft.segmentId] ? recipientLine(audience[draft.segmentId]) : "Counting recipients…"}
                 </p>
               </Section>
 
-              <Section n={11} title="Frequency">
-                <div className="space-y-3">
-                  <Segmented
+              <Section step={11} title="Frequency">
+                <div className="space-y-4">
+                  <Tabs
                     value={draft.campaignType}
-                    options={[
-                      { id: "one-time", label: "One-time" },
-                      { id: "recurring", label: "Recurring" },
+                    items={[
+                      { value: "one-time", label: "One-time" },
+                      { value: "recurring", label: "Recurring" },
                     ]}
                     onChange={(v) => set("campaignType", v as "one-time" | "recurring")}
                   />
                   {draft.campaignType === "recurring" && (
-                    <div className="space-y-3 composer-reveal">
-                      <label className="flex items-center gap-2 text-xs text-charcoal cursor-pointer">
-                        <input type="checkbox" checked={draft.pinned} onChange={(e) => set("pinned", e.target.checked)} className="accent-[#8CC644]" />
+                    <div className="space-y-4 animate-slide-up">
+                      <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+                        <input type="checkbox" checked={draft.pinned} onChange={(e) => set("pinned", e.target.checked)} className="accent-accent" />
                         Keep this cadence (don&apos;t slow it down as the listing ages)
                       </label>
-                      <Segmented
+                      <Tabs
                         value={draft.frequency}
-                        options={[
-                          { id: "weekly", label: "Weekly" },
-                          { id: "bi-weekly", label: "Bi-weekly" },
-                          { id: "monthly", label: "Monthly" },
+                        items={[
+                          { value: "weekly", label: "Weekly" },
+                          { value: "bi-weekly", label: "Bi-weekly" },
+                          { value: "monthly", label: "Monthly" },
                         ]}
                         onChange={(v) => set("frequency", v as CampaignFrequency)}
                       />
-                      <div className="flex items-center gap-3">
-                        <label className="text-[11px] font-semibold text-muted-gray uppercase tracking-wide">Ends</label>
-                        <input
-                          type="date"
-                          value={draft.endDate}
-                          onChange={(e) => set("endDate", e.target.value)}
-                          className={`${INPUT} w-auto`}
-                        />
-                        {draft.endDate && (
-                          <button type="button" onClick={() => set("endDate", "")} className="text-xs text-muted-gray hover:text-charcoal">
-                            Clear
-                          </button>
-                        )}
-                      </div>
+                      <Field
+                        label="Ends"
+                        action={
+                          draft.endDate ? (
+                            <Button variant="ghost" size="sm" onClick={() => set("endDate", "")}>
+                              Clear
+                            </Button>
+                          ) : undefined
+                        }
+                      >
+                        <div className="w-44">
+                          <Input
+                            type="date"
+                            value={draft.endDate}
+                            onChange={(e) => set("endDate", e.target.value)}
+                          />
+                        </div>
+                      </Field>
                     </div>
                   )}
                 </div>
               </Section>
 
-              <Section n={12} title="Priority">
+              <Section step={12} title="Priority">
                 <div className="space-y-2">
-                  <Segmented
+                  <Tabs
                     value={draft.priority}
-                    options={[
-                      { id: "high", label: "Top of list" },
-                      { id: "normal", label: "Normal" },
+                    items={[
+                      { value: "high", label: "Top of list" },
+                      { value: "normal", label: "Normal" },
                     ]}
                     onChange={(v) => set("priority", v as CampaignPriority)}
                   />
-                  <p className="text-xs text-muted-gray">
+                  <p className="text-xs text-text-3">
                     {draft.priority === "high"
                       ? "Goes to #1 in the Priorities list — AI grabs the best slot in the next few days, moving others if needed."
                       : "Joins the bottom of the Priorities list — AI fits it into the next open slot. Reorder anytime from the schedule page."}
@@ -561,35 +561,36 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         </div>
       </div>
 
-      {/* ── Send now confirm ── */}
-      {sendNowOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/30" onClick={() => !sendingNow && setSendNowOpen(false)} />
-          <div className="relative bg-white rounded-card shadow-lg w-full max-w-md p-6">
-            <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Send now?</h3>
-            <p className="text-sm text-charcoal mt-2">
-              <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
-              <span className="font-medium">
-                {formData.segment_name}
-                {audience[draft.segmentId] ? ` (${formatCount(audience[draft.segmentId].subscribed)} people)` : ""}
-              </span>{" "}
-              within a couple of minutes, from {formData.broker_name}.
-            </p>
-            {formData.campaign_type === "recurring" && (
-              <p className="text-xs text-muted-gray mt-2">It&apos;s recurring, so the {formData.frequency} cadence starts from today.</p>
-            )}
-            {sendNowError && <p className="text-xs text-red-500 mt-2">{sendNowError}</p>}
-            <div className="flex justify-end gap-2 mt-5">
-              <button type="button" onClick={() => setSendNowOpen(false)} disabled={sendingNow} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
-                Cancel
-              </button>
-              <button type="button" onClick={runSendNow} disabled={sendingNow} className="px-5 py-2 bg-charcoal text-white uppercase tracking-wide text-sm font-semibold rounded-btn hover:bg-black disabled:opacity-50">
-                {sendingNow ? "Sending…" : "Yes, send now"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── Send now confirm — shared Modal ── */}
+      <Modal
+        open={sendNowOpen}
+        onClose={() => !sendingNow && setSendNowOpen(false)}
+        size="sm"
+        title="Send now?"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setSendNowOpen(false)} disabled={sendingNow}>
+              Cancel
+            </Button>
+            <Button onClick={runSendNow} loading={sendingNow}>
+              {sendingNow ? "Sending…" : "Yes, send now"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-text">
+          <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
+          <span className="font-medium">
+            {formData.segment_name}
+            {audience[draft.segmentId] ? ` (${formatCount(audience[draft.segmentId].subscribed)} people)` : ""}
+          </span>{" "}
+          within a couple of minutes, from {formData.broker_name}.
+        </p>
+        {formData.campaign_type === "recurring" && (
+          <p className="text-xs text-text-3 mt-2">It&apos;s recurring, so the {formData.frequency} cadence starts from today.</p>
+        )}
+        {sendNowError && <p className="text-xs text-danger-fg mt-2">{sendNowError}</p>}
+      </Modal>
 
       {/* ── Scheduling toast ── */}
       {toastVisible && (
@@ -601,94 +602,43 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           mode={mode}
         />
       )}
-
-      {/* Reveal animation for sections that appear after a listing is picked */}
-      <style jsx global>{`
-        @keyframes composer-reveal {
-          from { opacity: 0; transform: translateY(6px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
-        .composer-reveal { animation: composer-reveal 250ms ease-out both; }
-      `}</style>
     </div>
   );
 }
 
-/** Numbered section: badge + two-word title */
-function Section({ n, title, note, children }: { n: number; title: string; note?: string; children: React.ReactNode }) {
-  return (
-    <section>
-      <div className="flex items-center gap-2 mb-3">
-        <span className="w-5 h-5 rounded-full bg-charcoal text-white text-[10px] font-bold flex items-center justify-center">
-          {n}
-        </span>
-        <h2 className="text-xs font-semibold text-muted-gray uppercase tracking-wide">{title}</h2>
-        {note && <span className="text-[11px] text-muted-gray/70 normal-case tracking-normal">· {note}</span>}
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** First choice on a new campaign: one listing, or a group of several */
+/** First choice on a new campaign: one listing, or a group of several — two descriptive cards */
 function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onChange: (v: "single" | "group") => void }) {
   const opts: { id: "single" | "group"; label: string; desc: string }[] = [
     { id: "single", label: "Single", desc: "One property — hero photo and details" },
     { id: "group", label: "Multiple", desc: "Several properties as cards under one heading" },
   ];
   return (
-    <div className="grid grid-cols-2 gap-2">
+    <div className="grid grid-cols-2 gap-3">
       {opts.map((o) => {
         const on = value === o.id;
         return (
-          <button
+          // Interactive Card — green border + tint = selected (status)
+          <Card
             key={o.id}
-            type="button"
+            interactive
+            padding="sm"
+            role="button"
+            tabIndex={0}
+            aria-pressed={on}
             onClick={() => onChange(o.id)}
-            className={`text-left rounded-card border px-3 py-2.5 transition-colors ${
-              on ? "border-green bg-white ring-1 ring-green" : "border-border-light bg-light-gray hover:bg-white hover:border-border-medium"
-            }`}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onChange(o.id);
+              }
+            }}
+            className={on ? "border-accent-strong bg-accent-soft/40 hover:border-accent-strong" : ""}
           >
-            <div className={`text-sm font-medium ${on ? "text-charcoal" : "text-medium-gray"}`}>{o.label}</div>
-            <div className="text-[11px] text-muted-gray mt-0.5">{o.desc}</div>
-          </button>
+            <div className={`text-sm font-medium ${on ? "text-text" : "text-text-2"}`}>{o.label}</div>
+            <div className="text-xs text-text-3 mt-0.5">{o.desc}</div>
+          </Card>
         );
       })}
-    </div>
-  );
-}
-
-/** Segmented toggle (same look as the old form's button pairs) */
-function Segmented({
-  value,
-  options,
-  onChange,
-}: {
-  value: string;
-  options: { id: string; label: string; badge?: string }[]; // badge = small count after the label ("860")
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div className="flex gap-2">
-      {options.map((o) => (
-        <button
-          key={o.id}
-          type="button"
-          onClick={() => onChange(o.id)}
-          className={`px-4 py-1.5 rounded-btn text-sm font-medium transition-colors duration-150 ${
-            value === o.id
-              ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-              : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
-          }`}
-        >
-          {o.label}
-          {o.badge !== undefined && (
-            <span className={`ml-1.5 text-xs tabular-nums ${value === o.id ? "text-muted-gray" : "text-medium-gray/70"}`}>
-              · {o.badge}
-            </span>
-          )}
-        </button>
-      ))}
     </div>
   );
 }

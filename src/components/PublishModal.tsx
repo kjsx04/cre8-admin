@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import SparkMD5 from "spark-md5";
+import { AlertTriangle, Check, Minus, X } from "lucide-react";
+import { Button, Modal, Spinner, cn } from "@/components/ui";
 import type { PackageAssets } from "@/components/PackageUploader";
 import { type ListingFieldData } from "@/lib/admin-constants";
 import { graphScopes } from "@/lib/msal-config";
@@ -594,94 +596,44 @@ export default function PublishModal({
     }
   }, [runPublish]);
 
-  // ---- Render ----
+  // Overlay click / Escape only close when nothing is running (same as before)
+  const handleDismiss = useCallback(() => {
+    if (!running) onClose();
+  }, [running, onClose]);
+
+  // Text color per step status — green only for "done" (success)
+  const labelClass = (status: StepStatus) =>
+    status === "active"
+      ? "text-text font-medium"
+      : status === "done"
+        ? "text-success-fg"
+        : status === "error"
+          ? "text-danger-fg"
+          : status === "warn"
+            ? "text-warning-fg"
+            : status === "skipped"
+              ? "text-text-3"
+              : "text-text-2";
+
+  // ---- Render — shared Modal primitive; no × because the flow must be closed via the footer ----
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50"
-        onClick={!running ? onClose : undefined}
-      />
-
-      {/* Modal */}
-      <div className="relative w-full max-w-[480px] mx-4 bg-white rounded-card shadow-xl">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-[#F0F0F0]">
-          <h2 className="text-base font-bold text-[#1a1a1a]">
-            {finished
-              ? "Published Successfully"
-              : error
-                ? "Publish Failed"
-                : "Publishing Listing..."}
-          </h2>
-        </div>
-
-        {/* Steps */}
-        <div className="px-6 py-4 space-y-3">
-          {steps.map((step, idx) => (
-            <div key={idx} className="flex items-center gap-3">
-              {/* Status icon */}
-              <div className="w-6 h-6 flex items-center justify-center flex-shrink-0">
-                {step.status === "done" && (
-                  <span className="text-[#4A8C1C] text-base">&#10003;</span>
-                )}
-                {step.status === "active" && (
-                  <span className="w-4 h-4 border-2 border-[#8CC644] border-t-transparent rounded-full animate-spin" />
-                )}
-                {step.status === "waiting" && (
-                  <span className="w-2 h-2 rounded-full bg-[#DDD]" />
-                )}
-                {step.status === "skipped" && (
-                  <span className="text-[#CCC] text-sm">&#8212;</span>
-                )}
-                {step.status === "error" && (
-                  <span className="text-[#CC3333] text-base">&#10005;</span>
-                )}
-                {step.status === "warn" && (
-                  <span className="text-[#B8860B] text-base">&#9888;</span>
-                )}
-              </div>
-
-              {/* Label + detail */}
-              <div className="flex-1 min-w-0">
-                <span
-                  className={`text-sm ${
-                    step.status === "active"
-                      ? "text-[#333] font-medium"
-                      : step.status === "done"
-                        ? "text-[#4A8C1C]"
-                        : step.status === "error"
-                          ? "text-[#CC3333]"
-                          : step.status === "warn"
-                            ? "text-[#B8860B]"
-                            : step.status === "skipped"
-                              ? "text-[#BBB]"
-                              : "text-[#777]"
-                  }`}
-                >
-                  {step.label}
-                </span>
-                {step.detail && (
-                  <span className="text-[11px] text-[#777] ml-2">
-                    {step.detail}
-                  </span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Error message */}
-        {error && (
-          <div className="mx-6 mb-4 px-3 py-2 bg-[#FFF5F5] border border-[#FFCCCC] rounded-btn">
-            <p className="text-xs text-[#CC3333]">{error}</p>
-          </div>
-        )}
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t border-[#F0F0F0] flex justify-end gap-3">
+    <Modal
+      open
+      onClose={handleDismiss}
+      size="sm"
+      hideClose
+      title={
+        finished
+          ? "Published successfully"
+          : error
+            ? "Publish failed"
+            : "Publishing listing..."
+      }
+      footer={
+        <>
           {error && (
-            <button
+            <Button
+              variant="secondary"
               onClick={() => {
                 setSteps(initialSteps);
                 setError(null);
@@ -691,27 +643,55 @@ export default function PublishModal({
                   runPublish();
                 }, 0);
               }}
-              className="px-4 py-2 text-sm font-semibold text-[#1A1A1A] bg-[#F0F0F0] border border-[#E0E0E0] rounded-btn
-                         hover:bg-[#E0E0E0] transition-colors"
             >
               Retry
-            </button>
+            </Button>
           )}
-          <button
+          <Button
+            variant={finished ? "primary" : "ghost"}
             onClick={() => {
               abortRef.current = true;
               onClose();
             }}
-            className={`px-4 py-2 text-sm font-semibold rounded-btn transition-colors ${
-              finished
-                ? "bg-[#8CC644] text-black hover:bg-[#7AB800]"
-                : "border border-[#E5E5E5] text-[#666] hover:border-[#CCC]"
-            }`}
           >
             {finished ? "Done" : "Close"}
-          </button>
-        </div>
+          </Button>
+        </>
+      }
+    >
+      {/* Steps */}
+      <div className="space-y-3">
+        {steps.map((step, idx) => (
+          <div key={idx} className="flex items-center gap-3">
+            {/* Status icon */}
+            <div className="w-6 h-6 flex items-center justify-center shrink-0">
+              {step.status === "done" && <Check size={16} strokeWidth={2} className="text-success-fg" />}
+              {step.status === "active" && <Spinner size="sm" />}
+              {step.status === "waiting" && <span className="w-2 h-2 rounded-full bg-border-strong" />}
+              {step.status === "skipped" && <Minus size={16} strokeWidth={1.75} className="text-text-3" />}
+              {step.status === "error" && <X size={16} strokeWidth={2} className="text-danger" />}
+              {step.status === "warn" && <AlertTriangle size={16} strokeWidth={1.75} className="text-warning-fg" />}
+            </div>
+
+            {/* Label + detail */}
+            <div className="flex-1 min-w-0">
+              <span className={cn("text-sm", labelClass(step.status))}>{step.label}</span>
+              {step.detail && (
+                <span className="text-xs text-text-3 ml-2">
+                  {step.detail}
+                </span>
+              )}
+            </div>
+          </div>
+        ))}
       </div>
-    </div>
+
+      {/* Error message */}
+      {error && (
+        <div className="mt-4 px-3 py-2 bg-danger-bg rounded-control">
+          <p className="text-xs text-danger-fg break-words">{error}</p>
+        </div>
+      )}
+    </Modal>
   );
 }

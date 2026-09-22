@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { Folder, Info, MapPin, Pencil, Plus, Search, X } from "lucide-react";
 import { Deal, DealFormData, DealType, DealDate, CRE8Listing, ExtractedDealData, AdditionalSplit, BrokerDefaults, Broker, LeaseStage } from "@/lib/flow/types";
 import {
   formatCurrency,
@@ -9,6 +10,18 @@ import {
   daysBetween,
   LEASE_KANBAN_COLUMNS,
 } from "@/lib/flow/utils";
+import {
+  Button,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  Section,
+  Select,
+  Tabs,
+  Textarea,
+  cn,
+} from "@/components/ui";
 import FileDropZone from "./FileDropZone";
 import dynamic from "next/dynamic";
 import type { SelectedParcel } from "./ParcelPickerModal";
@@ -103,22 +116,25 @@ function tempId(): string {
   return "tmp_" + Math.random().toString(36).substring(2, 9);
 }
 
-// ── Searchable listing selector (unchanged) ──
+// Highlight recipes — green = AI/listing auto-filled (status), amber = Kanban drop context
+const GREEN_HIGHLIGHT = "border-accent ring-1 ring-accent/30 bg-accent-soft";
+const AMBER_HIGHLIGHT = "border-warning-fg/60 ring-1 ring-warning-fg/30 bg-warning-bg";
+
+// Shared popover look for the listing / broker search dropdowns (floating layer → shadow allowed)
+const POPOVER = "absolute z-10 mt-1 bg-surface border border-border rounded-control shadow-popover overflow-hidden";
+
+// ── Searchable listing selector (unchanged logic — Field/Input primitives) ──
 function ListingSearch({
   listings,
   loading,
   selectedId,
   onSelect,
-  inputCls,
-  labelCls,
   highlighted,
 }: {
   listings: CRE8Listing[];
   loading: boolean;
   selectedId: string;
   onSelect: (id: string) => void;
-  inputCls: string;
-  labelCls: string;
   highlighted: boolean;
 }) {
   const [query, setQuery] = useState("");
@@ -148,92 +164,87 @@ function ListingSearch({
   }, []);
 
   return (
-    <div className="mb-6" ref={wrapperRef}>
-      <label className={labelCls}>Link to CRE8 Listing</label>
-      <div className="relative">
-        {/* If a listing is selected, show it as a chip with a clear button */}
-        {selected ? (
-          <div
-            className={`flex items-center justify-between border rounded-btn px-3 py-2 text-sm bg-white transition-all duration-500 ${
-              highlighted ? "border-green ring-1 ring-green/30 bg-green/5" : "border-border-light"
-            }`}
-          >
-            <span className="text-charcoal truncate">
-              {selected.name}{selected.address ? ` — ${selected.address}` : ""}
-            </span>
-            <button
-              type="button"
-              onClick={() => {
-                onSelect("");
-                setQuery("");
-              }}
-              className="ml-2 text-muted-gray hover:text-charcoal transition-colors flex-shrink-0"
-              title="Clear"
+    <div ref={wrapperRef}>
+      <Field label="Link to CRE8 listing" hint="Optional — auto-fills name, address, and price from your listing">
+        <div className="relative">
+          {/* If a listing is selected, show it as a chip with a clear button */}
+          {selected ? (
+            <div
+              className={cn(
+                "flex items-center justify-between h-control border rounded-control px-3 text-base bg-surface transition-all duration-500",
+                highlighted ? GREEN_HIGHLIGHT : "border-border"
+              )}
             >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-              </svg>
-            </button>
-          </div>
-        ) : (
-          <>
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                setOpen(true);
-              }}
-              onFocus={() => setOpen(true)}
-              placeholder={loading ? "Loading listings..." : "Search by name or address..."}
-              disabled={loading}
-              className={inputCls}
-            />
-            {/* Search icon */}
-            <svg
-              width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5"
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none"
-            >
-              <circle cx="11" cy="11" r="8" /><path d="M21 21l-4.35-4.35" />
-            </svg>
-          </>
-        )}
+              <span className="text-text truncate">
+                {selected.name}{selected.address ? ` — ${selected.address}` : ""}
+              </span>
+              <IconButton
+                label="Clear"
+                size="sm"
+                icon={<X size={16} strokeWidth={1.75} />}
+                onClick={() => {
+                  onSelect("");
+                  setQuery("");
+                }}
+                className="-mr-2"
+              />
+            </div>
+          ) : (
+            <>
+              <Input
+                type="text"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  setOpen(true);
+                }}
+                onFocus={() => setOpen(true)}
+                placeholder={loading ? "Loading listings..." : "Search by name or address..."}
+                disabled={loading}
+                className={cn("pr-9", highlighted && GREEN_HIGHLIGHT)}
+              />
+              {/* Search icon */}
+              <Search
+                size={16}
+                strokeWidth={1.75}
+                className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-text-3"
+              />
+            </>
+          )}
 
-        {/* Dropdown results */}
-        {open && !selected && (
-          <div className="absolute z-10 mt-1 w-full bg-white border border-border-light rounded-btn shadow-lg max-h-48 overflow-y-auto">
-            {filtered.length === 0 ? (
-              <div className="px-3 py-2 text-sm text-muted-gray">
-                {query ? "No listings match" : "No listings available"}
-              </div>
-            ) : (
-              filtered.slice(0, 12).map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  onClick={() => {
-                    onSelect(l.id);
-                    setQuery("");
-                    setOpen(false);
-                  }}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray transition-colors border-b border-border-light last:border-0"
-                >
-                  <span className="font-medium text-charcoal">{l.name}</span>
-                  {l.address && (
-                    <span className="text-muted-gray ml-1">— {l.address}</span>
-                  )}
-                  {l.price && l.price !== "Call for Pricing" && l.price !== "Call For Pricing" && (
-                    <span className="text-green ml-1">{l.price.startsWith("$") ? l.price : `$${l.price}`}</span>
-                  )}
-                </button>
-              ))
-            )}
-          </div>
-        )}
-      </div>
-      <p className="text-xs text-muted-gray mt-1">
-        Optional — auto-fills name, address, and price from your listing
-      </p>
+          {/* Dropdown results */}
+          {open && !selected && (
+            <div className={cn(POPOVER, "w-full max-h-48 overflow-y-auto")}>
+              {filtered.length === 0 ? (
+                <div className="px-3 py-2 text-sm text-text-3">
+                  {query ? "No listings match" : "No listings available"}
+                </div>
+              ) : (
+                filtered.slice(0, 12).map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => {
+                      onSelect(l.id);
+                      setQuery("");
+                      setOpen(false);
+                    }}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-surface-2 transition-colors border-b border-border last:border-0"
+                  >
+                    <span className="font-medium text-text">{l.name}</span>
+                    {l.address && (
+                      <span className="text-text-3 ml-1">— {l.address}</span>
+                    )}
+                    {l.price && l.price !== "Call for Pricing" && l.price !== "Call For Pricing" && (
+                      <span className="text-accent-strong ml-1">{l.price.startsWith("$") ? l.price : `$${l.price}`}</span>
+                    )}
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+      </Field>
     </div>
   );
 }
@@ -725,15 +736,15 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
 
   // Urgency dot color for date rows
   const getUrgencyColor = (dateStr: string): string => {
-    if (!dateStr) return "bg-border-medium";
+    if (!dateStr) return "bg-border-strong";
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const d = new Date(dateStr + "T00:00:00");
     const days = daysBetween(today, d);
-    if (days < 0) return "bg-border-medium";  // past = gray
-    if (days <= 3) return "bg-red-500";
-    if (days <= 14) return "bg-amber-500";
-    return "bg-green";
+    if (days < 0) return "bg-border-strong";  // past = gray
+    if (days <= 3) return "bg-danger";
+    if (days <= 14) return "bg-warning-fg";
+    return "bg-accent";
   };
 
   // Get reference options for the "days after" dropdown
@@ -815,37 +826,56 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     onSave(formData, apiDates as DealDate[], pendingFile || undefined);
   };
 
-  // Shared input classes — green highlight for AI auto-fill, amber for Kanban drop context
-  const inputCls = (field?: string) =>
-    `w-full border rounded-btn px-3 py-2 text-sm text-charcoal bg-white transition-all duration-500 ${
+  // Highlight classes for a field — green for AI auto-fill, amber for Kanban drop context
+  const highlightCls = (field?: string) =>
+    cn(
+      "transition-all duration-500",
       field && highlightedFields.has(field)
-        ? "border-green ring-1 ring-green/30 bg-green/5"
+        ? GREEN_HIGHLIGHT
         : field && amberFields.has(field)
-        ? "border-amber-400 ring-1 ring-amber-300/50 bg-amber-50"
-        : "border-border-light"
-    }`;
-  const labelCls = "block text-sm font-medium text-charcoal mb-1";
+        ? AMBER_HIGHLIGHT
+        : ""
+    );
+
+  // Amber ring around a whole section (payment schedule / critical dates) after a drop
+  const sectionHighlightCls = (key: string) =>
+    cn(
+      "border-t border-border pt-5 transition-all duration-300",
+      amberFields.has(key) && "ring-1 ring-warning-fg/30 bg-warning-bg/50 rounded-card p-4 -mx-2"
+    );
+
+  // Lease payment total (for the validation banner)
+  const leaseTotal = leasePayments.reduce((s, lp) => s + (parseFloat(lp.percent) || 0), 0);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto">
-      {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/30" onClick={onCancel} />
-
-      {/* Form modal */}
-      <form
-        onSubmit={handleSubmit}
-        className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-2xl mx-4 my-8"
-      >
-        <h2 className="font-bebas text-2xl tracking-wide text-charcoal mb-4">
-          {isEditing ? "Edit Deal" : "New Deal"}
-        </h2>
-
+    // Modal primitive — the form body scrolls; Cancel/Save live in the sticky footer
+    // (the submit button targets the form via its id since it sits outside the <form>)
+    <Modal
+      open
+      onClose={onCancel}
+      size="lg"
+      title={isEditing ? "Edit deal" : "New deal"}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onCancel}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            form="deal-form"
+            loading={saving}
+            disabled={saving || !form.deal_name.trim() || (hasExplicitSplits && !splitsValid) || !leasePaymentsValid}
+          >
+            {saving ? "Saving..." : isEditing ? "Save changes" : "Create deal"}
+          </Button>
+        </>
+      }
+    >
+      <form id="deal-form" onSubmit={handleSubmit} className="space-y-6">
         {/* ── Amber context banner (shown after Kanban drag-drop) ── */}
         {contextBanner && (
-          <div className="mb-6 p-3 rounded-btn border border-amber-300 bg-amber-50 text-sm text-amber-800 flex items-center gap-2">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-              <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-            </svg>
+          <div className="p-3 rounded-control border border-warning-fg/20 bg-warning-bg text-sm text-warning-fg flex items-center gap-2">
+            <Info size={16} strokeWidth={1.75} className="flex-shrink-0" />
             {contextBanner}
           </div>
         )}
@@ -863,103 +893,79 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           loading={listingsLoading}
           selectedId={form.listing_id}
           onSelect={handleListingSelect}
-          inputCls={inputCls("listing_id")}
-          labelCls={labelCls}
           highlighted={highlightedFields.has("listing_id")}
         />
 
         {/* ── SharePoint Folder Link ── */}
-        <div className="mb-6">
-          <label className={labelCls}>SharePoint Folder</label>
+        <Field label="SharePoint folder">
           {linkedFolderUrl ? (
-            <div className="flex items-center justify-between border border-border-light rounded-btn px-3 py-2 text-sm bg-white">
+            <div className="flex items-center justify-between h-control border border-border rounded-control pl-3 pr-1 text-base bg-surface">
               <div className="flex items-center gap-2 min-w-0">
                 {/* Folder icon */}
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B" stroke="#D97706" strokeWidth="1" className="flex-shrink-0">
-                  <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                </svg>
-                <span className="text-charcoal truncate">
+                <Folder size={16} strokeWidth={1.75} className="flex-shrink-0 text-text-2" />
+                <span className="text-text truncate">
                   {linkedFolderPath || linkedFolderUrl.split("/").filter(Boolean).pop() || "Linked folder"}
                 </span>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
-                <button
-                  type="button"
-                  onClick={() => setShowFolderPicker(true)}
-                  className="text-xs text-medium-gray hover:text-charcoal transition-colors"
-                >
+              <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                <Button variant="ghost" size="sm" onClick={() => setShowFolderPicker(true)}>
                   Change
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <IconButton
+                  label="Remove link"
+                  size="sm"
+                  icon={<X size={16} strokeWidth={1.75} />}
                   onClick={() => { setLinkedFolderUrl(""); setLinkedFolderPath(""); }}
-                  className="text-muted-gray hover:text-charcoal transition-colors"
-                  title="Remove link"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
+                />
               </div>
             </div>
           ) : (
             <button
               type="button"
               onClick={() => setShowFolderPicker(true)}
-              className="w-full border border-dashed border-border-light rounded-btn px-3 py-2 text-sm text-muted-gray
-                         hover:border-green hover:text-green transition-colors text-left flex items-center gap-2"
+              className="w-full h-control border border-dashed border-border rounded-control px-3 text-base text-text-3
+                         hover:border-border-strong hover:text-text transition-colors text-left flex items-center gap-2"
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-              </svg>
+              <Folder size={16} strokeWidth={1.75} />
               Link a SharePoint folder...
             </button>
           )}
-        </div>
+        </Field>
 
         {/* ── Identity ── */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-          <div className="md:col-span-2">
-            <label className={labelCls}>Deal Name *</label>
-            <input
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Field label="Deal name" required className="md:col-span-2">
+            <Input
               type="text"
               value={form.deal_name}
               onChange={(e) => update("deal_name", e.target.value)}
               placeholder="e.g. 7th Street Retail"
-              className={inputCls("deal_name")}
+              className={highlightCls("deal_name")}
               required
             />
-          </div>
-          <div>
-            <label className={labelCls}>Property Address</label>
-            <div className="flex gap-1">
-              <input
+          </Field>
+          <Field label="Property address">
+            <div className="flex gap-2">
+              <Input
                 type="text"
                 value={form.property_address}
                 onChange={(e) => update("property_address", e.target.value)}
                 placeholder="123 Main St, Phoenix AZ"
-                className={inputCls("property_address")}
+                className={highlightCls("property_address")}
               />
               {/* Parcel picker button */}
               {mapboxToken && (
-                <button
-                  type="button"
+                <IconButton
+                  label="Pick from map"
+                  variant="secondary"
+                  icon={<MapPin size={18} strokeWidth={1.75} />}
                   onClick={() => setShowParcelPicker(true)}
-                  className="flex-shrink-0 p-2 border border-border-light rounded-btn text-medium-gray
-                             hover:border-green hover:text-green transition-colors duration-200"
-                  title="Pick from map"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z" />
-                    <circle cx="12" cy="10" r="3" />
-                  </svg>
-                </button>
+                />
               )}
             </div>
-          </div>
-          <div>
-            <label className={labelCls}>Deal Type</label>
-            <select
+          </Field>
+          <Field label="Deal type">
+            <Select
               value={form.deal_type}
               onChange={(e) => {
                 const newType = e.target.value as DealType;
@@ -974,717 +980,654 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
                   setLeasePayments([]);
                 }
               }}
-              className={inputCls("deal_type")}
+              className={highlightCls("deal_type")}
             >
               <option value="sale">Sale</option>
               <option value="lease">Lease</option>
-            </select>
-          </div>
+            </Select>
+          </Field>
           {/* APN field — shows when parcel_number has a value */}
           {form.parcel_number && (
-            <div className="md:col-span-2">
-              <label className={labelCls}>Parcel Number (APN)</label>
-              <input
+            <Field label="Parcel number (APN)" className="md:col-span-2">
+              <Input
                 type="text"
                 value={form.parcel_number}
                 onChange={(e) => update("parcel_number", e.target.value)}
-                className={inputCls("parcel_number")}
+                className={highlightCls("parcel_number")}
                 readOnly
               />
-            </div>
+            </Field>
           )}
         </div>
 
         {/* ── Brokers on This Deal ── */}
         {allBrokers && allBrokers.length > 0 && (
-          <div className="border-t border-border-light pt-4 mb-6">
-            <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Brokers on This Deal</h3>
+          <div className="border-t border-border pt-5">
+            <Section title="Brokers on this deal">
+              {/* Member rows */}
+              <div className="space-y-2 mb-3">
+                {brokerMembers.map((m) => (
+                  <div key={m.broker_id} className="flex items-center gap-2">
+                    {/* Broker name */}
+                    <span className="flex-1 text-sm text-text truncate">
+                      {m.broker_name}
+                      {m.broker_id === brokerId && (
+                        <span className="text-xs text-text-3 ml-1">(you)</span>
+                      )}
+                    </span>
 
-            {/* Member rows */}
-            <div className="space-y-2 mb-3">
-              {brokerMembers.map((m) => (
-                <div key={m.broker_id} className="flex items-center gap-2">
-                  {/* Broker name */}
-                  <span className="flex-1 text-sm text-charcoal truncate">
-                    {m.broker_name}
-                    {m.broker_id === brokerId && (
-                      <span className="text-xs text-muted-gray ml-1">(you)</span>
+                    {/* Split % input */}
+                    <div className="flex items-center gap-1">
+                      <div className="w-16">
+                        <Input
+                          small
+                          type="number"
+                          step="1"
+                          value={m.split_percent !== null ? (m.split_percent * 100).toFixed(0) : ""}
+                          onChange={(e) => updateMemberSplit(m.broker_id, e.target.value)}
+                          placeholder={
+                            brokerMembers.length > 1
+                              ? (100 / brokerMembers.length).toFixed(0)
+                              : "100"
+                          }
+                          className="text-right px-2"
+                        />
+                      </div>
+                      <span className="text-xs text-text-3">%</span>
+                    </div>
+
+                    {/* Remove button (can't remove yourself) */}
+                    {m.broker_id !== brokerId ? (
+                      <IconButton
+                        label="Remove broker"
+                        size="sm"
+                        icon={<X size={16} strokeWidth={1.75} />}
+                        onClick={() => removeBrokerMember(m.broker_id)}
+                        className="hover:text-danger"
+                      />
+                    ) : (
+                      // Spacer to keep layout aligned
+                      <div className="w-control-sm" />
                     )}
-                  </span>
-
-                  {/* Split % input */}
-                  <div className="flex items-center gap-1">
-                    <input
-                      type="number"
-                      step="1"
-                      value={m.split_percent !== null ? (m.split_percent * 100).toFixed(0) : ""}
-                      onChange={(e) => updateMemberSplit(m.broker_id, e.target.value)}
-                      placeholder={
-                        brokerMembers.length > 1
-                          ? (100 / brokerMembers.length).toFixed(0)
-                          : "100"
-                      }
-                      className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
-                    />
-                    <span className="text-xs text-muted-gray">%</span>
                   </div>
+                ))}
+              </div>
 
-                  {/* Remove button (can't remove yourself) */}
-                  {m.broker_id !== brokerId ? (
-                    <button
-                      type="button"
-                      onClick={() => removeBrokerMember(m.broker_id)}
-                      className="text-muted-gray hover:text-red-500 transition-colors p-1"
-                      title="Remove broker"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  ) : (
-                    // Spacer to keep layout aligned
-                    <div className="w-[22px]" />
+              {/* Even split label */}
+              {brokerMembers.length > 1 && !hasExplicitSplits && (
+                <p className="text-xs text-text-3 mb-2">
+                  Even split — {(100 / brokerMembers.length).toFixed(0)}% each
+                </p>
+              )}
+
+              {/* Validation warning when splits don't sum to 100% */}
+              {hasExplicitSplits && !splitsValid && (
+                <p className="text-xs text-danger-fg mb-2">
+                  Splits must total 100% (currently {(brokerMembers.reduce((s, m) => s + (m.split_percent ?? 0) * 100, 0)).toFixed(0)}%)
+                </p>
+              )}
+
+              {/* Add Broker dropdown */}
+              {availableBrokers.length > 0 && (
+                <div className="relative" ref={brokerDropdownRef}>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    icon={<Plus size={16} strokeWidth={1.75} />}
+                    onClick={() => setShowBrokerDropdown(!showBrokerDropdown)}
+                    className="-ml-3"
+                  >
+                    Add broker
+                  </Button>
+
+                  {showBrokerDropdown && (
+                    <div className={cn(POPOVER, "w-64")}>
+                      {/* Search input */}
+                      <input
+                        type="text"
+                        value={brokerSearch}
+                        onChange={(e) => setBrokerSearch(e.target.value)}
+                        placeholder="Search brokers..."
+                        className="w-full border-b border-border px-3 py-2 text-sm text-text bg-surface placeholder:text-text-3 focus:outline-none"
+                        autoFocus
+                      />
+                      <div className="max-h-36 overflow-y-auto">
+                        {filteredAvailBrokers.length === 0 ? (
+                          <div className="px-3 py-2 text-sm text-text-3">No brokers found</div>
+                        ) : (
+                          filteredAvailBrokers.map((b) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => addBrokerMember(b)}
+                              className="w-full text-left px-3 py-2 text-sm hover:bg-surface-2 transition-colors border-b border-border last:border-0"
+                            >
+                              <span className="font-medium text-text">{b.name}</span>
+                              <span className="text-text-3 ml-1 text-xs">{b.email}</span>
+                            </button>
+                          ))
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
-              ))}
-            </div>
-
-            {/* Even split label */}
-            {brokerMembers.length > 1 && !hasExplicitSplits && (
-              <p className="text-xs text-muted-gray mb-2">
-                Even split — {(100 / brokerMembers.length).toFixed(0)}% each
-              </p>
-            )}
-
-            {/* Validation warning when splits don't sum to 100% */}
-            {hasExplicitSplits && !splitsValid && (
-              <p className="text-xs text-red-500 mb-2">
-                Splits must total 100% (currently {(brokerMembers.reduce((s, m) => s + (m.split_percent ?? 0) * 100, 0)).toFixed(0)}%)
-              </p>
-            )}
-
-            {/* Add Broker dropdown */}
-            {availableBrokers.length > 0 && (
-              <div className="relative" ref={brokerDropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setShowBrokerDropdown(!showBrokerDropdown)}
-                  className="text-xs text-green hover:text-green/80 transition-colors font-medium"
-                >
-                  + Add Broker
-                </button>
-
-                {showBrokerDropdown && (
-                  <div className="absolute z-10 mt-1 w-64 bg-white border border-border-light rounded-btn shadow-lg">
-                    {/* Search input */}
-                    <input
-                      type="text"
-                      value={brokerSearch}
-                      onChange={(e) => setBrokerSearch(e.target.value)}
-                      placeholder="Search brokers..."
-                      className="w-full border-b border-border-light px-3 py-2 text-sm text-charcoal"
-                      autoFocus
-                    />
-                    <div className="max-h-36 overflow-y-auto">
-                      {filteredAvailBrokers.length === 0 ? (
-                        <div className="px-3 py-2 text-sm text-muted-gray">No brokers found</div>
-                      ) : (
-                        filteredAvailBrokers.map((b) => (
-                          <button
-                            key={b.id}
-                            type="button"
-                            onClick={() => addBrokerMember(b)}
-                            className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray transition-colors border-b border-border-light last:border-0"
-                          >
-                            <span className="font-medium text-charcoal">{b.name}</span>
-                            <span className="text-muted-gray ml-1 text-xs">{b.email}</span>
-                          </button>
-                        ))
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
+              )}
+            </Section>
           </div>
         )}
 
         {/* ── Commission ── */}
-        <div className="border-t border-border-light pt-4 mb-6">
-          <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Commission</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className={labelCls}>Price ($)</label>
-              <input
-                type="number"
-                value={form.price}
-                onChange={(e) => update("price", e.target.value)}
-                placeholder="2500000"
-                className={inputCls("price")}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Commission Rate (%)</label>
-              <input
-                type="number"
-                step="0.1"
-                value={form.commission_rate}
-                onChange={(e) => update("commission_rate", e.target.value)}
-                placeholder="3"
-                className={inputCls("commission_rate")}
-              />
-            </div>
-          </div>
-
-          {/* Commission breakdown — shown when price is entered */}
-          {previewPrice > 0 && previewRate > 0 && (
-            <div className="mt-4 bg-light-gray rounded-btn p-4 space-y-2 text-sm">
-              {/* Total commission */}
-              <div className="flex justify-between">
-                <span className="text-medium-gray">Total Commission ({form.commission_rate}%)</span>
-                <span className="font-medium">{formatCurrency(previewCommission)}</span>
-              </div>
-
-              {/* House cut */}
-              <div className="flex justify-between">
-                <span className="text-medium-gray">House (30%)</span>
-                <span className="text-medium-gray">−{formatCurrency(previewHouseCut)}</span>
-              </div>
-
-              <div className="border-t border-border-light" />
-
-              {/* After house */}
-              <div className="flex justify-between">
-                <span className="text-medium-gray font-medium">After House</span>
-                <span className="font-medium">{formatCurrency(previewAfterHouse)}</span>
-              </div>
-
-              {/* Broker splits — show each broker's share */}
-              {brokerMembers.length > 1 && (
-                <>
-                  <div className="border-t border-border-light" />
-                  {brokerMembers.map((m) => {
-                    const split = m.split_percent !== null ? m.split_percent : 1 / brokerMembers.length;
-                    const share = previewAfterHouse * split;
-                    const brokerInfo = allBrokers?.find((b) => b.id === m.broker_id);
-                    const name = brokerInfo?.name || (m.broker_id === brokerId ? "You" : "Broker");
-                    const isYou = m.broker_id === brokerId;
-                    return (
-                      <div key={m.broker_id} className="flex justify-between">
-                        <span className={isYou ? "text-charcoal font-medium" : "text-medium-gray"}>
-                          {name} ({(split * 100).toFixed(0)}%)
-                        </span>
-                        <span className={isYou ? "font-medium" : "text-medium-gray"}>
-                          {formatCurrency(share)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </>
-              )}
-
-              {/* Additional split deductions */}
-              {additionalSplits.filter((s) => s.label.trim() && s.percent > 0).length > 0 && (
-                <>
-                  <div className="border-t border-border-light" />
-                  {additionalSplits
-                    .filter((s) => s.label.trim() && s.percent > 0)
-                    .map((s, i) => (
-                      <div key={i} className="flex justify-between">
-                        <span className="text-medium-gray">{s.label} ({(s.percent * 100).toFixed(0)}%)</span>
-                        <span className="text-medium-gray">−{formatCurrency(previewMyShare * s.percent)}</span>
-                      </div>
-                    ))}
-                </>
-              )}
-
-              {/* Take-home */}
-              <div className="border-t border-border-light pt-1" />
-              <div className="flex justify-between items-center">
-                <span className="font-semibold text-charcoal">Your Take-Home</span>
-                <span className="font-bold text-green text-lg">{formatCurrency(previewTakeHome)}</span>
-              </div>
-            </div>
-          )}
-
-          {/* Additional Splits — editable */}
-          <div className="mt-4">
-            <label className="block text-xs font-medium text-medium-gray mb-2">Additional Splits</label>
-            {additionalSplits.map((split, i) => (
-              <div key={i} className="flex items-center gap-2 mb-2">
-                <input
-                  type="text"
-                  value={split.label}
-                  onChange={(e) => updateSplit(i, { label: e.target.value })}
-                  placeholder="e.g. Referral Fee"
-                  className="flex-1 border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal"
+        <div className="border-t border-border pt-5">
+          <Section title="Commission">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Field label="Price ($)">
+                <Input
+                  type="number"
+                  value={form.price}
+                  onChange={(e) => update("price", e.target.value)}
+                  placeholder="2500000"
+                  className={highlightCls("price")}
                 />
-                <div className="flex items-center gap-1">
-                  <input
-                    type="number"
-                    step="1"
-                    value={split.percent ? (split.percent * 100).toFixed(0) : ""}
-                    onChange={(e) => updateSplit(i, { percent: (parseFloat(e.target.value) || 0) / 100 })}
-                    placeholder="25"
-                    className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
-                  />
-                  <span className="text-xs text-muted-gray">%</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => removeSplit(i)}
-                  className="text-muted-gray hover:text-red-500 transition-colors p-1"
-                  title="Remove split"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                  </svg>
-                </button>
-              </div>
-            ))}
-            <button
-              type="button"
-              onClick={addSplit}
-              className="text-xs text-green hover:text-green/80 transition-colors font-medium"
-            >
-              + Add Split
-            </button>
-          </div>
-
-          {/* Save as My Defaults button */}
-          {userEmail && (
-            <div className="mt-2 flex justify-end">
-              <button
-                type="button"
-                onClick={saveDefaults}
-                disabled={defaultsSaving}
-                className="text-xs text-medium-gray hover:text-green transition-colors font-medium"
-              >
-                {defaultsSaved ? "Saved!" : defaultsSaving ? "Saving..." : "Save as My Defaults"}
-              </button>
+              </Field>
+              <Field label="Commission rate (%)">
+                <Input
+                  type="number"
+                  step="0.1"
+                  value={form.commission_rate}
+                  onChange={(e) => update("commission_rate", e.target.value)}
+                  placeholder="3"
+                  className={highlightCls("commission_rate")}
+                />
+              </Field>
             </div>
-          )}
+
+            {/* Commission breakdown — shown when price is entered */}
+            {previewPrice > 0 && previewRate > 0 && (
+              <div className="mt-4 bg-surface-2 rounded-card p-4 space-y-2 text-sm">
+                {/* Total commission */}
+                <div className="flex justify-between">
+                  <span className="text-text-2">Total commission ({form.commission_rate}%)</span>
+                  <span className="font-medium text-text tabular-nums">{formatCurrency(previewCommission)}</span>
+                </div>
+
+                {/* House cut */}
+                <div className="flex justify-between">
+                  <span className="text-text-2">House (30%)</span>
+                  <span className="text-text-2 tabular-nums">−{formatCurrency(previewHouseCut)}</span>
+                </div>
+
+                <div className="border-t border-border" />
+
+                {/* After house */}
+                <div className="flex justify-between">
+                  <span className="text-text-2 font-medium">After house</span>
+                  <span className="font-medium text-text tabular-nums">{formatCurrency(previewAfterHouse)}</span>
+                </div>
+
+                {/* Broker splits — show each broker's share */}
+                {brokerMembers.length > 1 && (
+                  <>
+                    <div className="border-t border-border" />
+                    {brokerMembers.map((m) => {
+                      const split = m.split_percent !== null ? m.split_percent : 1 / brokerMembers.length;
+                      const share = previewAfterHouse * split;
+                      const brokerInfo = allBrokers?.find((b) => b.id === m.broker_id);
+                      const name = brokerInfo?.name || (m.broker_id === brokerId ? "You" : "Broker");
+                      const isYou = m.broker_id === brokerId;
+                      return (
+                        <div key={m.broker_id} className="flex justify-between">
+                          <span className={isYou ? "text-text font-medium" : "text-text-2"}>
+                            {name} ({(split * 100).toFixed(0)}%)
+                          </span>
+                          <span className={isYou ? "font-medium text-text tabular-nums" : "text-text-2 tabular-nums"}>
+                            {formatCurrency(share)}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </>
+                )}
+
+                {/* Additional split deductions */}
+                {additionalSplits.filter((s) => s.label.trim() && s.percent > 0).length > 0 && (
+                  <>
+                    <div className="border-t border-border" />
+                    {additionalSplits
+                      .filter((s) => s.label.trim() && s.percent > 0)
+                      .map((s, i) => (
+                        <div key={i} className="flex justify-between">
+                          <span className="text-text-2">{s.label} ({(s.percent * 100).toFixed(0)}%)</span>
+                          <span className="text-text-2 tabular-nums">−{formatCurrency(previewMyShare * s.percent)}</span>
+                        </div>
+                      ))}
+                  </>
+                )}
+
+                {/* Take-home — green is status (money that lands) */}
+                <div className="border-t border-border pt-1" />
+                <div className="flex justify-between items-center">
+                  <span className="font-semibold text-text">Your take-home</span>
+                  <span className="font-semibold text-accent-strong text-lg tabular-nums">{formatCurrency(previewTakeHome)}</span>
+                </div>
+              </div>
+            )}
+
+            {/* Additional Splits — editable */}
+            <div className="mt-4">
+              <p className="text-sm font-medium text-text mb-2">Additional splits</p>
+              {additionalSplits.map((split, i) => (
+                <div key={i} className="flex items-center gap-2 mb-2">
+                  <Input
+                    small
+                    type="text"
+                    value={split.label}
+                    onChange={(e) => updateSplit(i, { label: e.target.value })}
+                    placeholder="e.g. Referral fee"
+                    className="flex-1"
+                  />
+                  <div className="flex items-center gap-1">
+                    <div className="w-16">
+                      <Input
+                        small
+                        type="number"
+                        step="1"
+                        value={split.percent ? (split.percent * 100).toFixed(0) : ""}
+                        onChange={(e) => updateSplit(i, { percent: (parseFloat(e.target.value) || 0) / 100 })}
+                        placeholder="25"
+                        className="text-right px-2"
+                      />
+                    </div>
+                    <span className="text-xs text-text-3">%</span>
+                  </div>
+                  <IconButton
+                    label="Remove split"
+                    size="sm"
+                    icon={<X size={16} strokeWidth={1.75} />}
+                    onClick={() => removeSplit(i)}
+                    className="hover:text-danger"
+                  />
+                </div>
+              ))}
+              <Button variant="ghost" size="sm" icon={<Plus size={16} strokeWidth={1.75} />} onClick={addSplit} className="-ml-3">
+                Add split
+              </Button>
+            </div>
+
+            {/* Save as My Defaults button */}
+            {userEmail && (
+              <div className="mt-2 flex justify-end">
+                <Button variant="ghost" size="sm" onClick={saveDefaults} disabled={defaultsSaving}>
+                  {defaultsSaved ? "Saved!" : defaultsSaving ? "Saving..." : "Save as my defaults"}
+                </Button>
+              </div>
+            )}
+          </Section>
         </div>
 
         {/* ── Lease Payment Schedule — only for lease deals ── */}
         {form.deal_type === "lease" && (
-          <div className={`border-t border-border-light pt-4 mb-6 rounded-btn transition-all duration-300 ${
-            amberFields.has("lease_payments_section") ? "ring-1 ring-amber-300/50 bg-amber-50/50 p-4 -mx-2" : ""
-          }`}>
-            <h3 className="font-dm font-semibold text-sm text-charcoal mb-1">Payment Schedule</h3>
-            <p className="text-xs text-muted-gray mb-3">
-              Split commission into scheduled payments. Percentages must total 100%.
-            </p>
-
-            {/* Validation banner */}
-            {(() => {
-              const total = leasePayments.reduce((s, lp) => s + (parseFloat(lp.percent) || 0), 0);
-              const isValid = Math.abs(total - 100) < 0.01;
-              return !isValid && leasePayments.length > 0 ? (
-                <div className={`text-xs px-3 py-1.5 rounded-btn mb-3 border ${
-                  total > 100
-                    ? "bg-red-50 border-red-200 text-red-600"
-                    : "bg-amber-50 border-amber-200 text-amber-700"
-                }`}>
-                  Total: {total.toFixed(0)}% — must equal 100%
+          <div className={sectionHighlightCls("lease_payments_section")}>
+            <Section title="Payment schedule" description="Percentages must total 100%">
+              {/* Validation banner */}
+              {Math.abs(leaseTotal - 100) >= 0.01 && leasePayments.length > 0 && (
+                <div
+                  className={cn(
+                    "text-xs px-3 py-1.5 rounded-control mb-3 border",
+                    leaseTotal > 100
+                      ? "bg-danger-bg border-danger/20 text-danger-fg"
+                      : "bg-warning-bg border-warning-fg/20 text-warning-fg"
+                  )}
+                >
+                  Total: {leaseTotal.toFixed(0)}% — must equal 100%
                 </div>
-              ) : null;
-            })()}
+              )}
 
-            {/* Payment rows */}
-            <div className="space-y-2">
-              {leasePayments.map((lp, i) => (
-                <div key={lp.tempId} className="border border-border-light rounded-btn p-3">
-                  <div className="flex items-center gap-3">
-                    {/* Payment label */}
-                    <span className="text-xs font-medium text-medium-gray whitespace-nowrap">
-                      Payment {i + 1}
-                    </span>
+              {/* Payment rows */}
+              <div className="space-y-2">
+                {leasePayments.map((lp, i) => (
+                  <div key={lp.tempId} className="border border-border rounded-control p-3">
+                    <div className="flex items-center gap-3 flex-wrap">
+                      {/* Payment label */}
+                      <span className="text-xs font-medium text-text-2 whitespace-nowrap">
+                        Payment {i + 1}
+                      </span>
 
-                    {/* Percent input */}
-                    <div className="flex items-center gap-1">
-                      <input
-                        type="number"
-                        step="1"
-                        min="1"
-                        max="100"
-                        value={lp.percent}
-                        onChange={(e) => {
-                          const updated = [...leasePayments];
-                          updated[i] = { ...updated[i], percent: e.target.value };
-                          setLeasePayments(updated);
-                        }}
-                        className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
-                      />
-                      <span className="text-xs text-muted-gray">%</span>
-                    </div>
+                      {/* Percent input */}
+                      <div className="flex items-center gap-1">
+                        <div className="w-16">
+                          <Input
+                            small
+                            type="number"
+                            step="1"
+                            min="1"
+                            max="100"
+                            value={lp.percent}
+                            onChange={(e) => {
+                              const updated = [...leasePayments];
+                              updated[i] = { ...updated[i], percent: e.target.value };
+                              setLeasePayments(updated);
+                            }}
+                            className="text-right px-2"
+                          />
+                        </div>
+                        <span className="text-xs text-text-3">%</span>
+                      </div>
 
-                    {/* Mode toggle */}
-                    <select
-                      value={lp.mode}
-                      onChange={(e) => {
-                        const updated = [...leasePayments];
-                        updated[i] = { ...updated[i], mode: e.target.value as "absolute" | "relative" };
-                        setLeasePayments(updated);
-                      }}
-                      className="border border-border-light rounded-btn px-2 py-1.5 text-xs text-charcoal"
-                    >
-                      <option value="relative">Days after...</option>
-                      <option value="absolute">Specific date</option>
-                    </select>
-
-                    {/* Date/offset input based on mode */}
-                    {lp.mode === "relative" ? (
-                      <div className="flex items-center gap-1.5 flex-1">
-                        <input
-                          type="number"
-                          min="0"
-                          value={lp.offset_days}
+                      {/* Mode toggle */}
+                      <div className="w-36">
+                        <Select
+                          small
+                          value={lp.mode}
                           onChange={(e) => {
                             const updated = [...leasePayments];
-                            updated[i] = { ...updated[i], offset_days: e.target.value };
+                            updated[i] = { ...updated[i], mode: e.target.value as "absolute" | "relative" };
                             setLeasePayments(updated);
                           }}
-                          placeholder="0"
-                          className="w-16 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal text-right"
-                        />
-                        <span className="text-xs text-muted-gray whitespace-nowrap">
-                          days after {i === 0 ? "close" : (
-                            <select
-                              value={lp.offset_from}
+                        >
+                          <option value="relative">Days after...</option>
+                          <option value="absolute">Specific date</option>
+                        </Select>
+                      </div>
+
+                      {/* Date/offset input based on mode */}
+                      {lp.mode === "relative" ? (
+                        <div className="flex items-center gap-1.5 flex-1">
+                          <div className="w-16">
+                            <Input
+                              small
+                              type="number"
+                              min="0"
+                              value={lp.offset_days}
                               onChange={(e) => {
                                 const updated = [...leasePayments];
-                                updated[i] = { ...updated[i], offset_from: e.target.value };
+                                updated[i] = { ...updated[i], offset_days: e.target.value };
                                 setLeasePayments(updated);
                               }}
-                              className="border border-border-light rounded-btn px-1 py-0.5 text-xs text-charcoal ml-0.5"
-                            >
-                              <option value="close_date">close</option>
-                              <option value="previous">previous payment</option>
-                            </select>
+                              placeholder="0"
+                              className="text-right px-2"
+                            />
+                          </div>
+                          <span className="text-xs text-text-3 whitespace-nowrap">days after</span>
+                          {i === 0 ? (
+                            <span className="text-xs text-text-3">close</span>
+                          ) : (
+                            <div className="w-40">
+                              <Select
+                                small
+                                value={lp.offset_from}
+                                onChange={(e) => {
+                                  const updated = [...leasePayments];
+                                  updated[i] = { ...updated[i], offset_from: e.target.value };
+                                  setLeasePayments(updated);
+                                }}
+                              >
+                                <option value="close_date">close</option>
+                                <option value="previous">previous payment</option>
+                              </Select>
+                            </div>
                           )}
-                        </span>
-                      </div>
-                    ) : (
-                      <input
-                        type="date"
-                        value={lp.payment_date}
-                        onChange={(e) => {
-                          const updated = [...leasePayments];
-                          updated[i] = { ...updated[i], payment_date: e.target.value };
-                          setLeasePayments(updated);
-                        }}
-                        className="flex-1 border border-border-light rounded-btn px-2 py-1.5 text-sm text-charcoal"
-                      />
-                    )}
+                        </div>
+                      ) : (
+                        <Input
+                          small
+                          type="date"
+                          value={lp.payment_date}
+                          onChange={(e) => {
+                            const updated = [...leasePayments];
+                            updated[i] = { ...updated[i], payment_date: e.target.value };
+                            setLeasePayments(updated);
+                          }}
+                          className="flex-1"
+                        />
+                      )}
 
-                    {/* Remove button (only if more than 1 row) */}
-                    {leasePayments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => setLeasePayments(leasePayments.filter((_, j) => j !== i))}
-                        className="text-muted-gray hover:text-red-500 transition-colors p-1"
-                        title="Remove payment"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    )}
+                      {/* Remove button (only if more than 1 row) */}
+                      {leasePayments.length > 1 && (
+                        <IconButton
+                          label="Remove payment"
+                          size="sm"
+                          icon={<X size={16} strokeWidth={1.75} />}
+                          onClick={() => setLeasePayments(leasePayments.filter((_, j) => j !== i))}
+                          className="hover:text-danger"
+                        />
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
 
-            {/* Add Payment button */}
-            <button
-              type="button"
-              onClick={() => setLeasePayments([...leasePayments, {
-                tempId: tempId(),
-                percent: "",
-                mode: "relative",
-                payment_date: "",
-                offset_days: "",
-                offset_from: leasePayments.length === 0 ? "close_date" : "previous",
-                received: false,
-                received_date: null,
-              }])}
-              className="text-xs text-green hover:text-green/80 transition-colors font-medium mt-2"
-            >
-              + Add Payment
-            </button>
+              {/* Add Payment button */}
+              <Button
+                variant="ghost"
+                size="sm"
+                icon={<Plus size={16} strokeWidth={1.75} />}
+                onClick={() => setLeasePayments([...leasePayments, {
+                  tempId: tempId(),
+                  percent: "",
+                  mode: "relative",
+                  payment_date: "",
+                  offset_days: "",
+                  offset_from: leasePayments.length === 0 ? "close_date" : "previous",
+                  received: false,
+                  received_date: null,
+                }])}
+                className="mt-2 -ml-3"
+              >
+                Add payment
+              </Button>
+            </Section>
           </div>
         )}
 
         {/* ── Lease Stage — only for lease deals ── */}
         {form.deal_type === "lease" && (
-          <div className="border-t border-border-light pt-4 mb-6">
-            <label className={labelCls}>Lease Stage</label>
-            <select
-              value={form.lease_stage}
-              onChange={(e) => update("lease_stage", e.target.value as LeaseStage)}
-              className={inputCls("lease_stage")}
-            >
-              {LEASE_KANBAN_COLUMNS.map((col) => (
-                <option key={col.key} value={col.key}>{col.label}</option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-gray mt-1">
-              Where this deal sits on the Lease board — you can also drag it between columns
-            </p>
+          <div className="border-t border-border pt-5">
+            <Field label="Lease stage" hint="Where this deal sits on the Lease board — you can also drag it between columns">
+              <Select
+                value={form.lease_stage}
+                onChange={(e) => update("lease_stage", e.target.value as LeaseStage)}
+                className={highlightCls("lease_stage")}
+              >
+                {LEASE_KANBAN_COLUMNS.map((col) => (
+                  <option key={col.key} value={col.key}>{col.label}</option>
+                ))}
+              </Select>
+            </Field>
           </div>
         )}
 
         {/* ── Critical Dates ── */}
-        <div className={`border-t border-border-light pt-4 mb-6 rounded-btn transition-all duration-300 ${
-          amberFields.has("deal_dates_section") ? "ring-1 ring-amber-300/50 bg-amber-50/50 p-4 -mx-2" : ""
-        }`}>
-          <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Critical Dates</h3>
-
-          {/* Fixed fields: Effective Date + Escrow Open */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-            <div>
-              <label className={labelCls}>Effective Date</label>
-              <input
-                type="date"
-                value={form.effective_date}
-                onChange={(e) => update("effective_date", e.target.value)}
-                className={inputCls("effective_date")}
-              />
+        <div className={sectionHighlightCls("deal_dates_section")}>
+          <Section title="Critical dates">
+            {/* Fixed fields: Effective Date + Escrow Open */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+              <Field label="Effective date">
+                <Input
+                  type="date"
+                  value={form.effective_date}
+                  onChange={(e) => update("effective_date", e.target.value)}
+                  className={highlightCls("effective_date")}
+                />
+              </Field>
+              <Field label="Escrow open date">
+                <Input
+                  type="date"
+                  value={form.escrow_open_date}
+                  onChange={(e) => update("escrow_open_date", e.target.value)}
+                  className={highlightCls("escrow_open_date")}
+                />
+              </Field>
+              <Field label="Escrow company">
+                <Input
+                  type="text"
+                  value={form.escrow_company}
+                  onChange={(e) => update("escrow_company", e.target.value)}
+                  placeholder="e.g. Fidelity National Title"
+                  className={highlightCls("escrow_company")}
+                />
+              </Field>
+              <Field label="Escrow number">
+                <Input
+                  type="text"
+                  value={form.escrow_number}
+                  onChange={(e) => update("escrow_number", e.target.value)}
+                  placeholder="e.g. FM55250953"
+                  className={highlightCls("escrow_number")}
+                />
+              </Field>
             </div>
-            <div>
-              <label className={labelCls}>Escrow Open Date</label>
-              <input
-                type="date"
-                value={form.escrow_open_date}
-                onChange={(e) => update("escrow_open_date", e.target.value)}
-                className={inputCls("escrow_open_date")}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Escrow Company</label>
-              <input
-                type="text"
-                value={form.escrow_company}
-                onChange={(e) => update("escrow_company", e.target.value)}
-                placeholder="e.g. Fidelity National Title"
-                className={inputCls("escrow_company")}
-              />
-            </div>
-            <div>
-              <label className={labelCls}>Escrow Number</label>
-              <input
-                type="text"
-                value={form.escrow_number}
-                onChange={(e) => update("escrow_number", e.target.value)}
-                placeholder="e.g. FM55250953"
-                className={inputCls("escrow_number")}
-              />
-            </div>
-          </div>
 
-          {/* Dynamic date rows */}
-          <div className="space-y-2">
-            {dealDates.map((dd) => (
-              <div key={dd.tempId} className="border border-border-light rounded-btn p-3">
-                {dd.editing ? (
-                  /* ── Inline edit mode ── */
-                  <div className="space-y-2">
-                    {/* Label with preset dropdown */}
-                    <div>
-                      <input
-                        type="text"
-                        value={dd.label}
-                        onChange={(e) => updateDateRow(dd.tempId, { label: e.target.value })}
-                        placeholder="Date label..."
-                        list={`presets-${dd.tempId}`}
-                        className="w-full border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal"
-                      />
-                      <datalist id={`presets-${dd.tempId}`}>
-                        {DATE_LABEL_PRESETS.map((p) => (
-                          <option key={p} value={p} />
-                        ))}
-                      </datalist>
-                    </div>
-
-                    {/* Mode toggle */}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => updateDateRow(dd.tempId, { mode: "absolute" })}
-                        className={`px-3 py-1 text-xs rounded-btn border transition-colors ${
-                          dd.mode === "absolute"
-                            ? "bg-green text-black border-green"
-                            : "border-border-light text-medium-gray hover:border-green"
-                        }`}
-                      >
-                        Specific date
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateDateRow(dd.tempId, { mode: "relative" })}
-                        className={`px-3 py-1 text-xs rounded-btn border transition-colors ${
-                          dd.mode === "relative"
-                            ? "bg-green text-black border-green"
-                            : "border-border-light text-medium-gray hover:border-green"
-                        }`}
-                      >
-                        Days after...
-                      </button>
-                    </div>
-
-                    {/* Date inputs based on mode */}
-                    {dd.mode === "absolute" ? (
-                      <input
-                        type="date"
-                        value={dd.date}
-                        onChange={(e) => updateDateRow(dd.tempId, { date: e.target.value })}
-                        className="w-full border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal"
-                      />
-                    ) : (
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="number"
-                          value={dd.offset_days || ""}
-                          onChange={(e) =>
-                            updateDateRow(dd.tempId, { offset_days: parseInt(e.target.value) || null })
-                          }
-                          placeholder="30"
-                          className="w-20 border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal"
+            {/* Dynamic date rows */}
+            <div className="space-y-2">
+              {dealDates.map((dd) => (
+                <div key={dd.tempId} className="border border-border rounded-control p-3">
+                  {dd.editing ? (
+                    /* ── Inline edit mode ── */
+                    <div className="space-y-3">
+                      {/* Label with preset dropdown */}
+                      <div>
+                        <Input
+                          small
+                          type="text"
+                          value={dd.label}
+                          onChange={(e) => updateDateRow(dd.tempId, { label: e.target.value })}
+                          placeholder="Date label..."
+                          list={`presets-${dd.tempId}`}
                         />
-                        <span className="text-xs text-muted-gray">days after</span>
-                        <select
-                          value={dd.offset_from || "escrow_open"}
-                          onChange={(e) => updateDateRow(dd.tempId, { offset_from: e.target.value })}
-                          className="flex-1 border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal"
-                        >
-                          {getRefOptions(dd.tempId).map((opt) => (
-                            <option key={opt.value} value={opt.value}>
-                              {opt.label}
-                            </option>
+                        <datalist id={`presets-${dd.tempId}`}>
+                          {DATE_LABEL_PRESETS.map((p) => (
+                            <option key={p} value={p} />
                           ))}
-                        </select>
+                        </datalist>
                       </div>
-                    )}
 
-                    {/* Resolved date preview (for relative mode) */}
-                    {dd.mode === "relative" && dd.date && (
-                      <p className="text-xs text-muted-gray">
-                        Resolves to: <span className="font-medium text-charcoal">{formatPreviewDate(dd.date)}</span>
-                      </p>
-                    )}
+                      {/* Mode toggle — Tabs primitive (segmented control) */}
+                      <Tabs
+                        size="sm"
+                        items={[
+                          { value: "absolute", label: "Specific date" },
+                          { value: "relative", label: "Days after..." },
+                        ]}
+                        value={dd.mode}
+                        onChange={(v) => updateDateRow(dd.tempId, { mode: v })}
+                      />
 
-                    {/* Done / Delete buttons */}
-                    <div className="flex gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => updateDateRow(dd.tempId, { editing: false })}
-                        className="px-3 py-1 text-xs font-medium bg-green text-black uppercase tracking-wide rounded-btn
-                                   hover:bg-green/90 transition-colors"
-                      >
-                        Done
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeDateRow(dd.tempId)}
-                        className="px-3 py-1 text-xs font-medium text-red-500 border border-red-200 rounded-btn
-                                   hover:bg-red-50 transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  /* ── Display mode ── */
-                  <div className="flex items-center gap-3">
-                    {/* Urgency dot */}
-                    <div className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${getUrgencyColor(dd.date)}`} />
-
-                    {/* Label + date */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-baseline justify-between gap-2">
-                        <span className="text-sm font-medium text-charcoal truncate">{dd.label || "Untitled"}</span>
-                        <span className="text-sm text-charcoal flex-shrink-0">
-                          {formatPreviewDate(dd.date)}
-                        </span>
-                      </div>
-                      {dd.mode === "relative" && dd.offset_days && (
-                        <span className="text-xs text-muted-gray">
-                          {dd.offset_days} days after {getRefLabel(dd.offset_from)}
-                        </span>
+                      {/* Date inputs based on mode */}
+                      {dd.mode === "absolute" ? (
+                        <Input
+                          small
+                          type="date"
+                          value={dd.date}
+                          onChange={(e) => updateDateRow(dd.tempId, { date: e.target.value })}
+                        />
+                      ) : (
+                        <div className="flex gap-2 items-center">
+                          <div className="w-20">
+                            <Input
+                              small
+                              type="number"
+                              value={dd.offset_days || ""}
+                              onChange={(e) =>
+                                updateDateRow(dd.tempId, { offset_days: parseInt(e.target.value) || null })
+                              }
+                              placeholder="30"
+                            />
+                          </div>
+                          <span className="text-xs text-text-3 whitespace-nowrap">days after</span>
+                          <div className="flex-1">
+                            <Select
+                              small
+                              value={dd.offset_from || "escrow_open"}
+                              onChange={(e) => updateDateRow(dd.tempId, { offset_from: e.target.value })}
+                            >
+                              {getRefOptions(dd.tempId).map((opt) => (
+                                <option key={opt.value} value={opt.value}>
+                                  {opt.label}
+                                </option>
+                              ))}
+                            </Select>
+                          </div>
+                        </div>
                       )}
-                    </div>
 
-                    {/* Edit / Delete buttons */}
-                    <div className="flex gap-1 flex-shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => updateDateRow(dd.tempId, { editing: true })}
-                        className="p-1 text-muted-gray hover:text-green transition-colors"
-                        title="Edit"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
-                          <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => removeDateRow(dd.tempId)}
-                        className="p-1 text-muted-gray hover:text-red-500 transition-colors"
-                        title="Delete"
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))}
+                      {/* Resolved date preview (for relative mode) */}
+                      {dd.mode === "relative" && dd.date && (
+                        <p className="text-xs text-text-3">
+                          Resolves to: <span className="font-medium text-text">{formatPreviewDate(dd.date)}</span>
+                        </p>
+                      )}
 
-            {/* Add Date button */}
-            <button
-              type="button"
-              onClick={addDateRow}
-              className="text-xs text-green hover:text-green/80 transition-colors font-medium mt-1"
-            >
-              + Add Date
-            </button>
-          </div>
+                      {/* Done / Delete buttons */}
+                      <div className="flex gap-2 pt-1">
+                        <Button size="sm" onClick={() => updateDateRow(dd.tempId, { editing: false })}>
+                          Done
+                        </Button>
+                        <Button variant="danger" size="sm" onClick={() => removeDateRow(dd.tempId)}>
+                          Delete
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── Display mode ── */
+                    <div className="flex items-center gap-3">
+                      {/* Urgency dot */}
+                      <div className={cn("w-2.5 h-2.5 rounded-full flex-shrink-0", getUrgencyColor(dd.date))} />
+
+                      {/* Label + date */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <span className="text-sm font-medium text-text truncate">{dd.label || "Untitled"}</span>
+                          <span className="text-sm text-text flex-shrink-0">
+                            {formatPreviewDate(dd.date)}
+                          </span>
+                        </div>
+                        {dd.mode === "relative" && dd.offset_days && (
+                          <span className="text-xs text-text-3">
+                            {dd.offset_days} days after {getRefLabel(dd.offset_from)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Edit / Delete buttons */}
+                      <div className="flex gap-1 flex-shrink-0">
+                        <IconButton
+                          label="Edit"
+                          size="sm"
+                          icon={<Pencil size={16} strokeWidth={1.75} />}
+                          onClick={() => updateDateRow(dd.tempId, { editing: true })}
+                        />
+                        <IconButton
+                          label="Delete"
+                          size="sm"
+                          icon={<X size={16} strokeWidth={1.75} />}
+                          onClick={() => removeDateRow(dd.tempId)}
+                          className="hover:text-danger"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {/* Add Date button */}
+              <Button variant="ghost" size="sm" icon={<Plus size={16} strokeWidth={1.75} />} onClick={addDateRow} className="mt-1 -ml-3">
+                Add date
+              </Button>
+            </div>
+          </Section>
         </div>
 
         {/* ── Notes ── */}
-        <div className="border-t border-border-light pt-4 mb-6">
-          <label className={labelCls}>Notes</label>
-          <textarea
-            value={form.notes}
-            onChange={(e) => update("notes", e.target.value)}
-            rows={3}
-            className={`${inputCls("notes")} resize-none`}
-            placeholder="Any additional details..."
-          />
-        </div>
-
-        {/* ── Actions ── */}
-        <div className="flex gap-3 justify-end border-t border-border-light pt-4">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="px-4 py-2 text-sm font-medium text-medium-gray border border-border-light rounded-btn
-                       hover:border-border-medium transition-colors duration-200"
-          >
-            Cancel
-          </button>
-          <button
-            type="submit"
-            disabled={saving || !form.deal_name.trim() || (hasExplicitSplits && !splitsValid) || !leasePaymentsValid}
-            className="px-6 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                       hover:bg-green/90 transition-colors duration-200 disabled:opacity-50"
-          >
-            {saving ? "Saving..." : isEditing ? "Save Changes" : "Create Deal"}
-          </button>
+        <div className="border-t border-border pt-5">
+          <Field label="Notes">
+            <Textarea
+              value={form.notes}
+              onChange={(e) => update("notes", e.target.value)}
+              rows={3}
+              className={cn(highlightCls("notes"), "resize-none")}
+              placeholder="Any additional details..."
+            />
+          </Field>
         </div>
       </form>
 
@@ -1711,6 +1654,6 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
           initialPath=""
         />
       )}
-    </div>
+    </Modal>
   );
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useMsal } from "@azure/msal-react";
+import { X } from "lucide-react";
+import { Button } from "@/components/ui";
 import { FieldProps } from "./fieldProps";
 import {
   loadImage,
@@ -188,9 +190,9 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
         rootRef.current = el as HTMLDivElement | null;
       }}
       tabIndex={-1}
-      className="outline-none space-y-3"
+      className="outline-none space-y-4"
     >
-      {/* Drop zone (only when nothing is chosen/saved) */}
+      {/* Drop zone (only when nothing is chosen/saved) — green while a file hovers over it */}
       {!adjusting && !hasSaved && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
@@ -202,12 +204,12 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
             if (f) handleFile(f);
           }}
           onClick={() => inputRef.current?.click()}
-          className={`cursor-pointer rounded-btn border border-dashed px-4 py-5 text-center transition-colors ${
-            dragOver ? "border-green bg-[#F0F9E5]" : "border-border-medium hover:border-muted-gray"
+          className={`cursor-pointer rounded-control border border-dashed px-4 py-5 text-center transition-colors ${
+            dragOver ? "border-accent bg-accent-soft" : "border-border-strong hover:border-text-3"
           }`}
         >
-          <p className="text-sm text-charcoal">{fetching ? "Fetching…" : "Drop, paste, or click to choose a logo"}</p>
-          <p className="text-[11px] text-muted-gray mt-0.5">Paste a copied image or an image link · optional · goes next to the CRE8 logo</p>
+          <p className="text-sm text-text">{fetching ? "Fetching…" : "Drop, paste, or click to choose a logo"}</p>
+          <p className="text-xs text-text-3 mt-0.5">Paste a copied image or an image link · optional · goes next to the CRE8 logo</p>
         </div>
       )}
       <input
@@ -222,64 +224,61 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
         }}
       />
 
-      {/* Swatch — the logo as it will look on the dark header */}
+      {/* Swatch — the logo as it will look on the dark email header */}
       {previewSrc && (
-        <div className="relative rounded-card bg-[#1A1A1A] px-5 py-4 flex items-center justify-center min-h-[72px]">
+        <div className="relative rounded-card bg-ink px-5 py-4 flex items-center justify-center min-h-[72px]">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={previewSrc} alt="Partner logo" className="max-h-10 max-w-[200px] object-contain" />
-          {/* Small × in the corner — removes the logo (or cancels while adjusting) */}
+          {/* Small × in the corner — removes the logo (or cancels while adjusting).
+              Bare button: it sits on a dark swatch, where the grey IconButton wouldn't read. */}
           <button
             type="button"
             onClick={clear}
+            aria-label={adjusting ? "Cancel" : "Remove logo"}
             title={adjusting ? "Cancel" : "Remove logo"}
-            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/15 hover:bg-white/30 text-white text-xs leading-none flex items-center justify-center transition-colors"
+            className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-white/15 hover:bg-white/30 text-white flex items-center justify-center transition-colors"
           >
-            &times;
+            <X size={12} strokeWidth={2} />
           </button>
         </div>
       )}
 
       {/* Cleanup controls while adjusting */}
       {adjusting && (
-        <div className="space-y-2.5">
-          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer">
-            <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} className="accent-[#8CC644]" />
+        <div className="space-y-3">
+          <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+            <input type="checkbox" checked={removeBg} onChange={(e) => setRemoveBg(e.target.checked)} className="accent-accent" />
             Remove white background
           </label>
           {removeBg && (
             <div className="flex items-center gap-3 pl-6">
-              <span className="text-[11px] text-muted-gray w-16">Tolerance</span>
+              <span className="text-xs text-text-3 w-16">Tolerance</span>
               <input
                 type="range"
                 min={5}
                 max={80}
                 value={tolerance}
                 onChange={(e) => setTolerance(Number(e.target.value))}
-                className="flex-1 accent-[#8CC644]"
+                className="flex-1 accent-accent"
               />
-              <span className="text-[11px] text-muted-gray w-6 text-right">{tolerance}</span>
+              <span className="text-xs text-text-3 w-6 text-right tabular-nums">{tolerance}</span>
             </div>
           )}
-          <label className="flex items-center gap-2 text-sm text-charcoal cursor-pointer">
-            <input type="checkbox" checked={white} onChange={(e) => setWhite(e.target.checked)} className="accent-[#8CC644]" />
+          <label className="flex items-center gap-2 text-sm text-text cursor-pointer">
+            <input type="checkbox" checked={white} onChange={(e) => setWhite(e.target.checked)} className="accent-accent" />
             Make it white
           </label>
 
           <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={apply}
-              disabled={uploading}
-              className="px-4 py-1.5 bg-green text-black text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-50"
-            >
+            <Button onClick={apply} loading={uploading}>
               {uploading ? "Uploading…" : "Apply"}
-            </button>
-            <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal hover:bg-light-gray rounded-btn">
+            </Button>
+            <Button variant="ghost" onClick={() => inputRef.current?.click()}>
               Choose another
-            </button>
-            <button type="button" onClick={clear} className="px-3 py-1.5 text-sm text-muted-gray hover:text-charcoal rounded-btn">
+            </Button>
+            <Button variant="ghost" onClick={clear}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -287,14 +286,14 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
       {/* Saved state */}
       {hasSaved && !adjusting && (
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => inputRef.current?.click()} className="px-3 py-1.5 text-sm text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray">
+          <Button variant="secondary" size="sm" onClick={() => inputRef.current?.click()}>
             Replace
-          </button>
-          <span className="text-[11px] text-muted-gray">or paste a new one</span>
+          </Button>
+          <span className="text-xs text-text-3">or paste a new one</span>
         </div>
       )}
 
-      {error && <p className="text-xs text-red-500">{error}</p>}
+      {error && <p className="text-xs text-danger-fg">{error}</p>}
     </div>
   );
 }

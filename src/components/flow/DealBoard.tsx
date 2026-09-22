@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import { Deal } from "@/lib/flow/types";
 import { getNextCriticalDate } from "@/lib/flow/utils";
+import { Badge, cn } from "@/components/ui";
 import DealCard from "./DealCard";
 
 // Generic column config — works for both the Sale board (3 columns) and the Lease board (5 columns)
@@ -107,24 +108,22 @@ export default function DealBoard<K extends string>({ deals, brokerId, columns, 
         const colDeals = grouped[col.key] || [];
 
         return (
+          // Kanban column = drop target. Green tint while a card is dragged over it (selected state).
           <div
             key={col.key}
             onDragOver={(e) => handleDragOver(e, col.key)}
             onDragLeave={(e) => handleDragLeave(e, col.key)}
             onDrop={(e) => handleDrop(e, col.key)}
-            className={`rounded-card border border-border-light transition-colors duration-200 p-3 min-h-[200px]
-              ${isOver
-                ? "border-green bg-green/5"
-                : "bg-light-gray"
-              }`}
+            className={cn(
+              "rounded-card border transition-colors duration-150 p-3 min-h-[200px]",
+              isOver ? "border-accent bg-accent-soft" : "border-transparent bg-surface-2/60"
+            )}
           >
-            {/* Column header */}
+            {/* Column header — title + count badge */}
             <div className="mb-3 px-1">
-              <div className="flex items-baseline justify-between">
-                <h3 className="font-bebas text-base tracking-wide uppercase text-charcoal">{col.label}</h3>
-                <span className="text-xs font-medium text-muted-gray bg-white border border-border-light rounded-btn px-2 py-0.5">
-                  {colDeals.length}
-                </span>
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-text">{col.label}</h3>
+                <Badge tone="neutral" size="sm">{colDeals.length}</Badge>
               </div>
             </div>
 

@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, Search, X } from "lucide-react";
 import { ListingItem } from "@/lib/admin-constants";
 import { GroupListing, GroupChip } from "@/lib/email/types";
 import { listingToGroupCard } from "@/lib/email/utils";
+import { IconButton, Input, Tabs } from "@/components/ui";
 import { FieldProps } from "./fieldProps";
 
 interface GroupListingsPickerProps {
@@ -14,8 +16,6 @@ interface GroupListingsPickerProps {
   fieldProps: FieldProps;
 }
 
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-1.5 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
-const SEARCH = "w-full border border-border-light rounded-btn pl-9 pr-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 const CHIPS: GroupChip[] = ["", "Just Listed", "Price Reduced", "Under Contract"];
 
 /**
@@ -90,30 +90,28 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
   const needed = Math.max(0, 2 - cards.length);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {/* Search + add — stays open so you can keep adding */}
       <div ref={containerRef} className="relative">
         <div className="relative">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-gray pointer-events-none">
-            <circle cx="7" cy="7" r="5" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M11 11l3.5 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-          </svg>
-          <input
+          <Search size={16} strokeWidth={1.75} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-3 pointer-events-none" />
+          <Input
             ref={inputRef}
             value={query}
             onChange={(e) => { setQuery(e.target.value); setHighlightIdx(0); setOpen(true); }}
             onFocus={() => setOpen(true)}
             onKeyDown={onKeyDown}
             placeholder={loading ? "Loading listings…" : cards.length === 0 ? "Search listings — click to add" : "Add another listing"}
-            className={SEARCH}
+            className="pl-9"
           />
         </div>
+        {/* Results — a floating layer, so it gets the popover shadow */}
         {open && (
-          <div className="absolute z-30 mt-1 w-full bg-white border border-border-light rounded-card shadow-lg overflow-hidden">
+          <div className="absolute z-30 mt-1 w-full bg-surface border border-border rounded-card shadow-popover overflow-hidden">
             <ul className="max-h-72 overflow-y-auto py-1">
-              {loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-muted-gray">Loading…</li>}
+              {loading && filtered.length === 0 && <li className="px-3 py-3 text-sm text-text-3">Loading…</li>}
               {!loading && filtered.length === 0 && (
-                <li className="px-3 py-3 text-sm text-muted-gray">{candidates.length === 0 ? "Every listing is already in the group" : "No matches"}</li>
+                <li className="px-3 py-3 text-sm text-text-3">{candidates.length === 0 ? "Every listing is already in the group" : "No matches"}</li>
               )}
               {filtered.map((l, i) => {
                 const fd = l.fieldData;
@@ -121,23 +119,24 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                 const sub = [fd["city-county"], fd["list-price"]].filter(Boolean).join(" · ");
                 return (
                   <li key={l.id}>
+                    {/* Option row — a bare button because it holds a thumbnail + two lines */}
                     <button
                       type="button"
                       onMouseEnter={() => setHighlightIdx(i)}
                       onClick={() => add(l)}
-                      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === highlightIdx ? "bg-light-gray" : ""}`}
+                      className={`w-full flex items-center gap-3 px-3 py-2 text-left ${i === highlightIdx ? "bg-surface-2" : ""}`}
                     >
-                      <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
+                      <div className="w-12 h-8 rounded overflow-hidden bg-surface-2 shrink-0">
                         {t && (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={t} alt="" className="w-full h-full object-cover" />
                         )}
                       </div>
                       <div className="min-w-0">
-                        <div className="text-sm text-charcoal truncate">{fd.name || l.id}</div>
-                        {sub && <div className="text-xs text-muted-gray truncate">{sub}</div>}
+                        <div className="text-sm text-text truncate">{fd.name || l.id}</div>
+                        {sub && <div className="text-xs text-text-3 truncate">{sub}</div>}
                       </div>
-                      <span className="ml-auto text-xs font-medium text-green shrink-0">+ Add</span>
+                      <span className="ml-auto text-xs font-medium text-text-2 shrink-0">Add</span>
                     </button>
                   </li>
                 );
@@ -147,7 +146,7 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
         )}
       </div>
       {needed > 0 && (
-        <p className="text-xs text-muted-gray -mt-1">
+        <p className="text-xs text-text-3 -mt-2">
           {cards.length === 0 ? "Pick at least 2 listings." : "1 more needed."}
         </p>
       )}
@@ -160,13 +159,13 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
             const gallery = item?.fieldData.gallery || [];
             const binding = fieldProps(`group-${i}`);
             return (
-              <li key={c.listing_id} className="rounded-card border border-border-light bg-white p-2.5">
+              <li key={c.listing_id} className="rounded-card border border-border bg-surface p-3">
                 <div className="flex items-start gap-3">
-                  {/* Photo — click to swap */}
+                  {/* Photo — click to swap (ring turns green on hover = pick) */}
                   <button
                     type="button"
                     onClick={() => setPhotoPickerFor(photoPickerFor === c.listing_id ? null : c.listing_id)}
-                    className="w-20 h-14 rounded overflow-hidden bg-border-light shrink-0 ring-1 ring-border-light hover:ring-green"
+                    className="w-20 h-14 rounded overflow-hidden bg-surface-2 shrink-0 ring-1 ring-border hover:ring-accent"
                     title={gallery.length > 1 ? "Click to choose a different photo" : "Photo"}
                   >
                     {c.photo_url && (
@@ -175,51 +174,39 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                     )}
                   </button>
 
-                  <div className="min-w-0 flex-1 space-y-1.5">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="w-5 h-5 rounded-full bg-charcoal text-white text-[10px] font-bold flex items-center justify-center shrink-0">{i + 1}</span>
-                      <span className="text-sm font-medium text-charcoal truncate">{c.name}</span>
+                      <span className="w-5 h-5 rounded-full bg-ink text-white text-label font-semibold flex items-center justify-center shrink-0">{i + 1}</span>
+                      <span className="text-sm font-medium text-text truncate">{c.name}</span>
                     </div>
-                    <input
+                    {/* Summary line — keeps the composer's click-to-focus binding */}
+                    <Input
                       {...binding}
+                      small
                       value={c.summary}
                       onChange={(e) => update(c.listing_id, { summary: e.target.value })}
                       placeholder="Acres · City"
-                      className={`${INPUT} text-xs`}
                     />
-                    <div className="flex items-center gap-1.5">
-                      {CHIPS.map((chip) => (
-                        <button
-                          key={chip || "none"}
-                          type="button"
-                          onClick={() => update(c.listing_id, { chip })}
-                          className={`px-2 py-0.5 rounded-btn text-[11px] font-medium transition-colors ${
-                            c.chip === chip
-                              ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-                              : "bg-light-gray text-medium-gray hover:text-charcoal border border-transparent"
-                          }`}
-                        >
-                          {chip || "No chip"}
-                        </button>
-                      ))}
-                    </div>
+                    {/* Status chip — segmented choice */}
+                    <Tabs
+                      size="sm"
+                      items={CHIPS.map((chip) => ({ value: chip, label: chip || "No chip" }))}
+                      value={c.chip}
+                      onChange={(chip) => update(c.listing_id, { chip })}
+                    />
                   </div>
 
                   {/* Order + remove */}
                   <div className="flex flex-col items-center shrink-0">
-                    <button type="button" onClick={() => move(c.listing_id, -1)} disabled={i === 0} className="p-0.5 text-muted-gray hover:text-charcoal disabled:opacity-20" title="Move up">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M3 6l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                    <button type="button" onClick={() => move(c.listing_id, 1)} disabled={i === cards.length - 1} className="p-0.5 text-muted-gray hover:text-charcoal disabled:opacity-20" title="Move down">
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3v6M3 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </button>
-                    <button type="button" onClick={() => remove(c.listing_id)} className="p-0.5 text-muted-gray hover:text-red-500 text-base leading-none" title="Remove">&times;</button>
+                    <IconButton size="sm" label="Move up" icon={<ArrowUp size={16} strokeWidth={1.75} />} onClick={() => move(c.listing_id, -1)} disabled={i === 0} />
+                    <IconButton size="sm" label="Move down" icon={<ArrowDown size={16} strokeWidth={1.75} />} onClick={() => move(c.listing_id, 1)} disabled={i === cards.length - 1} />
+                    <IconButton size="sm" label="Remove" icon={<X size={16} strokeWidth={1.75} />} onClick={() => remove(c.listing_id)} className="hover:text-danger-fg" />
                   </div>
                 </div>
 
                 {/* Gallery strip for this card */}
                 {photoPickerFor === c.listing_id && gallery.length > 0 && (
-                  <div className="mt-2 grid grid-cols-4 gap-1.5">
+                  <div className="mt-3 grid grid-cols-4 gap-1.5">
                     {gallery.map((img, gi) => (
                       <button
                         key={gi}
@@ -228,7 +215,7 @@ export default function GroupListingsPicker({ listings, loading, cards, onChange
                           update(c.listing_id, { photo_url: img.url });
                           setPhotoPickerFor(null);
                         }}
-                        className={`aspect-[4/3] rounded overflow-hidden ${c.photo_url === img.url ? "ring-2 ring-green" : "ring-1 ring-border-light opacity-80 hover:opacity-100"}`}
+                        className={`aspect-[4/3] rounded overflow-hidden ${c.photo_url === img.url ? "ring-2 ring-accent" : "ring-1 ring-border opacity-80 hover:opacity-100"}`}
                       >
                         {/* eslint-disable-next-line @next/next/no-img-element */}
                         <img src={img.url} alt="" className="w-full h-full object-cover" />

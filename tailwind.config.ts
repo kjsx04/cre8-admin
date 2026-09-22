@@ -9,9 +9,6 @@ import type { Config } from "tailwindcss";
  *   - Primary buttons are near-black ("ink"), never green.
  *   - Cards use 1px borders, never shadows. Shadows exist only for floating layers.
  *   - Every size comes from the scale below — no arbitrary `text-[11px]` or hex colors in components.
- *
- * LEGACY block at the bottom: old token names still referenced by pages that haven't been
- * migrated yet. Each is deleted once `grep` shows zero uses.
  */
 const config: Config = {
   content: [
@@ -40,27 +37,11 @@ const config: Config = {
         warning: { bg: "#FFF4DB", fg: "#8A5A00" },
         danger: { DEFAULT: "#CC2E2E", bg: "#FDECEC", fg: "#B42323" },
         info: { bg: "#E8F1FA", fg: "#1F5F8B" },
-
-        // ── LEGACY (delete when unused) ──
-        green: "#8CC644",
-        "green-dark": "#6B9A33",
-        charcoal: "#1A1A1A",
-        "dark-gray": "#2A2A2A",
-        "medium-gray": "#666666",
-        "light-gray": "#F5F5F5",
-        "border-gray": "#333333",
-        "muted-gray": "#999999",
-        "subtle-gray": "#FAFAFA",
-        "border-light": "#E5E5E5",
-        "border-medium": "#D0D0D0",
       },
 
       fontFamily: {
         sans: ["Inter", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
         mono: ["ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
-        // LEGACY — old class names, both Inter now (delete when unused)
-        bebas: ["Inter", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
-        dm: ["Inter", "-apple-system", "BlinkMacSystemFont", "system-ui", "sans-serif"],
       },
 
       // Type scale — size / line-height. `label` is the only uppercase size (table headers).
@@ -79,7 +60,6 @@ const config: Config = {
         card: "10px",    // cards, table wrappers
         modal: "12px",   // dialogs, slide-overs, popovers
         pill: "9999px",
-        btn: "6px",      // LEGACY alias (delete when unused)
       },
 
       // Control heights: h-control-sm / h-control / h-control-lg

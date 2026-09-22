@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
+import { LoadingBlock, EmptyState } from "@/components/ui";
 import ListingForm from "@/components/ListingForm";
 import { ListingItem } from "@/lib/admin-constants";
 
@@ -59,17 +60,12 @@ export default function EditListingPage() {
       <div>
         {/* Loading state */}
         {loading && (
-          <div className="flex items-center justify-center py-20 text-[#777] text-sm">
-            <div className="w-[18px] h-[18px] border-2 border-[#E5E5E5] border-t-green rounded-full animate-spin mr-2.5" />
-            Loading listing...
-          </div>
+          <LoadingBlock message="Loading listing…" />
         )}
 
         {/* Error state */}
         {error && (
-          <div className="text-center py-20 text-[#CC3333] text-sm">
-            {error}
-          </div>
+          <EmptyState title="Couldn't load this listing" description={error} />
         )}
 
         {/* Form */}

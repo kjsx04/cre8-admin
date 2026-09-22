@@ -3,6 +3,7 @@
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, monthGridKeys, isWeekend, sameMonth, keyToCivil } from "@/lib/email/schedule-dates";
 import { getTypeColor } from "@/lib/email/utils";
+import { Badge } from "@/components/ui";
 
 interface MonthOverviewProps {
   anchor: DateKey; // any day in the month to show
@@ -22,11 +23,11 @@ export default function MonthOverview({ anchor, itemsByDay, today, maxPerDay, on
   const keys = monthGridKeys(anchor);
 
   return (
-    <div className="bg-white rounded-card border border-border-light overflow-hidden">
+    <div className="bg-surface rounded-card border border-border overflow-hidden">
       {/* Weekday header */}
-      <div className="grid grid-cols-7 border-b border-border-light">
+      <div className="grid grid-cols-7 border-b border-border">
         {WEEKDAYS.map((d) => (
-          <div key={d} className="text-[10px] uppercase tracking-wider text-muted-gray text-center py-2">
+          <div key={d} className="text-xs text-text-3 text-center py-2">
             {d}
           </div>
         ))}
@@ -44,32 +45,32 @@ export default function MonthOverview({ anchor, itemsByDay, today, maxPerDay, on
           const dayNum = keyToCivil(key).getUTCDate();
 
           return (
+            // Each day is a clickable cell (opens that week) — stays a raw button to keep the grid tight
             <button
               key={key}
               type="button"
               onClick={() => onSelectDay(key)}
               title={count > 0 ? `${count} send${count === 1 ? "" : "s"} — open this week` : "Open this week"}
-              className={`min-h-[88px] p-1.5 text-left border-b border-r border-border-light hover:bg-light-gray transition-colors [&:nth-child(7n)]:border-r-0 ${
-                !inMonth ? "bg-subtle-gray/60" : weekend ? "bg-subtle-gray" : ""
+              className={`min-h-[88px] p-1.5 text-left border-b border-r border-border hover:bg-surface-2 transition-colors [&:nth-child(7n)]:border-r-0 ${
+                !inMonth ? "bg-canvas/60" : weekend ? "bg-canvas" : ""
               }`}
             >
-              {/* Date number */}
+              {/* Date number — today gets the green (status) dot */}
               {isToday ? (
-                <span className="inline-flex w-6 h-6 rounded-full bg-green text-black text-xs font-semibold items-center justify-center">
+                <span className="inline-flex w-6 h-6 rounded-full bg-accent text-black text-xs font-semibold items-center justify-center">
                   {dayNum}
                 </span>
               ) : (
-                <span className={`text-xs ${inMonth ? "text-medium-gray" : "text-muted-gray/50"}`}>{dayNum}</span>
+                <span className={`text-xs ${inMonth ? "text-text-2" : "text-text-3/50"}`}>{dayNum}</span>
               )}
 
               {count > 0 && (
                 <>
-                  <div
-                    className={`mt-1 inline-block text-[10px] font-semibold px-1.5 rounded-full ${
-                      over ? "bg-amber-100 text-amber-700" : "bg-light-gray text-medium-gray"
-                    }`}
-                  >
-                    {count} send{count === 1 ? "" : "s"}
+                  {/* Count chip — amber past the per-day cap */}
+                  <div className="mt-1">
+                    <Badge tone={over ? "warning" : "neutral"} size="sm">
+                      {count} send{count === 1 ? "" : "s"}
+                    </Badge>
                   </div>
                   <div className="flex items-center gap-1 mt-1.5">
                     {items.slice(0, 4).map((it) => {
@@ -86,7 +87,7 @@ export default function MonthOverview({ anchor, itemsByDay, today, maxPerDay, on
                         />
                       );
                     })}
-                    {count > 4 && <span className="text-[9px] text-muted-gray">+{count - 4}</span>}
+                    {count > 4 && <span className="text-label text-text-3">+{count - 4}</span>}
                   </div>
                 </>
               )}

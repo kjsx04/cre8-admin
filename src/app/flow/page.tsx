@@ -2,6 +2,19 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
+import { AlertCircle, AlertTriangle, CheckCircle2, Inbox, Kanban, List, Plus } from "lucide-react";
+import {
+  Button,
+  Card,
+  EmptyState,
+  FOCUS_RING,
+  LoadingBlock,
+  Modal,
+  PageContainer,
+  PageHeader,
+  Tabs,
+  cn,
+} from "@/components/ui";
 import DealCard from "@/components/flow/DealCard";
 import DealDetail from "@/components/flow/DealDetail";
 import DealForm from "@/components/flow/DealForm";
@@ -608,72 +621,80 @@ export default function FlowPage() {
     ? getDropHighlightConfig(dropTargetColumn)
     : null;
 
+  // Status tab items for the <Tabs> primitive — counts reflect only the selected deal type
+  const statusTabItems = TABS.map((tab, i) => ({
+    value: String(i),
+    label: tab.label,
+    count: deals.filter((d) => d.deal_type === dealTypeTab && tab.statuses.includes(d.status)).length,
+  }));
+
   return (
-    <div>
-      {/* ── Summary header zone ── */}
-      <div className="bg-white border-b border-[#E0E0E0] px-6 pt-6 pb-6">
-        <div className="w-full">
-          {/* Summary bar */}
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
-            <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
-            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
-              <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Pipeline Value</p>
-              <p className="font-bebas text-2xl text-[#1A1A1A]">{formatCurrency(totalPipeline)}</p>
-              <p className="text-xs text-[rgba(0,0,0,0.40)] mt-1">{formatCurrency(pipelineCommission)} commission</p>
+    // Full-width page — the 5-column lease board needs the room
+    <PageContainer width="full">
+      <PageHeader
+        title="Deals"
+        actions={
+          <Button icon={<Plus size={18} strokeWidth={1.75} />} onClick={() => setShowTypePicker(true)}>
+            New deal
+          </Button>
+        }
+      />
+
+      {/* ── Summary stat cards ── */}
+      <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4 mb-6">
+        <SummaryCard label="Active deals" value={String(activeDeals.length)} />
+        <Card padding="sm">
+          <p className="text-xs text-text-3 mb-1">Pipeline value</p>
+          <p className="text-lg font-semibold text-text tabular-nums">{formatCurrency(totalPipeline)}</p>
+          <p className="text-xs text-text-3 mt-1">{formatCurrency(pipelineCommission)} commission</p>
+        </Card>
+        {/* YTD + Projected take-home card — green = money landed / landing (status) */}
+        <Card padding="sm">
+          <div className="flex">
+            <div className="flex-1 pr-3">
+              <p className="text-xs text-text-3 mb-1">YTD take-home</p>
+              <p className="text-lg font-semibold text-accent-strong tabular-nums">{formatCurrency(ytdTakeHome)}</p>
             </div>
-            {/* YTD + Projected take-home card */}
-            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
-              <div className="flex">
-                <div className="flex-1 pr-3">
-                  <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">YTD Take-Home</p>
-                  <p className="font-bebas text-2xl text-green">{formatCurrency(ytdTakeHome)}</p>
-                </div>
-                <div className="flex-1 border-l border-[#E0E0E0] pl-3">
-                  <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Projected {currentYear}</p>
-                  <p className="font-bebas text-2xl text-green">{formatCurrency(projectedTakeHome)}</p>
-                </div>
-              </div>
-            </div>
-            {/* Forecast card — 3 sub-columns with editable day windows */}
-            <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
-              <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-2">Take-Home Forecast</p>
-              <div className="flex">
-                {forecastDays.map((days, i) => (
-                  <div key={i} className={`flex-1 text-center ${i > 0 ? "border-l border-[#E0E0E0] pl-3" : ""} ${i < forecastDays.length - 1 ? "pr-3" : ""}`}>
-                    <p className="font-bebas text-2xl text-green">{formatCurrency(calcForecastTakeHome(days))}</p>
-                    <div className="flex items-center justify-center gap-1 mt-1">
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={days}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value.replace(/\D/g, "")) || 0;
-                          setForecastDays((prev) => prev.map((d, j) => (j === i ? val : d)));
-                        }}
-                        className="w-[3ch] text-xs text-center text-[rgba(0,0,0,0.45)] border-b border-transparent bg-transparent
-                                   hover:border-[#E0E0E0] focus:outline-none focus:border-green focus:text-[#1A1A1A]
-                                   [appearance:textfield]"
-                      />
-                      <span className="text-xs text-[rgba(0,0,0,0.35)]">days</span>
-                    </div>
-                  </div>
-                ))}
-              </div>
+            <div className="flex-1 border-l border-border pl-3">
+              <p className="text-xs text-text-3 mb-1">Projected {currentYear}</p>
+              <p className="text-lg font-semibold text-accent-strong tabular-nums">{formatCurrency(projectedTakeHome)}</p>
             </div>
           </div>
-        </div>
+        </Card>
+        {/* Forecast card — 3 sub-columns with editable day windows */}
+        <Card padding="sm">
+          <p className="text-xs text-text-3 mb-2">Take-home forecast</p>
+          <div className="flex">
+            {forecastDays.map((days, i) => (
+              <div key={i} className={cn("flex-1 text-center", i > 0 && "border-l border-border pl-3", i < forecastDays.length - 1 && "pr-3")}>
+                <p className="text-lg font-semibold text-accent-strong tabular-nums">{formatCurrency(calcForecastTakeHome(days))}</p>
+                <div className="flex items-center justify-center gap-1 mt-1">
+                  {/* Inline editable day window — underline-only input so it reads as a label */}
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    value={days}
+                    onChange={(e) => {
+                      const val = parseInt(e.target.value.replace(/\D/g, "")) || 0;
+                      setForecastDays((prev) => prev.map((d, j) => (j === i ? val : d)));
+                    }}
+                    className="w-[3ch] text-xs text-center text-text-3 border-b border-transparent bg-transparent
+                               hover:border-border focus:outline-none focus:border-text focus:text-text
+                               [appearance:textfield]"
+                  />
+                  <span className="text-xs text-text-3">days</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
       </div>
-
-      {/* ── Light content area — full width so the 5-column lease board has room to breathe ── */}
-      <div className="px-6 py-6 w-full">
 
       {/* Auto-move notification bar */}
       {autoMoveNotices.length > 0 && (
-        <div className="mb-4 p-3 rounded-card border border-blue-200 bg-blue-50 text-sm text-blue-800">
+        <div className="mb-4 p-4 rounded-card border border-info-fg/20 bg-info-bg text-sm text-info-fg">
           <div className="flex items-center gap-2 mb-1">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-              <path d="M22 11.08V12a10 10 0 11-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" />
-            </svg>
+            <CheckCircle2 size={16} strokeWidth={1.75} className="flex-shrink-0" />
             <span className="font-medium">Deals auto-updated based on dates:</span>
           </div>
           <ul className="ml-6 space-y-0.5">
@@ -688,131 +709,69 @@ export default function FlowPage() {
 
       {/* Urgent date alert */}
       {urgentDate && urgentDate.next && urgentDate.next.urgency !== "green" && urgentDate.next.urgency !== "gray" && (
-        <div className={`mb-4 p-3 rounded-card border text-sm flex items-center gap-2
-          ${urgentDate.next.urgency === "red"
-            ? "bg-red-50 border-red-200 text-red-700"
-            : "bg-amber-50 border-amber-200 text-amber-700"}`}
+        <div
+          className={cn(
+            "mb-4 p-4 rounded-card border text-sm flex items-center gap-2",
+            urgentDate.next.urgency === "red"
+              ? "bg-danger-bg border-danger/20 text-danger-fg"
+              : "bg-warning-bg border-warning-fg/20 text-warning-fg"
+          )}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0">
-            <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-            <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
-          </svg>
+          <AlertTriangle size={16} strokeWidth={1.75} className="flex-shrink-0" />
           <span>
             <strong>{urgentDate.deal.deal_name}</strong> — {urgentDate.next.label} in {countdownText(urgentDate.next.daysAway)}
           </span>
         </div>
       )}
 
-      {/* Tab bar + View toggle + New Deal button */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          {/* Sale / Lease toggle — everything on the page below is scoped to this type */}
-          <div className="flex border border-border-light rounded-btn overflow-hidden">
-            {(["sale", "lease"] as const).map((type) => (
-              <button
-                key={type}
-                onClick={() => setDealTypeTab(type)}
-                className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors duration-200 ${
-                  dealTypeTab === type
-                    ? "bg-charcoal text-white"
-                    : "bg-white text-medium-gray hover:text-charcoal"
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
+      {/* Tab bar + view toggle */}
+      <div className="flex items-center gap-3 mb-4 flex-wrap">
+        {/* Sale / Lease toggle — everything on the page below is scoped to this type */}
+        <Tabs
+          items={[
+            { value: "sale", label: "Sale" },
+            { value: "lease", label: "Lease" },
+          ]}
+          value={dealTypeTab}
+          onChange={setDealTypeTab}
+        />
 
-          {/* Status tabs — counts reflect only the selected deal type */}
-          <div className="flex gap-1">
-            {TABS.map((tab, i) => {
-              const count = deals.filter(
-                (d) => d.deal_type === dealTypeTab && tab.statuses.includes(d.status)
-              ).length;
-              return (
-                <button
-                  key={tab.label}
-                  onClick={() => setActiveTab(i)}
-                  className={`px-4 py-2 text-sm font-medium rounded-btn transition-colors duration-200
-                    ${activeTab === i
-                      ? "bg-white text-[#1A1A1A] border border-[#E0E0E0] shadow-sm"
-                      : "text-medium-gray hover:text-charcoal hover:bg-light-gray border border-transparent"}`}
-                >
-                  {tab.label} ({count})
-                </button>
-              );
-            })}
-          </div>
+        {/* Status tabs — counts reflect only the selected deal type */}
+        <Tabs items={statusTabItems} value={String(activeTab)} onChange={(v) => setActiveTab(Number(v))} />
 
-          {/* View toggle — only visible on the Sale/Lease board tabs */}
-          {isBoardTab && (
-            <div className="flex border border-border-light rounded-btn overflow-hidden">
-              {/* Board view icon */}
-              <button
-                onClick={() => setViewMode("board")}
-                className={`p-1.5 transition-colors duration-200 ${
-                  viewMode === "board"
-                    ? "bg-charcoal text-white"
-                    : "text-medium-gray hover:text-charcoal bg-white"
-                }`}
-                title="Board view"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="5" height="18" rx="1" />
-                  <rect x="10" y="3" width="5" height="12" rx="1" />
-                  <rect x="17" y="3" width="5" height="15" rx="1" />
-                </svg>
-              </button>
-              {/* List view icon */}
-              <button
-                onClick={() => setViewMode("list")}
-                className={`p-1.5 transition-colors duration-200 ${
-                  viewMode === "list"
-                    ? "bg-charcoal text-white"
-                    : "text-medium-gray hover:text-charcoal bg-white"
-                }`}
-                title="List view"
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <rect x="3" y="3" width="18" height="4" rx="1" />
-                  <rect x="3" y="10" width="18" height="4" rx="1" />
-                  <rect x="3" y="17" width="18" height="4" rx="1" />
-                </svg>
-              </button>
-            </div>
-          )}
-        </div>
-
-        <button
-          onClick={() => setShowTypePicker(true)}
-          className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                     hover:bg-green/90 transition-colors duration-200 flex items-center gap-1"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
-          </svg>
-          New Deal
-        </button>
+        {/* View toggle — only visible on the Sale/Lease board tabs */}
+        {isBoardTab && (
+          <Tabs
+            size="sm"
+            items={[
+              { value: "board", label: <Kanban size={16} strokeWidth={1.75} aria-label="Board view" /> },
+              { value: "list", label: <List size={16} strokeWidth={1.75} aria-label="List view" /> },
+            ]}
+            value={viewMode}
+            onChange={setViewMode}
+          />
+        )}
       </div>
 
       {/* Deal content area */}
       {loading ? (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
-        </div>
+        <LoadingBlock />
       ) : error ? (
-        <div className="text-center py-16">
-          <p className="text-red-600 text-sm mb-2">{error}</p>
-          <button onClick={fetchDeals} className="text-sm text-green hover:underline">Retry</button>
-        </div>
+        <EmptyState
+          icon={<AlertCircle size={20} strokeWidth={1.75} />}
+          title="Couldn't load deals"
+          description={error}
+          action={<Button variant="secondary" onClick={fetchDeals}>Retry</Button>}
+        />
       ) : isBoardTab && viewMode === "board" ? (
         /* ── Kanban Board View (Active tab — Sale or Lease board per the toggle) ── */
         filteredDeals.length === 0 ? (
-          <div className="text-center py-16">
-            <p className="text-muted-gray text-sm">
-              No active {dealTypeTab} deals. Create one to get started.
-            </p>
-          </div>
+          <EmptyState
+            icon={<Inbox size={20} strokeWidth={1.75} />}
+            title={`No active ${dealTypeTab} deals`}
+            description="Create one to get started."
+            action={<Button variant="secondary" icon={<Plus size={18} strokeWidth={1.75} />} onClick={() => setShowTypePicker(true)}>New deal</Button>}
+          />
         ) : dealTypeTab === "lease" ? (
           /* Lease board — 5 stage columns driven by lease_stage */
           <div className="overflow-x-auto">
@@ -840,13 +799,15 @@ export default function FlowPage() {
         )
       ) : sortedDeals.length === 0 ? (
         /* ── Empty state (list view or non-active tabs) ── */
-        <div className="text-center py-16">
-          <p className="text-muted-gray text-sm">
-            {isBoardTab
-              ? `No active ${dealTypeTab} deals. Create one to get started.`
-              : `No ${TABS[activeTab].label.toLowerCase()} ${dealTypeTab} deals.`}
-          </p>
-        </div>
+        <EmptyState
+          icon={<Inbox size={20} strokeWidth={1.75} />}
+          title={
+            isBoardTab
+              ? `No active ${dealTypeTab} deals`
+              : `No ${TABS[activeTab].label.toLowerCase()} ${dealTypeTab} deals`
+          }
+          description={isBoardTab ? "Create one to get started." : undefined}
+        />
       ) : (
         /* ── Card Grid / List View ── */
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -874,39 +835,29 @@ export default function FlowPage() {
       )}
 
       {/* New deal form — pre-fill commission from broker defaults */}
-      {/* New Deal type picker — choose Sale or Lease before the form opens */}
-      {showTypePicker && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/30" onClick={() => setShowTypePicker(false)} />
-          <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
-            <h3 className="font-bebas text-2xl tracking-wide text-charcoal mb-4 text-center">Deal Type</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                onClick={() => {
-                  setNewDealType("sale");
-                  setShowTypePicker(false);
-                  setShowNewForm(true);
-                }}
-                className="border border-border-light rounded-card py-6 text-center font-bebas text-xl tracking-wide text-charcoal
-                           hover:border-green hover:bg-green/5 transition-colors duration-200"
-              >
-                Sale
-              </button>
-              <button
-                onClick={() => {
-                  setNewDealType("lease");
-                  setShowTypePicker(false);
-                  setShowNewForm(true);
-                }}
-                className="border border-border-light rounded-card py-6 text-center font-bebas text-xl tracking-wide text-charcoal
-                           hover:border-green hover:bg-green/5 transition-colors duration-200"
-              >
-                Lease
-              </button>
-            </div>
-          </div>
+      {/* New Deal type picker — choose Sale or Lease before the form opens (Modal primitive) */}
+      <Modal open={showTypePicker} onClose={() => setShowTypePicker(false)} size="sm" title="Deal type">
+        <div className="grid grid-cols-2 gap-3">
+          {(["sale", "lease"] as const).map((type) => (
+            <button
+              key={type}
+              type="button"
+              onClick={() => {
+                setNewDealType(type);
+                setShowTypePicker(false);
+                setShowNewForm(true);
+              }}
+              className={cn(
+                "border border-border rounded-card py-6 text-center text-md font-semibold text-text",
+                "hover:border-border-strong hover:bg-surface-2 transition-colors duration-150",
+                FOCUS_RING
+              )}
+            >
+              {type === "sale" ? "Sale" : "Lease"}
+            </button>
+          ))}
         </div>
-      )}
+      </Modal>
 
       {showNewForm && (
         <DealForm
@@ -939,50 +890,43 @@ export default function FlowPage() {
         />
       )}
 
-      {/* Extension prompt modal */}
-      {extensionPrompt && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="fixed inset-0 bg-black/30" />
-          <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
-            <h3 className="font-bebas text-2xl tracking-wide text-charcoal mb-2">
-              Extension Deadline Reached
-            </h3>
-            <p className="text-sm text-medium-gray mb-4">
-              <strong>{extensionPrompt.deal.deal_name}</strong>: {extensionPrompt.dateLabel} on {formatDate(extensionPrompt.dateValue)}
+      {/* Extension prompt modal — must be answered, so no × and backdrop/Escape don't close it */}
+      <Modal
+        open={!!extensionPrompt}
+        onClose={() => {}}
+        hideClose
+        size="sm"
+        title="Extension deadline reached"
+        footer={
+          <>
+            <Button variant="secondary" onClick={handleExtensionDecline}>
+              No — move to closing
+            </Button>
+            <Button variant="primary" onClick={handleExtensionFiled}>
+              Yes — extension filed
+            </Button>
+          </>
+        }
+      >
+        {extensionPrompt && (
+          <>
+            <p className="text-sm text-text-2 mb-3">
+              <strong className="text-text">{extensionPrompt.deal.deal_name}</strong>: {extensionPrompt.dateLabel} on {formatDate(extensionPrompt.dateValue)}
             </p>
-            <p className="text-sm text-charcoal mb-6">
-              Has an extension been filed for this deal?
-            </p>
-            <div className="flex gap-3 justify-end">
-              <button
-                onClick={handleExtensionDecline}
-                className="px-4 py-2 text-sm font-medium text-medium-gray border border-border-light rounded-btn
-                           hover:border-border-medium transition-colors duration-200"
-              >
-                No — Move to Closing
-              </button>
-              <button
-                onClick={handleExtensionFiled}
-                className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                           hover:bg-green/90 transition-colors duration-200"
-              >
-                Yes — Extension Filed
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      </div>
-    </div>
+            <p className="text-sm text-text">Has an extension been filed for this deal?</p>
+          </>
+        )}
+      </Modal>
+    </PageContainer>
   );
 }
 
-// Small summary stat card
+// Small summary stat card (Card primitive — label over value)
 function SummaryCard({ label, value, accent }: { label: string; value: string; accent?: boolean }) {
   return (
-    <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
-      <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">{label}</p>
-      <p className={`font-bebas text-2xl ${accent ? "text-green" : "text-[#1A1A1A]"}`}>{value}</p>
-    </div>
+    <Card padding="sm">
+      <p className="text-xs text-text-3 mb-1">{label}</p>
+      <p className={cn("text-lg font-semibold tabular-nums", accent ? "text-accent-strong" : "text-text")}>{value}</p>
+    </Card>
   );
 }

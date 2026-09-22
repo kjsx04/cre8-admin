@@ -4,6 +4,7 @@ import { useMemo } from "react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { wrapPreviewHtml } from "@/lib/email/preview-wrapper";
+import { Modal } from "@/components/ui";
 import LivePreviewFrame from "./composer/LivePreviewFrame";
 import TestSendControl from "./composer/TestSendControl";
 
@@ -23,28 +24,11 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative bg-white rounded-card shadow-lg w-full max-w-2xl max-h-[85vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border-light">
-          <h3 className="font-bebas text-xl tracking-wide text-charcoal">Email Preview</h3>
-          <div className="flex items-center gap-3">
-            <TestSendControl campaign={campaign} />
-            <button onClick={onClose} className="text-muted-gray hover:text-charcoal text-lg">
-              &times;
-            </button>
-          </div>
-        </div>
-
-        {/* Preview */}
-        <div className="flex-1 overflow-y-auto p-4 bg-light-gray" data-scroll-pane>
-          <LivePreviewFrame html={html} activeField={null} className="rounded-card" />
-        </div>
+    // Shared Modal primitive — the test-send control sits in the footer
+    <Modal open onClose={onClose} size="lg" title="Email preview" footer={<TestSendControl campaign={campaign} />}>
+      <div className="bg-canvas rounded-card p-4" data-scroll-pane>
+        <LivePreviewFrame html={html} activeField={null} className="rounded-card" />
       </div>
-    </div>
+    </Modal>
   );
 }

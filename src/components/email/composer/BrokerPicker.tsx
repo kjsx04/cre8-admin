@@ -40,6 +40,7 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
           const active = idx >= 0;
           const src = BROKER_HEADSHOTS[s.id];
           return (
+            // Headshot toggle — green ring = selected (status)
             <button
               key={s.id}
               type="button"
@@ -53,7 +54,7 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
                   : `${s.name} — click to add, double-click to send from`
               }
               className={`relative w-12 h-12 rounded-full transition-all duration-150 ${
-                active ? "ring-[3px] ring-green ring-offset-2 opacity-100" : "opacity-50 hover:opacity-90"
+                active ? "ring-[3px] ring-accent ring-offset-2 opacity-100" : "opacity-50 hover:opacity-90"
               }`}
             >
               <span className="block w-full h-full rounded-full overflow-hidden">
@@ -61,14 +62,14 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={src} alt={s.name} className="w-full h-full object-cover" />
                 ) : (
-                  <span className="w-full h-full flex items-center justify-center bg-charcoal text-white text-xs font-semibold">
+                  <span className="w-full h-full flex items-center justify-center bg-ink text-white text-xs font-semibold">
                     {s.name.split(" ").map((p) => p[0]).join("")}
                   </span>
                 )}
               </span>
               {/* "From" tag on the sender */}
               {idx === 0 && (
-                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-[1px] rounded-full bg-green text-black text-[9px] font-bold uppercase tracking-wide shadow">
+                <span className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 px-1.5 py-px rounded-pill bg-accent text-black text-label font-semibold">
                   From
                 </span>
               )}
@@ -77,16 +78,16 @@ export default function BrokerPicker({ brokerIds, onChange, fieldProps }: Broker
         })}
       </div>
 
-      <div className="mt-3 text-xs text-muted-gray">
+      <div className="mt-3 text-xs text-text-3">
         {selected.length === 0 ? (
           "Click to add a broker"
         ) : (
           <>
-            <span className="text-charcoal font-medium">{selected.map((s) => s.name).join(", ")}</span>
+            <span className="text-text font-medium">{selected.map((s) => s.name).join(", ")}</span>
             <span> · sends from {selected[0].name.split(" ")[0]}</span>
           </>
         )}
-        <span className="block mt-0.5 text-[11px] text-border-medium">Click to add · Double-click to send from</span>
+        <span className="block mt-0.5 text-xs text-text-3/70">Click to add · Double-click to send from</span>
       </div>
     </div>
   );

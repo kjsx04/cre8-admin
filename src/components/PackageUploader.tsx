@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
+import { FileText, Star, Upload, X } from "lucide-react";
+import { Badge, Spinner, cn, useToast } from "@/components/ui";
 
 /* ============================================================
    TYPES
@@ -50,6 +52,8 @@ export default function PackageUploader({
   const [converting, setConverting] = useState(false);
   const [progress, setProgress] = useState("");
   const [dragOver, setDragOver] = useState(false);
+  // Toast replaces the old browser popup for validation / failure messages
+  const toast = useToast();
 
   // Store onChange in ref
   const onChangeRef = useRef(onChange);
@@ -61,11 +65,11 @@ export default function PackageUploader({
   const handlePdfFile = useCallback(
     async (file: File) => {
       if (file.size > MAX_PDF_SIZE) {
-        alert("PDF must be under 10MB");
+        toast.error("PDF must be under 10MB");
         return;
       }
       if (!file.type.includes("pdf")) {
-        alert("Please select a PDF file");
+        toast.error("Please select a PDF file");
         return;
       }
 
@@ -119,13 +123,13 @@ export default function PackageUploader({
         onChangeRef.current(newAssets);
       } catch (err) {
         console.error("PDF conversion failed:", err);
-        alert("Failed to convert PDF. Please try again.");
+        toast.error("Failed to convert PDF. Please try again.");
       } finally {
         setConverting(false);
         setProgress("");
       }
     },
-    [assets.galleryImages]
+    [assets.galleryImages, toast]
   );
 
   // ---- Drag & drop handlers ----
@@ -212,7 +216,7 @@ export default function PackageUploader({
 
   return (
     <div>
-      {/* Upload zone */}
+      {/* Upload zone — green border only while dragging a file over it (active state) */}
       <div
         onClick={() => !converting && fileInputRef.current?.click()}
         onDragOver={(e) => {
@@ -221,9 +225,11 @@ export default function PackageUploader({
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-btn px-6 py-8 text-center cursor-pointer transition-colors
-          ${dragOver ? "border-green bg-[#F0F9E5]" : "border-[#DDD] hover:border-[#BBB]"}
-          ${converting ? "opacity-60 pointer-events-none" : ""}`}
+        className={cn(
+          "border-2 border-dashed rounded-control px-6 py-8 text-center cursor-pointer transition-colors",
+          dragOver ? "border-accent bg-accent-soft" : "border-border-strong hover:border-text-3",
+          converting && "opacity-60 pointer-events-none"
+        )}
       >
         <input
           ref={fileInputRef}
@@ -237,27 +243,27 @@ export default function PackageUploader({
           }}
         />
         {converting ? (
-          <div>
-            <div className="text-2xl mb-2">&#9203;</div>
-            <p className="text-sm text-[#666]">{progress}</p>
+          <div className="flex flex-col items-center gap-2">
+            <Spinner size="md" />
+            <p className="text-sm text-text-2">{progress}</p>
           </div>
         ) : hasPackage && !hasImages ? (
           <div>
-            <div className="text-2xl mb-2">&#128196;</div>
-            <p className="text-sm text-[#333] font-medium">
+            <FileText size={20} strokeWidth={1.75} className="mx-auto mb-2 text-text-3" />
+            <p className="text-sm text-text font-medium">
               {assets.packageFile?.name || "Package PDF"}
             </p>
-            <p className="text-xs text-[#777] mt-1">
+            <p className="text-xs text-text-3 mt-1">
               Click or drop to replace
             </p>
           </div>
         ) : (
           <div>
-            <div className="text-2xl mb-2">&#11014;</div>
-            <p className="text-sm text-[#666]">
+            <Upload size={20} strokeWidth={1.75} className="mx-auto mb-2 text-text-3" />
+            <p className="text-sm text-text-2">
               Drop PDF here or click to browse
             </p>
-            <p className="text-xs text-[#777] mt-1">
+            <p className="text-xs text-text-3 mt-1">
               Auto-converts to JPG previews (max 10MB)
             </p>
           </div>
@@ -266,14 +272,14 @@ export default function PackageUploader({
 
       {/* Existing package indicator (edit mode, no new upload) */}
       {existingPackageUrl && !assets.packageFile && !hasImages && (
-        <div className="flex items-center gap-2 mt-2 text-xs text-[#777]">
-          <span>&#128196;</span>
+        <div className="flex items-center gap-2 mt-2 text-xs text-text-3">
+          <FileText size={16} strokeWidth={1.75} />
           <span>Existing package on file</span>
           <a
             href={existingPackageUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-green hover:underline"
+            className="text-text font-medium underline underline-offset-2 hover:text-accent-strong"
           >
             View
           </a>
@@ -295,10 +301,14 @@ export default function PackageUploader({
                   e.preventDefault();
                   handleDragDrop(idx);
                 }}
-                className={`relative rounded-btn overflow-hidden border-2 cursor-grab active:cursor-grabbing
-                  ${isMarketing ? "border-green" : "border-[#E5E5E5]"}`}
+                className={cn(
+                  "relative rounded-control overflow-hidden border-2 cursor-grab active:cursor-grabbing",
+                  // Green border = the selected marketing image (status)
+                  isMarketing ? "border-accent" : "border-border"
+                )}
               >
                 {/* Image thumbnail */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={img.url}
                   alt={img.name}
@@ -306,22 +316,25 @@ export default function PackageUploader({
                 />
 
                 {/* Page number badge */}
-                <div className="absolute bottom-1 left-1 bg-black/60 text-white text-[10px] px-1.5 py-0.5 rounded">
+                <div className="absolute bottom-1 left-1 bg-black/60 text-white text-xs px-1.5 py-0.5 rounded">
                   {img.pageNum ? `P${img.pageNum}` : idx + 1}
                 </div>
 
-                {/* Star button (set as marketing pic) */}
+                {/* Star button (set as marketing pic) — overlay controls stay dark on the photo */}
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setStar(idx);
                   }}
-                  className={`absolute top-1 right-7 w-6 h-6 rounded flex items-center justify-center text-sm
-                    ${isMarketing ? "bg-green text-black" : "bg-black/40 text-white/70 hover:text-white"}`}
+                  className={cn(
+                    "absolute top-1 right-8 w-6 h-6 rounded flex items-center justify-center",
+                    isMarketing ? "bg-accent text-black" : "bg-black/40 text-white/70 hover:text-white"
+                  )}
                   title="Set as marketing image"
+                  aria-label="Set as marketing image"
                 >
-                  &#9733;
+                  <Star size={14} strokeWidth={1.75} fill={isMarketing ? "currentColor" : "none"} />
                 </button>
 
                 {/* Remove button */}
@@ -332,17 +345,18 @@ export default function PackageUploader({
                     removeImage(idx);
                   }}
                   className="absolute top-1 right-1 w-6 h-6 rounded bg-black/40 text-white/70
-                             hover:text-white hover:bg-[#CC3333] flex items-center justify-center text-xs"
+                             hover:text-white hover:bg-danger flex items-center justify-center"
                   title="Remove"
+                  aria-label="Remove"
                 >
-                  &#10005;
+                  <X size={14} strokeWidth={1.75} />
                 </button>
 
                 {/* Marketing label */}
                 {isMarketing && (
-                  <div className="absolute bottom-1 right-1 bg-green text-black text-[9px] font-bold px-1.5 py-0.5 rounded uppercase">
+                  <Badge tone="accent" size="sm" className="absolute bottom-1 right-1">
                     Marketing
-                  </div>
+                  </Badge>
                 )}
               </div>
             );

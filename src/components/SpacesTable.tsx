@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { Plus, X } from "lucide-react";
+import { Button, IconButton, Input, Select } from "@/components/ui";
 
 /* ============================================================
    TYPES
@@ -50,6 +52,8 @@ function parseHtmlToRows(tableHtml: string): SpaceRow[] {
 /* ============================================================
    SERIALIZE — convert row objects to styled HTML table for CMS
    Must match the exact format the old admin produces.
+   (These inline hex colors are part of the SAVED CMS HTML shown
+   on the public site — they are data, not admin UI styling.)
    ============================================================ */
 function rowsToHtml(rows: SpaceRow[]): string {
   // Filter out empty rows
@@ -121,81 +125,69 @@ export default function SpacesTable({ value, onChange }: SpacesTableProps) {
 
   return (
     <div>
-      {/* Table header */}
+      {/* Column labels (sentence case, small grey) */}
       {rows.length > 0 && (
-        <div className="grid grid-cols-[1fr_120px_90px_36px] gap-2 mb-2">
-          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
-            Space Name
-          </span>
-          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
-            Size
-          </span>
-          <span className="text-[10px] font-semibold text-[#777] uppercase tracking-wider">
-            Unit
-          </span>
+        <div className="grid grid-cols-[1fr_120px_100px_36px] gap-2 mb-1.5">
+          <span className="text-xs font-medium text-text-3">Space name</span>
+          <span className="text-xs font-medium text-text-3">Size</span>
+          <span className="text-xs font-medium text-text-3">Unit</span>
           <span />
         </div>
       )}
 
-      {/* Rows */}
+      {/* Rows — tight grid, so gap-2 stays */}
       {rows.map((row, idx) => (
         <div
           key={idx}
-          className="grid grid-cols-[1fr_120px_90px_36px] gap-2 mb-2 items-center"
+          className="grid grid-cols-[1fr_120px_100px_36px] gap-2 mb-2 items-center"
         >
           {/* Space name */}
-          <input
+          <Input
             type="text"
             value={row.label}
             onChange={(e) => updateRow(idx, "label", e.target.value)}
             placeholder="e.g. Suite 101"
-            className="bg-white border border-[#E5E5E5] rounded-btn px-3 py-1.5 text-sm text-[#333]
-                       placeholder:text-[#BBB] outline-none focus:border-green transition-colors"
           />
 
           {/* Size */}
-          <input
+          <Input
             type="text"
             inputMode="decimal"
             value={row.size}
             onChange={(e) => updateRow(idx, "size", e.target.value)}
             placeholder="e.g. 2500"
-            className="bg-white border border-[#E5E5E5] rounded-btn px-3 py-1.5 text-sm text-[#333]
-                       placeholder:text-[#BBB] outline-none focus:border-green transition-colors"
           />
 
           {/* Unit dropdown */}
-          <select
+          <Select
             value={row.unit}
             onChange={(e) => updateRow(idx, "unit", e.target.value)}
-            className="bg-white border border-[#E5E5E5] rounded-btn px-2 py-1.5 text-sm text-[#333]
-                       outline-none focus:border-green transition-colors"
           >
             <option value="SF">SF</option>
             <option value="Acres">Acres</option>
-          </select>
+          </Select>
 
           {/* Remove button */}
-          <button
-            type="button"
+          <IconButton
+            label="Remove row"
+            variant="secondary"
+            icon={<X size={18} strokeWidth={1.75} />}
             onClick={() => removeRow(idx)}
-            className="w-8 h-8 rounded-btn border border-[#E5E5E5] flex items-center justify-center
-                       text-[#777] hover:text-[#CC3333] hover:border-[#CC3333] transition-colors text-sm"
-            title="Remove row"
-          >
-            ✕
-          </button>
+            className="hover:text-danger"
+          />
         </div>
       ))}
 
       {/* Add row button */}
-      <button
-        type="button"
+      <Button
+        variant="secondary"
+        size="sm"
+        icon={<Plus size={18} strokeWidth={1.75} />}
         onClick={addRow}
-        className="text-sm text-green font-semibold hover:underline mt-1"
+        className="mt-1"
       >
-        + Add Space
-      </button>
+        Add space
+      </Button>
     </div>
   );
 }

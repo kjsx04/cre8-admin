@@ -17,8 +17,10 @@ export interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
   icon?: ReactNode;
   /** Icon on the right */
   iconRight?: ReactNode;
-  /** Render as a Next.js link instead of a button */
+  /** Render as a link instead of a button. External URLs (http…) open as a plain <a>; internal paths use Next's Link. */
   href?: string;
+  /** Link target, e.g. "_blank" to open in a new tab (adds rel="noopener noreferrer" automatically) */
+  target?: string;
   /** Stretch to the container width */
   block?: boolean;
 }
@@ -48,7 +50,7 @@ const BASE =
  *   <Button variant="danger" loading={deleting}>Delete</Button>
  */
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { variant = "primary", size = "md", loading, icon, iconRight, href, block, className, children, disabled, type, ...rest },
+  { variant = "primary", size = "md", loading, icon, iconRight, href, target, block, className, children, disabled, type, ...rest },
   ref
 ) {
   const classes = cn(BASE, VARIANT[variant], SIZE[size], block && "w-full", FOCUS_RING, className);
@@ -61,6 +63,16 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   );
 
   if (href) {
+    const external = /^https?:\/\//i.test(href) || href.startsWith("mailto:") || href.startsWith("blob:");
+    const rel = target === "_blank" ? "noopener noreferrer" : undefined;
+    // External links (SharePoint, Word Online, blob downloads) use a plain <a>; app routes use Next Link
+    if (external || target) {
+      return (
+        <a href={href} target={target} rel={rel} className={classes} aria-disabled={disabled || loading}>
+          {content}
+        </a>
+      );
+    }
     return (
       <Link href={href} className={classes} aria-disabled={disabled || loading}>
         {content}

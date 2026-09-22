@@ -1,5 +1,8 @@
 "use client";
 
+import { ChevronLeft, ChevronRight, RefreshCw } from "lucide-react";
+import { Button, IconButton } from "@/components/ui";
+
 interface ScheduleToolbarProps {
   label: string;
   onPrev: () => void;
@@ -11,36 +14,31 @@ interface ScheduleToolbarProps {
   optimizeNote?: string | null;
 }
 
-const BTN = "px-3 py-1 rounded-md bg-[#F0F0F0] hover:bg-[#E0E0E0] text-xs font-semibold text-charcoal transition-colors";
-
-/** ‹ › Today + the Bebas period label */
+/** ‹ › Today + the period label, with the week optimizer on the right */
 export default function ScheduleToolbar({ label, onPrev, onNext, onToday, onOptimize, optimizing, optimizeNote }: ScheduleToolbarProps) {
   return (
     <div className="flex items-center justify-between mb-3">
       <div className="flex items-center gap-1.5">
-        <button type="button" onClick={onPrev} className={BTN} title="Previous">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        <button type="button" onClick={onNext} className={BTN} title="Next">
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        </button>
-        <button type="button" onClick={onToday} className={`${BTN} ml-1`}>
+        <IconButton size="sm" variant="secondary" label="Previous" icon={<ChevronLeft size={18} strokeWidth={1.75} />} onClick={onPrev} />
+        <IconButton size="sm" variant="secondary" label="Next" icon={<ChevronRight size={18} strokeWidth={1.75} />} onClick={onNext} />
+        <Button size="sm" variant="secondary" onClick={onToday} className="ml-1">
           Today
-        </button>
+        </Button>
       </div>
-      <h2 className="font-bebas text-2xl tracking-wide text-charcoal">{label}</h2>
+      <h2 className="text-lg font-semibold text-text">{label}</h2>
       <div className="w-[220px] flex items-center justify-end gap-2">
-        {optimizeNote && <span className="text-[11px] text-muted-gray truncate">{optimizeNote}</span>}
+        {optimizeNote && <span className="text-xs text-text-3 truncate">{optimizeNote}</span>}
         {onOptimize && (
-          <button
-            type="button"
+          <Button
+            size="sm"
+            variant="secondary"
             onClick={onOptimize}
-            disabled={optimizing}
+            loading={optimizing}
+            icon={<RefreshCw size={16} strokeWidth={1.75} />}
             title="Ask the AI to rebalance this week under the per-day cap"
-            className={`${BTN} whitespace-nowrap disabled:opacity-50`}
           >
             {optimizing ? "Rebalancing…" : "Re-optimize week"}
-          </button>
+          </Button>
         )}
       </div>
     </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { ArrowDown, ArrowUp, Plus, X } from "lucide-react";
 import { CmsChip, joinHighlight } from "@/lib/email/utils";
+import { Button, IconButton } from "@/components/ui";
 import { HighlightRow } from "./useCampaignDraft";
 import { FieldProps } from "./fieldProps";
 
@@ -15,6 +17,9 @@ interface DetailsEditorProps {
   onAdd: (title?: string, value?: string) => number;
   fieldProps: FieldProps;
 }
+
+// The two inputs in a row are borderless and sit on a grey strip — the one custom input in the composer
+const INLINE_INPUT = "bg-transparent text-sm text-text placeholder:text-text-3 focus:outline-none";
 
 /**
  * Section 4 — Details.
@@ -54,7 +59,7 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
       {rows.map((row, i) => {
         const binding = fieldProps(`highlight-${i}`);
         return (
-          <div key={row.id} className="flex items-center gap-1.5 bg-light-gray rounded-btn px-2 py-1.5">
+          <div key={row.id} className="flex items-center gap-1.5 bg-surface-2 rounded-control pl-3 pr-1 py-1">
             <input
               ref={(el) => {
                 binding.ref(el);
@@ -66,44 +71,21 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
               value={row.title}
               onChange={(e) => onUpdate(row.id, { title: e.target.value })}
               placeholder="Title"
-              className="w-[36%] bg-transparent text-sm text-charcoal placeholder:text-border-medium focus:outline-none"
+              className={`w-[36%] ${INLINE_INPUT}`}
             />
-            <span className="text-border-medium text-sm select-none">:</span>
+            <span className="text-text-3 text-sm select-none">:</span>
             <input
               onFocus={binding.onFocus}
               onBlur={binding.onBlur}
               value={row.value}
               onChange={(e) => onUpdate(row.id, { value: e.target.value })}
               placeholder="Value"
-              className="flex-1 min-w-0 bg-transparent text-sm text-charcoal placeholder:text-border-medium focus:outline-none"
+              className={`flex-1 min-w-0 ${INLINE_INPUT}`}
             />
             {/* Reorder + remove */}
-            <button
-              type="button"
-              onClick={() => onMove(row.id, "up")}
-              disabled={i === 0}
-              className="p-1 text-muted-gray hover:text-charcoal disabled:opacity-20"
-              title="Move up"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M3 6l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-            <button
-              type="button"
-              onClick={() => onMove(row.id, "down")}
-              disabled={i === rows.length - 1}
-              className="p-1 text-muted-gray hover:text-charcoal disabled:opacity-20"
-              title="Move down"
-            >
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3v6M3 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-            <button
-              type="button"
-              onClick={() => onRemove(row.id)}
-              className="p-1 text-muted-gray hover:text-red-500 text-base leading-none"
-              title="Remove"
-            >
-              &times;
-            </button>
+            <IconButton size="sm" label="Move up" icon={<ArrowUp size={16} strokeWidth={1.75} />} onClick={() => onMove(row.id, "up")} disabled={i === 0} />
+            <IconButton size="sm" label="Move down" icon={<ArrowDown size={16} strokeWidth={1.75} />} onClick={() => onMove(row.id, "down")} disabled={i === rows.length - 1} />
+            <IconButton size="sm" label="Remove" icon={<X size={16} strokeWidth={1.75} />} onClick={() => onRemove(row.id)} className="hover:text-danger-fg" />
           </div>
         );
       })}
@@ -111,22 +93,13 @@ export default function DetailsEditor({ rows, chips, onUpdate, onMove, onRemove,
       {/* Add: from listing chips + custom */}
       <div className="flex flex-wrap items-center gap-1.5 pt-1">
         {availableChips.map((chip) => (
-          <button
-            key={chip.key}
-            type="button"
-            onClick={() => addFromChip(chip)}
-            className="px-2.5 py-1 rounded-full text-xs bg-light-gray text-charcoal hover:bg-charcoal hover:text-white transition-colors"
-          >
-            + {chip.label}
-          </button>
+          <Button key={chip.key} size="sm" variant="secondary" icon={<Plus size={14} strokeWidth={1.75} />} onClick={() => addFromChip(chip)}>
+            {chip.label}
+          </Button>
         ))}
-        <button
-          type="button"
-          onClick={addCustom}
-          className="px-2.5 py-1 rounded-full text-xs font-medium text-green hover:bg-green/10 transition-colors"
-        >
-          + Custom
-        </button>
+        <Button size="sm" variant="ghost" icon={<Plus size={14} strokeWidth={1.75} />} onClick={addCustom}>
+          Custom
+        </Button>
       </div>
     </div>
   );

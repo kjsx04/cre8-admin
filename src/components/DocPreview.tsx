@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Spinner } from "@/components/ui";
 
 interface DocPreviewProps {
   /** Base64 data URL of the .docx file (e.g. "data:application/...;base64,ABC...") */
@@ -79,20 +80,20 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
 
   if (error) {
     return (
-      <div className="bg-[#F5F5F5] border border-[#E0E0E0] rounded-card p-6 text-center">
-        <p className="text-medium-gray text-sm">{error}</p>
+      <div className="bg-surface-2 border border-border rounded-card p-6 text-center">
+        <p className="text-text-2 text-sm">{error}</p>
       </div>
     );
   }
 
   return (
     <div className="relative">
-      {/* Loading overlay while rendering */}
+      {/* Loading overlay while rendering — shared Spinner primitive */}
       {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-[#F5F5F5] rounded-card z-10">
+        <div className="absolute inset-0 flex items-center justify-center bg-surface-2 rounded-card z-10">
           <div className="flex flex-col items-center gap-3">
-            <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
-            <p className="text-medium-gray text-sm">Rendering preview...</p>
+            <Spinner size="lg" />
+            <p className="text-text-2 text-sm">Rendering preview...</p>
           </div>
         </div>
       )}
@@ -100,7 +101,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
       {/* The docx-preview renders into this container */}
       <div
         ref={containerRef}
-        className="docx-preview-container border border-[#E0E0E0]"
+        className="docx-preview-container border border-border"
         style={{ minHeight: loading ? "300px" : undefined }}
       />
     </div>

@@ -2,10 +2,34 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useMsal } from "@azure/msal-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Circle,
+  Download,
+  ExternalLink,
+  FileText,
+  Folder,
+} from "lucide-react";
 import { Deal, DealFormData, DealDate, Broker, DealDiffItem, StageSuggestion, ExtractedDealData, DealStatus, W9Status } from "@/lib/flow/types";
-import { formatCurrency, formatDate, STATUS_LABELS, STATUS_COLORS, buildDealDiff, suggestStageMove, LEASE_STAGE_LABELS, getLeaseStage, isLeasePaymentPhase, leasePaymentLabel } from "@/lib/flow/utils";
+import { formatCurrency, formatDate, STATUS_LABELS, buildDealDiff, suggestStageMove, LEASE_STAGE_LABELS, getLeaseStage, isLeasePaymentPhase, leasePaymentLabel } from "@/lib/flow/utils";
 import { graphScopes } from "@/lib/msal-config";
 import { getSiteId, getDriveId, listFolderContents, uploadToFolder, SharePointItem } from "@/lib/graph";
+import {
+  Badge,
+  Button,
+  Card,
+  Field,
+  Input,
+  Modal,
+  SlideOver,
+  Spinner,
+  Textarea,
+  Tone,
+  cn,
+  useToast,
+} from "@/components/ui";
 import TimelineBar from "./TimelineBar";
 import CommissionCalc from "./CommissionCalc";
 import DealForm from "./DealForm";
@@ -17,6 +41,15 @@ import dynamic from "next/dynamic";
 // Dynamic import to avoid SSR issues with MSAL hooks in the modal
 const FolderPickerModal = dynamic(() => import("./FolderPickerModal"), { ssr: false });
 
+// Status → Badge tone (green = active, amber = in escrow stages, grey = closed, red = cancelled)
+const STATUS_TONE: Record<string, Tone> = {
+  active: "success",
+  due_diligence: "warning",
+  closing: "warning",
+  closed: "neutral",
+  cancelled: "danger",
+};
+
 interface DealDetailProps {
   deal: Deal;
   brokerId?: string;
@@ -26,31 +59,14 @@ interface DealDetailProps {
   onClose: () => void;
 }
 
-// File type icon helper
+// File type icon helper — one lucide icon, colored by type (PDF red, Word blue, other grey)
 function FileIcon({ name }: { name: string }) {
   const ext = name.split(".").pop()?.toLowerCase() || "";
-  if (ext === "pdf") {
-    return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="flex-shrink-0">
-        <rect x="4" y="2" width="16" height="20" rx="2" stroke="#DC2626" strokeWidth="1.5" />
-        <text x="12" y="15" textAnchor="middle" fill="#DC2626" fontSize="6" fontWeight="bold">PDF</text>
-      </svg>
-    );
-  }
-  if (ext === "docx" || ext === "doc") {
-    return (
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" className="flex-shrink-0">
-        <rect x="4" y="2" width="16" height="20" rx="2" stroke="#2563EB" strokeWidth="1.5" />
-        <text x="12" y="15" textAnchor="middle" fill="#2563EB" fontSize="5" fontWeight="bold">DOC</text>
-      </svg>
-    );
-  }
-  return (
-    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5" className="flex-shrink-0">
-      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-      <polyline points="14 2 14 8 20 8" />
-    </svg>
-  );
+  const color =
+    ext === "pdf" ? "text-danger" :
+    ext === "docx" || ext === "doc" ? "text-info-fg" :
+    "text-text-3";
+  return <FileText size={16} strokeWidth={1.75} className={cn("flex-shrink-0", color)} />;
 }
 
 // Format file size for display
@@ -58,6 +74,25 @@ function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+// Small "Received / Pending" toggle chip — green when received (status), neutral otherwise
+function ReceivedToggle({ received, onClick }: { received: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex items-center gap-1.5 h-control-sm px-3 text-xs font-medium rounded-control border transition-colors duration-150",
+        received
+          ? "bg-accent-soft border-accent text-accent-strong"
+          : "border-border text-text-2 hover:border-border-strong hover:text-text"
+      )}
+    >
+      {received ? <Check size={14} strokeWidth={2.5} /> : <Circle size={14} strokeWidth={1.5} />}
+      {received ? "Received" : "Pending"}
+    </button>
+  );
 }
 
 // ── Lease Payment Schedule (received toggles once the lease is signed, read-only before) ──
@@ -75,8 +110,8 @@ function LeasePaymentSchedule({
   const sortedPayments = [...(deal.lease_payments || [])].sort((a, b) => a.sort_order - b.sort_order);
 
   return (
-    <div className="bg-white border border-border-light rounded-card p-4">
-      <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Payment Schedule</h3>
+    <Card padding="sm">
+      <h3 className="text-sm font-semibold text-text mb-3">Payment schedule</h3>
       <div className="space-y-2">
         {sortedPayments
           .map((lp, i) => {
@@ -84,19 +119,18 @@ function LeasePaymentSchedule({
             return (
               <div
                 key={lp.id}
-                className={`flex items-center justify-between py-2 px-3 rounded-btn border transition-colors ${
-                  lp.received
-                    ? "border-green/30 bg-green/5"
-                    : "border-border-light"
-                }`}
+                className={cn(
+                  "flex items-center justify-between py-2 px-3 rounded-control border transition-colors",
+                  lp.received ? "border-accent/40 bg-accent-soft/50" : "border-border"
+                )}
               >
                 <div className="flex items-center gap-3 min-w-0">
-                  <span className="text-xs font-medium text-medium-gray whitespace-nowrap">{leasePaymentLabel(i, sortedPayments.length)}</span>
+                  <span className="text-xs font-medium text-text-2 whitespace-nowrap">{leasePaymentLabel(i, sortedPayments.length)}</span>
                   <div className="min-w-0">
-                    <p className="text-sm text-charcoal font-medium">
+                    <p className="text-sm text-text font-medium">
                       {lp.percent}% — {formatCurrency(amount)}
                     </p>
-                    <p className="text-xs text-muted-gray">
+                    <p className="text-xs text-text-3">
                       {lp.payment_date ? formatDate(lp.payment_date) : (
                         lp.offset_days !== null ? (
                           lp.offset_days === 0
@@ -105,7 +139,7 @@ function LeasePaymentSchedule({
                         ) : "Date TBD"
                       )}
                       {lp.received && lp.received_date && (
-                        <span className="ml-1 text-green">· Received {formatDate(lp.received_date)}</span>
+                        <span className="ml-1 text-accent-strong">· Received {formatDate(lp.received_date)}</span>
                       )}
                     </p>
                   </div>
@@ -113,33 +147,10 @@ function LeasePaymentSchedule({
 
                 {/* Received toggle button — only for closed deals */}
                 {onToggleReceived ? (
-                  <button
-                    onClick={() => onToggleReceived(lp.id, !lp.received)}
-                    className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
-                      lp.received
-                        ? "bg-green/10 border-green text-green"
-                        : "border-border-light text-medium-gray hover:border-green hover:text-green"
-                    }`}
-                  >
-                    {lp.received ? (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                        Received
-                      </>
-                    ) : (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                          <circle cx="12" cy="12" r="10" />
-                        </svg>
-                        Pending
-                      </>
-                    )}
-                  </button>
+                  <ReceivedToggle received={!!lp.received} onClick={() => onToggleReceived(lp.id, !lp.received)} />
                 ) : (
                   /* Read-only label for active deals */
-                  <span className="text-xs text-muted-gray italic">
+                  <span className="text-xs text-text-3">
                     {lp.offset_days !== null ? (
                       lp.offset_days === 0 ? "At close" : `${lp.offset_days}d after ${lp.offset_from === "previous" ? "prev" : "close"}`
                     ) : "Scheduled"}
@@ -152,48 +163,33 @@ function LeasePaymentSchedule({
 
       {/* W9 / Invoice from outside broker — always shown, N/A when there's no outside broker */}
       {onSetW9Status && (
-        <div className={`mt-2 flex items-center justify-between py-2 px-3 rounded-btn border transition-colors ${
-          deal.w9_status === "received" ? "border-green/30 bg-green/5" : "border-border-light"
-        }`}>
+        <div
+          className={cn(
+            "mt-2 flex items-center justify-between py-2 px-3 rounded-control border transition-colors",
+            deal.w9_status === "received" ? "border-accent/40 bg-accent-soft/50" : "border-border"
+          )}
+        >
           <div className="min-w-0">
-            <p className="text-sm text-charcoal font-medium">W9 &amp; Invoice — Outside Broker</p>
-            <p className="text-xs text-muted-gray">
+            <p className="text-sm text-text font-medium">W9 &amp; invoice — outside broker</p>
+            <p className="text-xs text-text-3">
               {deal.w9_status === "received" ? "Received" : deal.w9_status === "na" ? "Not applicable" : "Needed before paying an outside broker"}
             </p>
           </div>
           {/* Three-state control: Pending → Received, or mark N/A when no outside broker is involved */}
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <button
+            <ReceivedToggle
+              received={deal.w9_status === "received"}
               onClick={() => onSetW9Status(deal.w9_status === "received" ? "pending" : "received")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
-                deal.w9_status === "received"
-                  ? "bg-green/10 border-green text-green"
-                  : "border-border-light text-medium-gray hover:border-green hover:text-green"
-              }`}
-            >
-              {deal.w9_status === "received" ? (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  Received
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="12" cy="12" r="10" />
-                  </svg>
-                  Pending
-                </>
-              )}
-            </button>
+            />
             <button
+              type="button"
               onClick={() => onSetW9Status(deal.w9_status === "na" ? "pending" : "na")}
-              className={`px-2.5 py-1.5 text-xs font-medium rounded-btn border transition-colors duration-200 ${
+              className={cn(
+                "h-control-sm px-2.5 text-xs font-medium rounded-control border transition-colors duration-150",
                 deal.w9_status === "na"
-                  ? "bg-charcoal/5 border-charcoal/30 text-charcoal"
-                  : "border-border-light text-muted-gray hover:border-charcoal/30 hover:text-charcoal"
-              }`}
+                  ? "bg-surface-2 border-border-strong text-text"
+                  : "border-border text-text-3 hover:border-border-strong hover:text-text"
+              )}
               title="No outside broker on this deal"
             >
               N/A
@@ -201,11 +197,13 @@ function LeasePaymentSchedule({
           </div>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
 export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDelete, onClose }: DealDetailProps) {
+  // Toast replaces the old native browser alert for "no changes detected"
+  const toast = useToast();
   const { instance, accounts } = useMsal();
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -439,7 +437,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
 
     if (diff.length === 0) {
       // No changes detected — brief message, don't enter review mode
-      alert("No changes detected in this document.");
+      toast.info("No changes detected in this document.");
       return;
     }
 
@@ -450,7 +448,7 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
     setStageSuggestion(suggestion);
     setUpdateDocType(extracted.document_type || "other");
     setShowUpdateReview(true);
-  }, [deal]);
+  }, [deal, toast]);
 
   // ── Document update: approve selected changes ──
   const handleApproveUpdate = useCallback(async (items: DealDiffItem[], newStatus?: DealStatus) => {
@@ -568,500 +566,433 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
 
   const isActive = deal.status !== "closed" && deal.status !== "cancelled";
 
+  // Footer actions depend on status: active → Edit / Close / Cancel; closed → Edit; cancelled → Delete
+  const footerActions = isActive ? (
+    <>
+      <Button variant="ghost" onClick={() => setShowCancelModal(true)}>
+        Cancel deal
+      </Button>
+      <Button variant="secondary" onClick={() => setEditing(true)}>
+        Edit
+      </Button>
+      <Button
+        onClick={() => {
+          // Reset close modal state each time it opens
+          setCloseDate("");
+          setCloseCommission(String((deal.commission_rate || 0) * 100));
+          setCommissionVerified(false);
+          setShowCloseModal(true);
+        }}
+      >
+        Close deal
+      </Button>
+    </>
+  ) : deal.status === "closed" ? (
+    <Button variant="secondary" onClick={() => setEditing(true)}>
+      Edit
+    </Button>
+  ) : deal.status === "cancelled" ? (
+    /* Delete only available for cancelled deals — intentional 2-step process */
+    <Button variant="danger" onClick={() => setShowDeleteModal(true)} title="Permanently delete this deal">
+      Delete
+    </Button>
+  ) : null;
+
   return (
     <>
-      {/* Slide-over panel */}
-      <div className="fixed inset-0 z-40 flex justify-end">
-        {/* Backdrop */}
-        <div className="absolute inset-0 bg-black/20" onClick={onClose} />
+      {/* Slide-over panel (SlideOver primitive — overlay, Escape closes, sticky header/footer) */}
+      <SlideOver
+        open
+        onClose={onClose}
+        width="lg"
+        title={deal.deal_name}
+        description={deal.property_address || undefined}
+        headerActions={
+          /* Active lease deals show their board stage; everything else shows status */
+          <Badge tone={STATUS_TONE[deal.status] || "neutral"}>
+            {deal.deal_type === "lease" && isActive
+              ? LEASE_STAGE_LABELS[getLeaseStage(deal)]
+              : STATUS_LABELS[deal.status]}
+          </Badge>
+        }
+        footer={footerActions}
+      >
+        <div className="space-y-4">
+          {/* Document drop zone — only for active deals, hidden during review */}
+          {isActive && !showUpdateReview && (
+            <FileDropZone
+              compact
+              onExtracted={handleUpdateExtracted}
+              onFileReady={(file) => {
+                setUpdatePendingFile(file);
+                setUpdateFileName(file.name);
+              }}
+            />
+          )}
 
-        {/* Panel */}
-        <div className="relative bg-light-gray w-full max-w-lg overflow-y-auto">
-          {/* Header */}
-          <div className="sticky top-0 bg-white border-b border-[#E0E0E0] px-6 py-5 z-10">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <h2 className="font-bebas text-2xl tracking-wide text-[#1A1A1A] truncate">
-                  {deal.deal_name}
-                </h2>
-                {deal.property_address && (
-                  <p className="text-sm text-[rgba(0,0,0,0.45)] truncate">{deal.property_address}</p>
-                )}
+          {/* Document update review mode — replaces normal body content */}
+          {showUpdateReview ? (
+            <DealUpdateReview
+              diffItems={diffItems}
+              stageSuggestion={stageSuggestion}
+              fileName={updateFileName}
+              documentType={updateDocType}
+              approving={approving}
+              onApprove={handleApproveUpdate}
+              onCancel={handleCancelUpdate}
+            />
+          ) : (
+          <>
+          {/* Commission breakdown */}
+          <CommissionCalc deal={deal} brokerId={brokerId} />
+
+          {/* Lease Payment Schedule — shows for lease deals with payments.
+              Received toggles unlock once the lease is signed (or the deal is closed). */}
+          {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
+            <LeasePaymentSchedule
+              deal={deal}
+              onToggleReceived={
+                deal.status === "closed" || isLeasePaymentPhase(deal) ? handleToggleReceived : undefined
+              }
+              onSetW9Status={deal.status !== "cancelled" ? handleSetW9Status : undefined}
+            />
+          )}
+
+          {/* Timeline */}
+          <TimelineBar deal={deal} />
+
+          {/* Deal info */}
+          <Card padding="sm">
+            <h3 className="text-sm font-semibold text-text mb-3">Details</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-text-2">Type</span>
+                <span className="font-medium text-text capitalize">{deal.deal_type}</span>
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                {/* Active lease deals show their board stage; everything else shows status */}
-                <span className={`text-xs font-medium px-2 py-0.5 rounded border ${STATUS_COLORS[deal.status]}`}>
-                  {deal.deal_type === "lease" && isActive
-                    ? LEASE_STAGE_LABELS[getLeaseStage(deal)]
-                    : STATUS_LABELS[deal.status]}
-                </span>
-                <button
-                  onClick={onClose}
-                  className="text-muted-gray hover:text-charcoal transition-colors p-1"
-                >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </button>
+              <div className="flex justify-between">
+                <span className="text-text-2">Effective date</span>
+                <span className="font-medium text-text">{formatDate(deal.effective_date)}</span>
               </div>
-            </div>
-
-            {/* Action buttons */}
-            {isActive ? (
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => setEditing(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-[#E0E0E0] text-[#1A1A1A] rounded-btn
-                             hover:border-[#999] transition-colors duration-200"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => {
-                    // Reset close modal state each time it opens
-                    setCloseDate("");
-                    setCloseCommission(String((deal.commission_rate || 0) * 100));
-                    setCommissionVerified(false);
-                    setShowCloseModal(true);
-                  }}
-                  className="px-3 py-1.5 text-xs font-medium bg-green text-black uppercase tracking-wide rounded-btn
-                             hover:bg-green/90 transition-colors duration-200"
-                >
-                  Close Deal
-                </button>
-                <button
-                  onClick={() => setShowCancelModal(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-red-400/50 text-red-400 rounded-btn
-                             hover:bg-red-400/10 transition-colors duration-200"
-                >
-                  Cancel Deal
-                </button>
+              <div className="flex justify-between">
+                <span className="text-text-2">Escrow open</span>
+                <span className="font-medium text-text">{formatDate(deal.escrow_open_date)}</span>
               </div>
-            ) : deal.status === "closed" ? (
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => setEditing(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-[#E0E0E0] text-[#1A1A1A] rounded-btn
-                             hover:border-[#999] transition-colors duration-200"
-                >
-                  Edit
-                </button>
-              </div>
-            ) : deal.status === "cancelled" ? (
-              /* Delete only available for cancelled deals — intentional 2-step process */
-              <div className="flex gap-2 mt-3">
-                <button
-                  onClick={() => setShowDeleteModal(true)}
-                  className="px-3 py-1.5 text-xs font-medium border border-red-400/50 text-red-400 rounded-btn
-                             hover:bg-red-400/10 transition-colors duration-200"
-                  title="Permanently delete this deal"
-                >
-                  Delete
-                </button>
-              </div>
-            ) : null}
-          </div>
-
-          {/* Body */}
-          <div className="px-6 py-4 space-y-4">
-            {/* Document drop zone — only for active deals, hidden during review */}
-            {isActive && !showUpdateReview && (
-              <FileDropZone
-                compact
-                onExtracted={handleUpdateExtracted}
-                onFileReady={(file) => {
-                  setUpdatePendingFile(file);
-                  setUpdateFileName(file.name);
-                }}
-              />
-            )}
-
-            {/* Document update review mode — replaces normal body content */}
-            {showUpdateReview ? (
-              <DealUpdateReview
-                diffItems={diffItems}
-                stageSuggestion={stageSuggestion}
-                fileName={updateFileName}
-                documentType={updateDocType}
-                approving={approving}
-                onApprove={handleApproveUpdate}
-                onCancel={handleCancelUpdate}
-              />
-            ) : (
-            <>
-            {/* Commission breakdown */}
-            <CommissionCalc deal={deal} brokerId={brokerId} />
-
-            {/* Lease Payment Schedule — shows for lease deals with payments.
-                Received toggles unlock once the lease is signed (or the deal is closed). */}
-            {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
-              <LeasePaymentSchedule
-                deal={deal}
-                onToggleReceived={
-                  deal.status === "closed" || isLeasePaymentPhase(deal) ? handleToggleReceived : undefined
-                }
-                onSetW9Status={deal.status !== "cancelled" ? handleSetW9Status : undefined}
-              />
-            )}
-
-            {/* Timeline */}
-            <TimelineBar deal={deal} />
-
-            {/* Deal info */}
-            <div className="bg-white border border-border-light rounded-card p-4">
-              <h3 className="font-dm font-semibold text-sm text-charcoal mb-3">Details</h3>
-              <div className="space-y-2 text-sm">
+              {deal.escrow_company && (
                 <div className="flex justify-between">
-                  <span className="text-medium-gray">Type</span>
-                  <span className="font-medium capitalize">{deal.deal_type}</span>
+                  <span className="text-text-2">Escrow company</span>
+                  <span className="font-medium text-text">{deal.escrow_company}</span>
                 </div>
+              )}
+              {deal.escrow_number && (
                 <div className="flex justify-between">
-                  <span className="text-medium-gray">Effective Date</span>
-                  <span className="font-medium">{formatDate(deal.effective_date)}</span>
+                  <span className="text-text-2">Escrow number</span>
+                  <span className="font-medium text-text">{deal.escrow_number}</span>
                 </div>
-                <div className="flex justify-between">
-                  <span className="text-medium-gray">Escrow Open</span>
-                  <span className="font-medium">{formatDate(deal.escrow_open_date)}</span>
-                </div>
-                {deal.escrow_company && (
-                  <div className="flex justify-between">
-                    <span className="text-medium-gray">Escrow Company</span>
-                    <span className="font-medium">{deal.escrow_company}</span>
-                  </div>
-                )}
-                {deal.escrow_number && (
-                  <div className="flex justify-between">
-                    <span className="text-medium-gray">Escrow Number</span>
-                    <span className="font-medium">{deal.escrow_number}</span>
-                  </div>
-                )}
+              )}
 
-                {/* Dynamic dates from deal_dates */}
-                {deal.deal_dates && deal.deal_dates.length > 0 ? (
-                  deal.deal_dates
-                    .sort((a, b) => a.sort_order - b.sort_order)
-                    .map((dd) => (
-                      <div key={dd.id} className="flex justify-between">
-                        <span className="text-medium-gray">{dd.label}</span>
-                        <span className="font-medium">
-                          {formatDate(dd.date)}
-                          {dd.offset_days && (
-                            <span className="text-xs text-muted-gray ml-1">
-                              ({dd.offset_days}d)
-                            </span>
-                          )}
-                        </span>
-                      </div>
-                    ))
-                ) : (
-                  /* Legacy fallback — show old fixed fields */
-                  <>
-                    {deal.feasibility_days && (
-                      <div className="flex justify-between">
-                        <span className="text-medium-gray">Feasibility Period</span>
-                        <span className="font-medium">{deal.feasibility_days} days</span>
-                      </div>
-                    )}
-                    {deal.inside_close_days && (
-                      <div className="flex justify-between">
-                        <span className="text-medium-gray">Inside Close Period</span>
-                        <span className="font-medium">{deal.inside_close_days} days</span>
-                      </div>
-                    )}
-                    {deal.outside_close_days && (
-                      <div className="flex justify-between">
-                        <span className="text-medium-gray">Outside Close Period</span>
-                        <span className="font-medium">{deal.outside_close_days} days</span>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {deal.actual_close_date && (
-                  <div className="flex justify-between">
-                    <span className="text-medium-gray">Actual Close Date</span>
-                    <span className="font-medium">{formatDate(deal.actual_close_date)}</span>
-                  </div>
-                )}
-                {deal.cancel_reason && (
-                  <div className="flex justify-between">
-                    <span className="text-medium-gray">Cancel Reason</span>
-                    <span className="font-medium">{deal.cancel_reason}</span>
-                  </div>
-                )}
-                <div className="flex justify-between">
-                  <span className="text-medium-gray">Price</span>
-                  <span className="font-medium">{formatCurrency(deal.price)}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Documents — always shown */}
-            <div className="bg-white border border-border-light rounded-card p-4">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-dm font-semibold text-sm text-charcoal">Documents</h3>
-                {deal.sharepoint_folder_url ? (
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => setShowFolderPicker(true)}
-                      className="text-xs text-muted-gray hover:text-charcoal transition-colors"
-                      title="Change linked folder"
-                    >
-                      Change Folder
-                    </button>
-                    <a
-                      href={deal.sharepoint_folder_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-xs text-green hover:underline"
-                    >
-                      Open in SharePoint
-                    </a>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowFolderPicker(true)}
-                    className="text-xs text-green font-medium hover:underline"
-                  >
-                    Link Folder
-                  </button>
-                )}
-              </div>
-
-              {!deal.sharepoint_folder_url ? (
-                /* No folder linked — prompt to link one */
-                <div className="text-center py-6">
-                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="1.5" className="mx-auto mb-2">
-                    <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                  </svg>
-                  <p className="text-sm text-muted-gray mb-2">No folder linked to this deal</p>
-                  <button
-                    onClick={() => setShowFolderPicker(true)}
-                    className="text-sm text-green font-medium hover:underline"
-                  >
-                    Browse SharePoint to link a folder
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Breadcrumb for subfolder navigation */}
-                  {browsingSubpath && (
-                    <div className="flex items-center gap-1 mb-2 text-xs flex-wrap">
-                      <button
-                        onClick={() => setBrowsingSubpath("")}
-                        className="text-medium-gray hover:text-green transition-colors"
-                      >
-                        Root
-                      </button>
-                      {browsingSubpath.split("/").map((segment, i, arr) => {
-                        const subpath = arr.slice(0, i + 1).join("/");
-                        return (
-                          <span key={subpath} className="flex items-center gap-1">
-                            <span className="text-muted-gray">/</span>
-                            <button
-                              onClick={() => setBrowsingSubpath(subpath)}
-                              className={`transition-colors ${
-                                i === arr.length - 1
-                                  ? "text-charcoal font-medium"
-                                  : "text-medium-gray hover:text-green"
-                              }`}
-                            >
-                              {segment}
-                            </button>
+              {/* Dynamic dates from deal_dates */}
+              {deal.deal_dates && deal.deal_dates.length > 0 ? (
+                deal.deal_dates
+                  .sort((a, b) => a.sort_order - b.sort_order)
+                  .map((dd) => (
+                    <div key={dd.id} className="flex justify-between">
+                      <span className="text-text-2">{dd.label}</span>
+                      <span className="font-medium text-text">
+                        {formatDate(dd.date)}
+                        {dd.offset_days && (
+                          <span className="text-xs text-text-3 ml-1">
+                            ({dd.offset_days}d)
                           </span>
-                        );
-                      })}
+                        )}
+                      </span>
+                    </div>
+                  ))
+              ) : (
+                /* Legacy fallback — show old fixed fields */
+                <>
+                  {deal.feasibility_days && (
+                    <div className="flex justify-between">
+                      <span className="text-text-2">Feasibility period</span>
+                      <span className="font-medium text-text">{deal.feasibility_days} days</span>
                     </div>
                   )}
-
-                  {/* File drop zone for direct upload */}
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={(e) => {
-                      e.preventDefault();
-                      setDragOver(false);
-                      if (e.dataTransfer.files.length > 0) {
-                        handleDirectUpload(e.dataTransfer.files);
-                      }
-                    }}
-                    className={`border border-dashed rounded-btn px-3 py-2 mb-3 text-center transition-colors cursor-pointer ${
-                      dragOver
-                        ? "border-green bg-green/5"
-                        : "border-border-light hover:border-[#999]"
-                    }`}
-                    onClick={() => {
-                      // Click to browse files
-                      const input = document.createElement("input");
-                      input.type = "file";
-                      input.multiple = true;
-                      input.onchange = () => {
-                        if (input.files && input.files.length > 0) {
-                          handleDirectUpload(input.files);
-                        }
-                      };
-                      input.click();
-                    }}
-                  >
-                    {uploading ? (
-                      <div className="flex items-center justify-center gap-2 py-1">
-                        <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
-                        <span className="text-xs text-muted-gray">Uploading...</span>
-                      </div>
-                    ) : (
-                      <p className="text-xs text-muted-gray py-1">
-                        Drop files here to upload{browsingSubpath ? ` to ${browsingSubpath.split("/").pop()}` : ""}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Folder contents list */}
-                  {filesLoading ? (
-                    <div className="flex items-center gap-2 py-3">
-                      <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
-                      <span className="text-xs text-muted-gray">Loading...</span>
+                  {deal.inside_close_days && (
+                    <div className="flex justify-between">
+                      <span className="text-text-2">Inside close period</span>
+                      <span className="font-medium text-text">{deal.inside_close_days} days</span>
                     </div>
-                  ) : folderContents.length === 0 ? (
-                    <p className="text-xs text-muted-gray py-2">
-                      This folder is empty
-                    </p>
-                  ) : (
-                    <div className="space-y-0.5">
-                      {/* Back button when in a subfolder */}
-                      {browsingSubpath && (
-                        <button
-                          onClick={() => {
-                            const parts = browsingSubpath.split("/");
-                            parts.pop();
-                            setBrowsingSubpath(parts.join("/"));
-                          }}
-                          className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-light-gray transition-colors w-full text-left"
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2">
-                            <polyline points="15 18 9 12 15 6" />
-                          </svg>
-                          <span className="text-xs text-medium-gray">..</span>
-                        </button>
-                      )}
-                      {folderContents.map((item) => (
-                        <div
-                          key={item.id}
-                          className="flex items-center justify-between py-1.5 px-2 rounded hover:bg-light-gray transition-colors group"
-                        >
-                          {item.isFolder ? (
-                            /* Folder row — click to drill in */
-                            <button
-                              onClick={() => {
-                                setBrowsingSubpath(
-                                  browsingSubpath ? `${browsingSubpath}/${item.name}` : item.name
-                                );
-                              }}
-                              className="flex items-center gap-2 min-w-0 flex-1 text-left"
-                            >
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="#F59E0B" stroke="#D97706" strokeWidth="1" className="flex-shrink-0">
-                                <path d="M2 6a2 2 0 012-2h5l2 2h9a2 2 0 012 2v10a2 2 0 01-2 2H4a2 2 0 01-2-2V6z" />
-                              </svg>
-                              <div className="min-w-0">
-                                <p className="text-sm text-charcoal truncate">{item.name}</p>
-                                {item.childCount > 0 && (
-                                  <p className="text-xs text-muted-gray">{item.childCount} items</p>
-                                )}
-                              </div>
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#999" strokeWidth="2" className="flex-shrink-0 ml-auto opacity-0 group-hover:opacity-100 transition-opacity">
-                                <polyline points="9 18 15 12 9 6" />
-                              </svg>
-                            </button>
-                          ) : (
-                            /* File row */
-                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                              <FileIcon name={item.name} />
-                              <div className="min-w-0">
-                                <p className="text-sm text-charcoal truncate">{item.name}</p>
-                                <p className="text-xs text-muted-gray">
-                                  {formatFileSize(item.size)}
-                                  {item.lastModified && (
-                                    <> · {new Date(item.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>
-                                  )}
-                                </p>
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Action buttons */}
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {!item.isFolder && item.downloadUrl ? (
-                              <a
-                                href={item.downloadUrl}
-                                download={item.name}
-                                className="p-1 text-muted-gray hover:text-charcoal transition-colors"
-                                title="Download"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                                  <polyline points="7 10 12 15 17 10" />
-                                  <line x1="12" y1="15" x2="12" y2="3" />
-                                </svg>
-                              </a>
-                            ) : !item.isFolder ? (
-                              <a
-                                href={item.webUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1 text-muted-gray hover:text-charcoal transition-colors"
-                                title="Open in SharePoint"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                  <polyline points="15 3 21 3 21 9" />
-                                  <line x1="10" y1="14" x2="21" y2="3" />
-                                </svg>
-                              </a>
-                            ) : (
-                              /* Folder — open in SharePoint */
-                              <a
-                                href={item.webUrl}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="p-1 text-muted-gray hover:text-charcoal transition-colors opacity-0 group-hover:opacity-100"
-                                title="Open in SharePoint"
-                              >
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                  <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" />
-                                  <polyline points="15 3 21 3 21 9" />
-                                  <line x1="10" y1="14" x2="21" y2="3" />
-                                </svg>
-                              </a>
-                            )}
-                          </div>
-                        </div>
-                      ))}
+                  )}
+                  {deal.outside_close_days && (
+                    <div className="flex justify-between">
+                      <span className="text-text-2">Outside close period</span>
+                      <span className="font-medium text-text">{deal.outside_close_days} days</span>
                     </div>
                   )}
                 </>
               )}
+
+              {deal.actual_close_date && (
+                <div className="flex justify-between">
+                  <span className="text-text-2">Actual close date</span>
+                  <span className="font-medium text-text">{formatDate(deal.actual_close_date)}</span>
+                </div>
+              )}
+              {deal.cancel_reason && (
+                <div className="flex justify-between">
+                  <span className="text-text-2">Cancel reason</span>
+                  <span className="font-medium text-text">{deal.cancel_reason}</span>
+                </div>
+              )}
+              <div className="flex justify-between">
+                <span className="text-text-2">Price</span>
+                <span className="font-medium text-text tabular-nums">{formatCurrency(deal.price)}</span>
+              </div>
+            </div>
+          </Card>
+
+          {/* Documents — always shown */}
+          <Card padding="sm">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-text">Documents</h3>
+              {deal.sharepoint_folder_url ? (
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" onClick={() => setShowFolderPicker(true)} title="Change linked folder">
+                    Change folder
+                  </Button>
+                  <a
+                    href={deal.sharepoint_folder_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 h-control-sm px-2 text-sm font-medium text-text-2 hover:text-text rounded-control hover:bg-surface-2 transition-colors"
+                  >
+                    Open in SharePoint
+                    <ExternalLink size={14} strokeWidth={1.75} />
+                  </a>
+                </div>
+              ) : (
+                <Button variant="secondary" size="sm" onClick={() => setShowFolderPicker(true)}>
+                  Link folder
+                </Button>
+              )}
             </div>
 
-            {/* Notes */}
-            <div className="bg-white border border-border-light rounded-card p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-dm font-semibold text-sm text-charcoal">Notes</h3>
-                {notesSaving && <span className="text-xs text-muted-gray">Saving...</span>}
+            {!deal.sharepoint_folder_url ? (
+              /* No folder linked — prompt to link one */
+              <div className="text-center py-6">
+                <Folder size={32} strokeWidth={1.5} className="mx-auto mb-2 text-text-3" />
+                <p className="text-sm text-text-3 mb-3">No folder linked to this deal</p>
+                <Button variant="secondary" size="sm" onClick={() => setShowFolderPicker(true)}>
+                  Browse SharePoint to link a folder
+                </Button>
               </div>
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                onBlur={handleNotesBlur}
-                rows={4}
-                className="w-full border border-border-light rounded-btn px-3 py-2 text-sm resize-none"
-                placeholder="Add notes about this deal..."
-              />
-            </div>
-            </>
+            ) : (
+              <>
+                {/* Breadcrumb for subfolder navigation */}
+                {browsingSubpath && (
+                  <div className="flex items-center gap-1 mb-2 text-xs flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => setBrowsingSubpath("")}
+                      className="text-text-2 hover:text-text transition-colors"
+                    >
+                      Root
+                    </button>
+                    {browsingSubpath.split("/").map((segment, i, arr) => {
+                      const subpath = arr.slice(0, i + 1).join("/");
+                      return (
+                        <span key={subpath} className="flex items-center gap-1">
+                          <ChevronRight size={12} strokeWidth={1.75} className="text-text-3" />
+                          <button
+                            type="button"
+                            onClick={() => setBrowsingSubpath(subpath)}
+                            className={cn(
+                              "transition-colors",
+                              i === arr.length - 1 ? "text-text font-medium" : "text-text-2 hover:text-text"
+                            )}
+                          >
+                            {segment}
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* File drop zone for direct upload */}
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+                  onDragLeave={() => setDragOver(false)}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    setDragOver(false);
+                    if (e.dataTransfer.files.length > 0) {
+                      handleDirectUpload(e.dataTransfer.files);
+                    }
+                  }}
+                  className={cn(
+                    "border border-dashed rounded-control px-3 py-2 mb-3 text-center transition-colors cursor-pointer",
+                    dragOver ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong"
+                  )}
+                  onClick={() => {
+                    // Click to browse files
+                    const input = document.createElement("input");
+                    input.type = "file";
+                    input.multiple = true;
+                    input.onchange = () => {
+                      if (input.files && input.files.length > 0) {
+                        handleDirectUpload(input.files);
+                      }
+                    };
+                    input.click();
+                  }}
+                >
+                  {uploading ? (
+                    <div className="flex items-center justify-center gap-2 py-1">
+                      <Spinner size="sm" />
+                      <span className="text-xs text-text-3">Uploading...</span>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-text-3 py-1">
+                      Drop files here to upload{browsingSubpath ? ` to ${browsingSubpath.split("/").pop()}` : ""}
+                    </p>
+                  )}
+                </div>
+
+                {/* Folder contents list */}
+                {filesLoading ? (
+                  <div className="flex items-center gap-2 py-3">
+                    <Spinner size="sm" />
+                    <span className="text-xs text-text-3">Loading...</span>
+                  </div>
+                ) : folderContents.length === 0 ? (
+                  <p className="text-xs text-text-3 py-2">
+                    This folder is empty
+                  </p>
+                ) : (
+                  <div className="space-y-0.5">
+                    {/* Back button when in a subfolder */}
+                    {browsingSubpath && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const parts = browsingSubpath.split("/");
+                          parts.pop();
+                          setBrowsingSubpath(parts.join("/"));
+                        }}
+                        className="flex items-center gap-2 py-1.5 px-2 rounded-control hover:bg-surface-2 transition-colors w-full text-left"
+                      >
+                        <ChevronLeft size={14} strokeWidth={2} className="text-text-3" />
+                        <span className="text-xs text-text-2">..</span>
+                      </button>
+                    )}
+                    {folderContents.map((item) => (
+                      <div
+                        key={item.id}
+                        className="flex items-center justify-between py-1.5 px-2 rounded-control hover:bg-surface-2 transition-colors group"
+                      >
+                        {item.isFolder ? (
+                          /* Folder row — click to drill in */
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBrowsingSubpath(
+                                browsingSubpath ? `${browsingSubpath}/${item.name}` : item.name
+                              );
+                            }}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left"
+                          >
+                            <Folder size={16} strokeWidth={1.75} className="flex-shrink-0 text-text-2" />
+                            <div className="min-w-0">
+                              <p className="text-sm text-text truncate">{item.name}</p>
+                              {item.childCount > 0 && (
+                                <p className="text-xs text-text-3">{item.childCount} items</p>
+                              )}
+                            </div>
+                            <ChevronRight
+                              size={14}
+                              strokeWidth={2}
+                              className="flex-shrink-0 ml-auto text-text-3 opacity-0 group-hover:opacity-100 transition-opacity"
+                            />
+                          </button>
+                        ) : (
+                          /* File row */
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <FileIcon name={item.name} />
+                            <div className="min-w-0">
+                              <p className="text-sm text-text truncate">{item.name}</p>
+                              <p className="text-xs text-text-3">
+                                {formatFileSize(item.size)}
+                                {item.lastModified && (
+                                  <> · {new Date(item.lastModified).toLocaleDateString("en-US", { month: "short", day: "numeric" })}</>
+                                )}
+                              </p>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          {!item.isFolder && item.downloadUrl ? (
+                            <a
+                              href={item.downloadUrl}
+                              download={item.name}
+                              className="p-1 rounded-control text-text-3 hover:text-text transition-colors"
+                              title="Download"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <Download size={14} strokeWidth={1.75} />
+                            </a>
+                          ) : !item.isFolder ? (
+                            <a
+                              href={item.webUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1 rounded-control text-text-3 hover:text-text transition-colors"
+                              title="Open in SharePoint"
+                            >
+                              <ExternalLink size={14} strokeWidth={1.75} />
+                            </a>
+                          ) : (
+                            /* Folder — open in SharePoint */
+                            <a
+                              href={item.webUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="p-1 rounded-control text-text-3 hover:text-text transition-colors opacity-0 group-hover:opacity-100"
+                              title="Open in SharePoint"
+                            >
+                              <ExternalLink size={14} strokeWidth={1.75} />
+                            </a>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
             )}
-          </div>
+          </Card>
+
+          {/* Notes */}
+          <Card padding="sm">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-text">Notes</h3>
+              {notesSaving && <span className="text-xs text-text-3">Saving...</span>}
+            </div>
+            {/* Textarea primitive — same value/onBlur autosave as before */}
+            <Textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              onBlur={handleNotesBlur}
+              rows={4}
+              className="resize-none"
+              placeholder="Add notes about this deal..."
+            />
+          </Card>
+          </>
+          )}
         </div>
-      </div>
+      </SlideOver>
 
       {/* Edit form modal */}
       {editing && (
@@ -1076,131 +1007,116 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
         />
       )}
 
-      {/* Close deal confirmation — with commission verification */}
-      {showCloseModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setShowCloseModal(false)} />
-          <div className="relative bg-white rounded-card border border-border-light p-6 w-full max-w-md mx-4">
-            <h3 className="font-dm font-semibold text-lg text-charcoal mb-2">Close Deal</h3>
-            <p className="text-sm text-medium-gray mb-4">Mark &ldquo;{deal.deal_name}&rdquo; as closed?</p>
+      {/* Close deal confirmation — with commission verification (Modal primitive) */}
+      <Modal
+        open={showCloseModal}
+        onClose={() => setShowCloseModal(false)}
+        size="sm"
+        title="Close deal"
+        description={`Mark "${deal.deal_name}" as closed?`}
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowCloseModal(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCloseDeal} disabled={!commissionVerified}>
+              Close deal
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          {/* Close date */}
+          <Field label="Close date">
+            <Input
+              type="date"
+              value={closeDate}
+              onChange={(e) => setCloseDate(e.target.value)}
+            />
+          </Field>
 
-            {/* Close date */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-charcoal mb-1">Close Date</label>
-              <input
-                type="date"
-                value={closeDate}
-                onChange={(e) => setCloseDate(e.target.value)}
-                className="w-full border border-border-light rounded-btn px-3 py-2 text-sm"
+          {/* Commission verification */}
+          <Field label="Commission rate (%)">
+            <div className="flex items-center gap-3">
+              <Input
+                type="number"
+                step="0.1"
+                value={closeCommission}
+                onChange={(e) => {
+                  setCloseCommission(e.target.value);
+                  // Uncheck if they edit the value
+                  setCommissionVerified(false);
+                }}
+                className="flex-1"
               />
-            </div>
-
-            {/* Commission verification */}
-            <div className="mb-4">
-              <label className="block text-sm font-medium text-charcoal mb-1">Commission Rate (%)</label>
-              <div className="flex items-center gap-3">
-                <input
-                  type="number"
-                  step="0.1"
-                  value={closeCommission}
-                  onChange={(e) => {
-                    setCloseCommission(e.target.value);
-                    // Uncheck if they edit the value
-                    setCommissionVerified(false);
-                  }}
-                  className="flex-1 border border-border-light rounded-btn px-3 py-2 text-sm"
-                />
-                {/* Verify checkmark */}
-                <button
-                  onClick={() => setCommissionVerified(!commissionVerified)}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-btn border transition-colors duration-200
-                    ${commissionVerified
-                      ? "bg-green/10 border-green text-green"
-                      : "border-border-light text-medium-gray hover:border-[#999]"
-                    }`}
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                    <polyline points="20 6 9 17 4 12" />
-                  </svg>
-                  {commissionVerified ? "Verified" : "Verify"}
-                </button>
-              </div>
-            </div>
-
-            {/* Lease payment schedule preview — shows resolved dates based on entered close date */}
-            {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
-              <div className="mb-4 p-3 bg-light-gray rounded-btn border border-border-light">
-                <p className="text-xs font-medium text-medium-gray mb-2">Payment Schedule</p>
-                <div className="space-y-1.5">
-                  {(() => {
-                    const cDate = closeDate || new Date().toISOString().substring(0, 10);
-                    const closeDateObj = new Date(cDate + "T00:00:00");
-                    const totalComm = (deal.price || 0) * (deal.commission_rate || 0);
-                    let previousDate = closeDateObj;
-
-                    return [...deal.lease_payments]
-                      .sort((a, b) => a.sort_order - b.sort_order)
-                      .map((lp, i) => {
-                        // Resolve the payment date
-                        let resolvedDate = lp.payment_date;
-                        if (!resolvedDate && lp.offset_days !== null) {
-                          const baseDate = lp.offset_from === "previous" ? previousDate : closeDateObj;
-                          const resolved = new Date(baseDate);
-                          resolved.setDate(resolved.getDate() + (lp.offset_days || 0));
-                          resolvedDate = resolved.toISOString().substring(0, 10);
-                        }
-                        if (resolvedDate) {
-                          previousDate = new Date(resolvedDate + "T00:00:00");
-                        }
-
-                        const amount = totalComm * (lp.percent / 100);
-                        return (
-                          <div key={lp.id} className="flex items-center justify-between text-xs">
-                            <span className="text-charcoal">
-                              #{i + 1} — {lp.percent}% ({formatCurrency(amount)})
-                            </span>
-                            <span className="text-medium-gray">
-                              {resolvedDate ? formatDate(resolvedDate) : "TBD"}
-                            </span>
-                          </div>
-                        );
-                      });
-                  })()}
-                </div>
-              </div>
-            )}
-
-            {/* Buttons */}
-            <div className="flex gap-3 justify-end">
+              {/* Verify checkmark — green once verified (status) */}
               <button
-                onClick={() => setShowCloseModal(false)}
-                className="px-4 py-2 text-sm font-medium text-medium-gray border border-border-light rounded-btn
-                           hover:border-border-medium transition-colors duration-200"
+                type="button"
+                onClick={() => setCommissionVerified(!commissionVerified)}
+                className={cn(
+                  "flex items-center gap-1.5 h-control px-3 text-sm font-medium rounded-control border transition-colors duration-150 shrink-0",
+                  commissionVerified
+                    ? "bg-accent-soft border-accent text-accent-strong"
+                    : "border-border text-text-2 hover:border-border-strong hover:text-text"
+                )}
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleCloseDeal}
-                disabled={!commissionVerified}
-                className={`px-4 py-2 text-sm font-medium rounded-btn transition-colors duration-200
-                  ${commissionVerified
-                    ? "bg-green hover:bg-green/90 text-black uppercase tracking-wide"
-                    : "bg-gray-200 text-gray-400 cursor-not-allowed"
-                  }`}
-              >
-                Close Deal
+                <Check size={16} strokeWidth={2.5} />
+                {commissionVerified ? "Verified" : "Verify"}
               </button>
             </div>
-          </div>
+          </Field>
+
+          {/* Lease payment schedule preview — shows resolved dates based on entered close date */}
+          {deal.deal_type === "lease" && deal.lease_payments && deal.lease_payments.length > 0 && (
+            <div className="p-3 bg-surface-2 rounded-control border border-border">
+              <p className="text-xs font-medium text-text-2 mb-2">Payment schedule</p>
+              <div className="space-y-1.5">
+                {(() => {
+                  const cDate = closeDate || new Date().toISOString().substring(0, 10);
+                  const closeDateObj = new Date(cDate + "T00:00:00");
+                  const totalComm = (deal.price || 0) * (deal.commission_rate || 0);
+                  let previousDate = closeDateObj;
+
+                  return [...deal.lease_payments]
+                    .sort((a, b) => a.sort_order - b.sort_order)
+                    .map((lp, i) => {
+                      // Resolve the payment date
+                      let resolvedDate = lp.payment_date;
+                      if (!resolvedDate && lp.offset_days !== null) {
+                        const baseDate = lp.offset_from === "previous" ? previousDate : closeDateObj;
+                        const resolved = new Date(baseDate);
+                        resolved.setDate(resolved.getDate() + (lp.offset_days || 0));
+                        resolvedDate = resolved.toISOString().substring(0, 10);
+                      }
+                      if (resolvedDate) {
+                        previousDate = new Date(resolvedDate + "T00:00:00");
+                      }
+
+                      const amount = totalComm * (lp.percent / 100);
+                      return (
+                        <div key={lp.id} className="flex items-center justify-between text-xs">
+                          <span className="text-text">
+                            #{i + 1} — {lp.percent}% ({formatCurrency(amount)})
+                          </span>
+                          <span className="text-text-2">
+                            {resolvedDate ? formatDate(resolvedDate) : "TBD"}
+                          </span>
+                        </div>
+                      );
+                    });
+                })()}
+              </div>
+            </div>
+          )}
         </div>
-      )}
+      </Modal>
 
       {/* Cancel deal confirmation */}
       {showCancelModal && (
         <ConfirmModal
-          title="Cancel Deal"
+          title="Cancel deal"
           message={`Cancel "${deal.deal_name}"? This can be undone by editing the deal status.`}
-          confirmLabel="Cancel Deal"
+          confirmLabel="Cancel deal"
           confirmColor="red"
           showTextInput
           textInputLabel="Reason for cancellation"
@@ -1212,9 +1128,9 @@ export default function DealDetail({ deal, brokerId, allBrokers, onUpdate, onDel
       {/* Permanent delete confirmation */}
       {showDeleteModal && (
         <ConfirmModal
-          title="Delete Deal"
+          title="Delete deal"
           message={`Permanently delete "${deal.deal_name}"? This cannot be undone — the deal and all its data will be removed.`}
-          confirmLabel="Delete Forever"
+          confirmLabel="Delete forever"
           confirmColor="red"
           onConfirm={handleDeleteDeal}
           onCancel={() => setShowDeleteModal(false)}

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { ChevronRight } from "lucide-react";
 import { Campaign } from "@/lib/email/types";
+import { Badge, Button, EmptyState } from "@/components/ui";
 import CampaignCard from "../CampaignCard";
 
 interface OffScheduleSectionProps {
@@ -19,32 +21,28 @@ export default function OffScheduleSection({ waiting, finished, onSelect }: OffS
 
   return (
     <section className="mt-6">
-      <button
-        type="button"
+      {/* Disclosure toggle — chevron rotates when open */}
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-2 text-sm font-semibold text-charcoal"
+        icon={<ChevronRight size={16} strokeWidth={1.75} className={`transition-transform ${open ? "rotate-90" : ""}`} />}
+        className="-ml-2"
       >
-        <span className={`inline-block transition-transform text-muted-gray ${open ? "rotate-90" : ""}`}>▸</span>
         Not on the schedule
-        <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-light-gray text-medium-gray">
-          {waiting.length}
-        </span>
-      </button>
+        <Badge size="sm">{waiting.length}</Badge>
+      </Button>
 
       {open && (
         <div className="mt-3 space-y-2">
-          {waiting.length === 0 && <p className="text-xs text-muted-gray">Nothing waiting.</p>}
+          {waiting.length === 0 && <EmptyState compact title="Nothing waiting" />}
           {waiting.map((c) => (
             <CampaignCard key={c.id} campaign={c} onClick={onSelect} />
           ))}
           {finished.length > 0 && (
-            <button
-              type="button"
-              onClick={() => setShowFinished((s) => !s)}
-              className="mt-2 text-xs text-muted-gray hover:text-charcoal underline"
-            >
+            <Button variant="ghost" size="sm" onClick={() => setShowFinished((s) => !s)} className="mt-2 -ml-2">
               {showFinished ? "Hide" : "Show"} completed ({finished.length})
-            </button>
+            </Button>
           )}
           {showFinished && (
             <div className="space-y-2 pt-1">

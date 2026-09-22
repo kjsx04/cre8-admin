@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { Check, X } from "lucide-react";
+import { Button, Spinner } from "@/components/ui";
 
 interface SchedulingAnimationProps {
   /** Whether the actual API call has completed successfully */
@@ -114,16 +116,17 @@ export default function SchedulingAnimation({
         transitionTimingFunction: mounted ? "cubic-bezier(0.16, 1, 0.3, 1)" : "ease-in",
       }}
     >
+      {/* Floating layer — the one place a shadow is allowed */}
       <div
-        className={`bg-white rounded-lg shadow-lg border overflow-hidden transition-colors duration-300 ${
-          done ? "border-green/40" : apiError ? "border-red-300" : "border-border-light"
+        className={`bg-surface rounded-modal shadow-popover border overflow-hidden transition-colors duration-300 ${
+          done ? "border-accent/40" : apiError ? "border-danger/40" : "border-border"
         }`}
       >
-        {/* Green left accent stripe */}
+        {/* Green left accent stripe (green = success / in progress status) */}
         <div className="flex">
           <div
             className={`w-1 shrink-0 transition-colors duration-300 ${
-              done ? "bg-green" : apiError ? "bg-red-400" : "bg-green/40"
+              done ? "bg-accent" : apiError ? "bg-danger" : "bg-accent/40"
             }`}
           />
 
@@ -132,18 +135,15 @@ export default function SchedulingAnimation({
             {apiError ? (
               <div className="space-y-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 rounded-full bg-red-100 flex items-center justify-center shrink-0">
-                    <span className="text-red-500 text-xs font-bold">&times;</span>
+                  <div className="w-5 h-5 rounded-full bg-danger-bg text-danger-fg flex items-center justify-center shrink-0">
+                    <X size={12} strokeWidth={2.5} />
                   </div>
-                  <span className="text-sm text-red-600 font-medium">Scheduling failed</span>
+                  <span className="text-sm text-danger-fg font-medium">Scheduling failed</span>
                 </div>
-                <p className="text-xs text-red-500 pl-7">{apiError}</p>
-                <button
-                  onClick={onRetry}
-                  className="ml-7 px-3 py-1 bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-xs font-medium rounded-btn hover:bg-[#E0E0E0] transition-colors"
-                >
+                <p className="text-xs text-danger-fg pl-7">{apiError}</p>
+                <Button size="sm" variant="secondary" onClick={onRetry} className="ml-7">
                   Retry
-                </button>
+                </Button>
               </div>
             ) : (
               <>
@@ -151,18 +151,16 @@ export default function SchedulingAnimation({
                 <div className="flex items-center gap-2.5 mb-2">
                   {done ? (
                     // Green checkmark
-                    <div className="w-5 h-5 rounded-full bg-green flex items-center justify-center shrink-0">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                      </svg>
+                    <div className="w-5 h-5 rounded-full bg-accent text-white flex items-center justify-center shrink-0">
+                      <Check size={12} strokeWidth={3} />
                     </div>
                   ) : (
-                    // Green spinner
-                    <div className="w-5 h-5 border-2 border-green border-t-transparent rounded-full animate-spin shrink-0" />
+                    // Shared spinner primitive
+                    <Spinner size="sm" />
                   )}
                   <span
                     className={`text-sm font-semibold transition-colors duration-300 ${
-                      done ? "text-green" : "text-charcoal"
+                      done ? "text-accent-strong" : "text-text"
                     }`}
                   >
                     {activeLabel}
@@ -179,10 +177,10 @@ export default function SchedulingAnimation({
                         key={i}
                         className={`rounded-full transition-all duration-300 ${
                           isComplete
-                            ? "w-2 h-2 bg-green"
+                            ? "w-2 h-2 bg-accent"
                             : isCurrent
-                            ? "w-2.5 h-2.5 bg-green/50"
-                            : "w-1.5 h-1.5 bg-border-medium"
+                            ? "w-2.5 h-2.5 bg-accent/50"
+                            : "w-1.5 h-1.5 bg-border-strong"
                         }`}
                       />
                     );
@@ -190,7 +188,7 @@ export default function SchedulingAnimation({
                   {/* Final dot for "Scheduled!" */}
                   <div
                     className={`rounded-full transition-all duration-300 ${
-                      done ? "w-2 h-2 bg-green" : "w-1.5 h-1.5 bg-border-medium"
+                      done ? "w-2 h-2 bg-accent" : "w-1.5 h-1.5 bg-border-strong"
                     }`}
                   />
                 </div>

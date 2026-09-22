@@ -1,7 +1,9 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
+import { Image as ImageIcon } from "lucide-react";
 import type { GalleryImage } from "@/components/PackageUploader";
+import { Field, cn, useToast } from "@/components/ui";
 
 /* ============================================================
    Multi-file image uploader — adds photos to the gallery.
@@ -25,6 +27,8 @@ export default function PhotoUploader({
 }: PhotoUploaderProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Toast replaces the old browser popup for the "file too large" message
+  const toast = useToast();
 
   // Store onChange in ref
   const onChangeRef = useRef(onChange);
@@ -53,7 +57,7 @@ export default function PhotoUploader({
       }
 
       if (tooLarge.length > 0) {
-        alert(`These files exceed 4MB and were skipped:\n${tooLarge.join("\n")}`);
+        toast.error("Some photos were skipped — over 4MB", { description: tooLarge.join(", ") });
       }
 
       if (newImages.length > 0) {
@@ -61,17 +65,15 @@ export default function PhotoUploader({
         onChangeRef.current(merged, marketingIdx);
       }
     },
-    [galleryImages, marketingIdx]
+    [galleryImages, marketingIdx, toast]
   );
 
   // Count non-PDF photos
   const photoCount = galleryImages.filter((img) => !img.fromPdf).length;
 
   return (
-    <div>
-      <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-1.5">
-        Additional Photos
-      </label>
+    <Field label="Additional photos">
+      {/* Drop zone — green border only while a file is being dragged over (active state) */}
       <div
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => {
@@ -84,8 +86,10 @@ export default function PhotoUploader({
           setDragOver(false);
           if (e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
         }}
-        className={`border-2 border-dashed rounded-btn px-4 py-5 text-center cursor-pointer transition-colors
-          ${dragOver ? "border-green bg-[#F0F9E5]" : "border-[#DDD] hover:border-[#BBB]"}`}
+        className={cn(
+          "border-2 border-dashed rounded-control px-4 py-5 text-center cursor-pointer transition-colors",
+          dragOver ? "border-accent bg-accent-soft" : "border-border-strong hover:border-text-3"
+        )}
       >
         <input
           ref={inputRef}
@@ -98,16 +102,16 @@ export default function PhotoUploader({
             e.target.value = "";
           }}
         />
-        <div className="text-lg mb-1">&#128247;</div>
-        <p className="text-sm text-[#666]">
+        <ImageIcon size={20} strokeWidth={1.75} className="mx-auto mb-1.5 text-text-3" />
+        <p className="text-sm text-text-2">
           {photoCount > 0
             ? `${photoCount} photo${photoCount > 1 ? "s" : ""} added — click to add more`
             : "Drop images here or click to browse"}
         </p>
-        <p className="text-xs text-[#777] mt-0.5">
+        <p className="text-xs text-text-3 mt-0.5">
           JPG, PNG accepted — max 4MB each
         </p>
       </div>
-    </div>
+    </Field>
   );
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { FileText, Upload } from "lucide-react";
+import { Field, useToast, cn } from "@/components/ui";
 
 /* ============================================================
    Simple PDF upload zone — used for Alta Survey and Site Plan.
@@ -31,10 +33,12 @@ export default function FileUploadZone({
 }: FileUploadZoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  // Toast (not a native browser dialog) for the size check
+  const toast = useToast();
 
   const handleFile = (f: File) => {
     if (f.size > maxSize) {
-      alert(`File must be under ${Math.round(maxSize / 1024 / 1024)}MB`);
+      toast.error(`File must be under ${Math.round(maxSize / 1024 / 1024)}MB`);
       return;
     }
     onFileSelect(f);
@@ -44,10 +48,22 @@ export default function FileUploadZone({
   const hasExisting = !!existingUrl && !file;
 
   return (
-    <div>
-      <label className="block text-xs font-semibold text-[#666] uppercase tracking-wider mb-1.5">
-        {label}
-      </label>
+    // Field primitive supplies the label; the "View existing file" link sits in its action slot
+    <Field
+      label={label}
+      action={
+        hasExisting ? (
+          <a
+            href={existingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-text-2 hover:text-text hover:underline"
+          >
+            View existing file
+          </a>
+        ) : undefined
+      }
+    >
       <div
         onClick={() => inputRef.current?.click()}
         onDragOver={(e) => {
@@ -61,8 +77,11 @@ export default function FileUploadZone({
           const f = e.dataTransfer.files[0];
           if (f) handleFile(f);
         }}
-        className={`border-2 border-dashed rounded-btn px-4 py-5 text-center cursor-pointer transition-colors
-          ${dragOver ? "border-green bg-[#F0F9E5]" : "border-[#DDD] hover:border-[#BBB]"}`}
+        className={cn(
+          "border-2 border-dashed rounded-control px-4 py-5 text-center cursor-pointer transition-colors",
+          // Green = "drop is active" (selected state), otherwise neutral hairline
+          dragOver ? "border-accent bg-accent-soft" : "border-border hover:border-border-strong"
+        )}
       >
         <input
           ref={inputRef}
@@ -76,36 +95,26 @@ export default function FileUploadZone({
           }}
         />
         {hasFile ? (
-          <div>
-            <div className="text-lg mb-1">&#128196;</div>
-            <p className="text-sm text-[#333] font-medium truncate">
+          <div className="flex flex-col items-center">
+            <FileText size={20} strokeWidth={1.75} className="text-text-2 mb-1" />
+            <p className="text-sm text-text font-medium truncate max-w-full">
               {file.name}
             </p>
-            <p className="text-xs text-[#777] mt-0.5">Click to replace</p>
+            <p className="text-xs text-text-3 mt-0.5">Click to replace</p>
           </div>
         ) : hasExisting ? (
-          <div>
-            <div className="text-lg mb-1">&#128196;</div>
-            <p className="text-sm text-[#333]">Existing file on record</p>
-            <p className="text-xs text-[#777] mt-0.5">Click to replace</p>
+          <div className="flex flex-col items-center">
+            <FileText size={20} strokeWidth={1.75} className="text-text-2 mb-1" />
+            <p className="text-sm text-text">Existing file on record</p>
+            <p className="text-xs text-text-3 mt-0.5">Click to replace</p>
           </div>
         ) : (
-          <div>
-            <div className="text-lg mb-1">&#11014;</div>
-            <p className="text-sm text-[#666]">Drop PDF here</p>
+          <div className="flex flex-col items-center">
+            <Upload size={20} strokeWidth={1.75} className="text-text-3 mb-1" />
+            <p className="text-sm text-text-2">Drop PDF here</p>
           </div>
         )}
       </div>
-      {hasExisting && (
-        <a
-          href={existingUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-green hover:underline mt-1 inline-block"
-        >
-          View existing file
-        </a>
-      )}
-    </div>
+    </Field>
   );
 }

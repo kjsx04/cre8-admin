@@ -3,6 +3,7 @@
 import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
+import { Plus, Settings, ListOrdered } from "lucide-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import {
   DateKey,
@@ -18,6 +19,7 @@ import {
   monthLabel,
 } from "@/lib/email/schedule-dates";
 import { expandOccurrences, groupByDay } from "@/lib/email/occurrences";
+import { Button, LoadingBlock, PageContainer, PageHeader, Tabs, useToast } from "@/components/ui";
 
 import ScheduleToolbar from "@/components/email/schedule/ScheduleToolbar";
 import WeekPlanner from "@/components/email/schedule/WeekPlanner";
@@ -34,13 +36,7 @@ type View = "week" | "month";
 /** Next 14 needs a Suspense boundary around anything that reads search params */
 export default function EmailPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
-        </div>
-      }
-    >
+    <Suspense fallback={<LoadingBlock />}>
       <EmailSchedule />
     </Suspense>
   );
@@ -52,6 +48,8 @@ function EmailSchedule() {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();
+  // Shared toast — replaces the old browser popup
+  const toast = useToast();
 
   // ── Data ──
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -227,7 +225,8 @@ function EmailSchedule() {
       if (selectedCampaign?.id === id) setSelectedCampaign(data);
     } catch (err) {
       console.error("Send now failed:", err);
-      window.alert(err instanceof Error ? err.message : "Failed to send");
+      // Toast instead of a browser alert
+      toast.error("Send failed", { description: err instanceof Error ? err.message : "Failed to send" });
     }
   };
 
@@ -263,70 +262,50 @@ function EmailSchedule() {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   return (
-    <div className="p-6 space-y-5">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-bebas text-3xl tracking-wide text-charcoal">Email Campaigns</h1>
-          <p className="text-sm text-muted-gray mt-0.5">
+    // Full-width page: the 7-column planner needs the room
+    <PageContainer width="full" className="space-y-5">
+      <PageHeader
+        title="Email"
+        description={
+          <>
             {view === "week" && <>{plural(weekSends, "send")} this week &middot; </>}
             {plural(listingsOnSchedule, "listing")} on schedule &middot; {waiting.length} waiting
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          {/* Week | Month toggle */}
-          <div className="flex border border-border-light rounded-btn overflow-hidden">
-            {(["week", "month"] as const).map((v) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => setQuery({ view: v })}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${
-                  view === v ? "bg-charcoal text-white" : "text-muted-gray hover:text-charcoal bg-white"
-                }`}
-              >
-                {v === "week" ? "Week" : "Month"}
-              </button>
-            ))}
-          </div>
+          </>
+        }
+        actions={
+          <>
+            {/* Week | Month toggle — lives in the URL */}
+            <Tabs
+              size="sm"
+              items={[
+                { value: "week", label: "Week" },
+                { value: "month", label: "Month" },
+              ]}
+              value={view}
+              onChange={(v) => setQuery({ view: v })}
+            />
 
-          {/* Settings + Priorities panels */}
-          <button
-            type="button"
-            onClick={() => setShowSettings(true)}
-            className="px-3 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
-            title="Scheduler settings"
-          >
-            Settings
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowPriorities(true)}
-            className="px-4 py-2 text-sm font-medium text-charcoal bg-white border border-border-light rounded-btn hover:bg-light-gray transition-colors"
-          >
-            Priorities
-          </button>
+            {/* Settings + Priorities panels */}
+            <Button variant="secondary" icon={<Settings size={18} strokeWidth={1.75} />} onClick={() => setShowSettings(true)} title="Scheduler settings">
+              Settings
+            </Button>
+            <Button variant="secondary" icon={<ListOrdered size={18} strokeWidth={1.75} />} onClick={() => setShowPriorities(true)}>
+              Priorities
+            </Button>
 
-          <button
-            type="button"
-            onClick={() => router.push("/marketing/email/new")}
-            className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
-          >
-            + New Campaign
-          </button>
-        </div>
-      </div>
+            <Button icon={<Plus size={18} strokeWidth={1.75} />} onClick={() => router.push("/marketing/email/new")}>
+              New campaign
+            </Button>
+          </>
+        }
+      />
 
       {/* Alerts: stale content, cadence decay */}
       <AlertsStrip userEmail={userEmail} />
 
       {/* Loading / Error */}
-      {loading && (
-        <div className="flex items-center justify-center py-16">
-          <div className="w-6 h-6 border-2 border-green border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-      {error && <p className="text-center text-red-500 py-8">{error}</p>}
+      {loading && <LoadingBlock />}
+      {error && <p className="text-center text-sm text-danger-fg py-8">{error}</p>}
 
       {/* Schedule */}
       {!loading && !error && (
@@ -383,6 +362,6 @@ function EmailSchedule() {
           onClose={() => setSelectedCampaign(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

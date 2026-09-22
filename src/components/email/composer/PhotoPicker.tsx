@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Check } from "lucide-react";
+import { Button, Input } from "@/components/ui";
 import { FieldProps } from "./fieldProps";
 
 interface PhotoPickerProps {
@@ -10,8 +12,6 @@ interface PhotoPickerProps {
   onChange: (url: string) => void;
   fieldProps: FieldProps;
 }
-
-const INPUT = "w-full border border-border-light rounded-btn px-3 py-2 text-sm text-charcoal placeholder:text-border-medium focus:outline-none focus:ring-1 focus:ring-green";
 
 /**
  * Hero photo — 2-up grid of the listing's gallery, click to choose.
@@ -27,24 +27,23 @@ export default function PhotoPicker({ gallery, photoUrl, onChange, fieldProps }:
           {gallery.map((img, i) => {
             const active = photoUrl === img.url;
             return (
+              // Photo tile — green ring + check = selected (status)
               <button
                 key={i}
                 type="button"
                 onClick={() => onChange(img.url)}
-                className={`relative aspect-[4/3] rounded-md overflow-hidden transition-all duration-150 ${
+                className={`relative aspect-[4/3] rounded-control overflow-hidden transition-all duration-150 ${
                   active
-                    ? "ring-[3px] ring-green ring-offset-2 opacity-100"
-                    : "opacity-75 hover:opacity-100 ring-1 ring-border-light"
+                    ? "ring-[3px] ring-accent ring-offset-2 opacity-100"
+                    : "opacity-75 hover:opacity-100 ring-1 ring-border"
                 }`}
                 title={img.alt || `Photo ${i + 1}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={img.url} alt={img.alt || `Listing photo ${i + 1}`} className="w-full h-full object-cover" />
                 {active && (
-                  <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-green text-black flex items-center justify-center shadow">
-                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none">
-                      <path d="M3 8.5L6.5 12L13 4" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
+                  <span className="absolute top-2 right-2 w-6 h-6 rounded-full bg-accent text-black flex items-center justify-center">
+                    <Check size={12} strokeWidth={2.5} />
                   </span>
                 )}
               </button>
@@ -55,16 +54,17 @@ export default function PhotoPicker({ gallery, photoUrl, onChange, fieldProps }:
 
       {/* URL box: always when there's no gallery, otherwise behind a small link */}
       {gallery.length === 0 || showUrl ? (
-        <input
-          value={photoUrl}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="Photo URL"
-          className={`${INPUT} ${gallery.length > 0 ? "mt-3" : ""} text-xs`}
-        />
+        <div className={gallery.length > 0 ? "mt-3" : ""}>
+          <Input
+            value={photoUrl}
+            onChange={(e) => onChange(e.target.value)}
+            placeholder="Photo URL"
+          />
+        </div>
       ) : (
-        <button type="button" onClick={() => setShowUrl(true)} className="mt-2 text-[11px] text-muted-gray hover:text-charcoal">
+        <Button variant="ghost" size="sm" onClick={() => setShowUrl(true)} className="mt-2 -ml-2">
           Paste a photo URL instead
-        </button>
+        </Button>
       )}
     </div>
   );

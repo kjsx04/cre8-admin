@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowDown, ArrowUp, GripVertical } from "lucide-react";
 import { Campaign } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate } from "@/lib/email/utils";
 import { FREQUENCY_LABELS } from "@/lib/email/constants";
+import { Badge, Button, EmptyState, IconButton, Input, LoadingBlock, SlideOver } from "@/components/ui";
 
 interface PriorityPanelProps {
   campaigns: Campaign[];
@@ -211,162 +213,147 @@ export default function PriorityPanel({ campaigns, userEmail, onClose, onApplied
     }
   }
 
+  // The panel can't be closed while the AI is rebalancing
+  const safeClose = () => {
+    if (!applying) onClose();
+  };
+
   /** One row — used for the list and for the floating card */
   const renderRow = (row: RankRow, idx: number, floating = false) => {
     const camps = byListing.get(row.listing_id) || [];
     const number = floating ? "" : String(idx + 1);
     return (
       <div
-        className={`flex items-center gap-3 rounded-card border bg-white px-3 py-2 select-none ${
-          floating ? "border-green shadow-xl" : "border-border-light"
+        className={`flex items-center gap-3 rounded-card border bg-surface px-3 py-2 select-none ${
+          floating ? "border-accent shadow-popover" : "border-border"
         }`}
       >
-        {/* Rank box */}
-        <input
-          type="number"
-          min={1}
-          max={rows.length}
-          value={floating ? "" : numDraft[row.listing_id] ?? number}
-          onChange={(e) => setNumDraft((d) => ({ ...d, [row.listing_id]: e.target.value }))}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              commitNumber(idx, row.listing_id);
-              (e.target as HTMLInputElement).blur();
-            }
-          }}
-          onBlur={() => commitNumber(idx, row.listing_id)}
-          disabled={applying || floating}
-          className="w-12 shrink-0 text-center text-sm font-semibold text-charcoal border border-border-light rounded-btn py-1 focus:outline-none focus:ring-1 focus:ring-green [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-          title="Type a number and press Enter"
-        />
-        <span className="text-border-medium" aria-hidden>⋮⋮</span>
-        <div className="w-12 h-8 rounded overflow-hidden bg-border-light shrink-0">
+        {/* Rank box — shared Input, spinner arrows hidden */}
+        <div className="w-12 shrink-0">
+          <Input
+            small
+            type="number"
+            min={1}
+            max={rows.length}
+            value={floating ? "" : numDraft[row.listing_id] ?? number}
+            onChange={(e) => setNumDraft((d) => ({ ...d, [row.listing_id]: e.target.value }))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                commitNumber(idx, row.listing_id);
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            onBlur={() => commitNumber(idx, row.listing_id)}
+            disabled={applying || floating}
+            className="text-center font-semibold px-1 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            title="Type a number and press Enter"
+          />
+        </div>
+        <GripVertical size={16} strokeWidth={1.75} className="text-border-strong shrink-0" aria-hidden />
+        <div className="w-12 h-8 rounded overflow-hidden bg-surface-2 shrink-0">
           {row.photo_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={row.photo_url} alt="" className="w-full h-full object-cover" draggable={false} />
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-charcoal truncate">{row.listing_name}</div>
+          <div className="text-sm font-medium text-text truncate">{row.listing_name}</div>
           <div className="flex flex-wrap items-center gap-1 mt-0.5">
             {camps.map((c) => (
-              <span key={c.id} className="inline-flex items-center gap-1 text-[10px] text-medium-gray" title={formatScheduleDate(c.scheduled_date)}>
+              <span key={c.id} className="inline-flex items-center gap-1 text-xs text-text-2" title={formatScheduleDate(c.scheduled_date)}>
+                {/* Campaign-type color is data */}
                 <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: getTypeColor(c.email_label) }} />
                 {c.email_label || "Group"}
                 {c.campaign_type === "recurring" && c.frequency && (
-                  <span className="text-muted-gray">· {FREQUENCY_LABELS[c.frequency] || c.frequency}</span>
+                  <span className="text-text-3">· {FREQUENCY_LABELS[c.frequency] || c.frequency}</span>
                 )}
               </span>
             ))}
           </div>
         </div>
         {row.rank == null && !floating && (
-          <span className="text-[10px] uppercase tracking-wide text-muted-gray shrink-0" title="Not ranked yet">new</span>
+          <Badge size="sm" title="Not ranked yet">New</Badge>
         )}
         {!floating && (
-          <div className="flex flex-col shrink-0">
-            <button type="button" onClick={() => moveTo(idx, idx - 1)} disabled={applying || idx === 0} className="p-0.5 text-muted-gray hover:text-charcoal disabled:opacity-20" title="Move up">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M3 6l3-3 3 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
-            <button type="button" onClick={() => moveTo(idx, idx + 1)} disabled={applying || idx === rows.length - 1} className="p-0.5 text-muted-gray hover:text-charcoal disabled:opacity-20" title="Move down">
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3v6M3 6l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            </button>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <IconButton size="sm" label="Move up" icon={<ArrowUp size={16} strokeWidth={1.75} />} onClick={() => moveTo(idx, idx - 1)} disabled={applying || idx === 0} />
+            <IconButton size="sm" label="Move down" icon={<ArrowDown size={16} strokeWidth={1.75} />} onClick={() => moveTo(idx, idx + 1)} disabled={applying || idx === rows.length - 1} />
           </div>
         )}
       </div>
     );
   };
 
+  // Green insertion line — shows where the lifted row will land (selection indicator)
   const InsertLine = () => (
     <li aria-hidden className="relative h-2 my-0.5">
-      <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-green rounded-full" />
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green" />
-      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-green" />
+      <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 h-0.5 bg-accent rounded-full" />
+      <div className="absolute left-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-accent" />
+      <div className="absolute right-0 top-1/2 -translate-y-1/2 w-2 h-2 rounded-full bg-accent" />
     </li>
   );
 
   return (
-    <div className="fixed inset-0 z-40 flex justify-end">
-      <div className="absolute inset-0 bg-black/20" onClick={applying ? undefined : onClose} />
-
-      <div className="relative bg-white w-full max-w-xl h-full flex flex-col shadow-xl">
-        {/* Header */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-b border-border-light">
-          <div>
-            <h3 className="font-bebas text-2xl tracking-wide text-charcoal">Priorities</h3>
-            <p className="text-xs text-muted-gray mt-0.5">
-              #1 gets the best slots. Press and hold to drag, or type a number and press Enter.
-            </p>
-          </div>
-          <button onClick={onClose} disabled={applying} className="text-muted-gray hover:text-charcoal text-lg disabled:opacity-40">
-            &times;
-          </button>
-        </div>
-
-        {/* List */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="w-5 h-5 border-2 border-green border-t-transparent rounded-full animate-spin" />
+    <>
+      {/* Shared SlideOver primitive — status note on the left of the footer, actions on the right */}
+      <SlideOver
+        open
+        onClose={safeClose}
+        width="md"
+        title="Priorities"
+        description="#1 gets the best slots. Press and hold to drag, or type a number and press Enter."
+        footer={
+          <div className="flex items-center justify-between gap-4 w-full">
+            <span className={`text-xs min-w-0 ${error ? "text-danger-fg" : "text-text-3"}`}>
+              {error || note || (dirty ? "Apply saves the order and lets the AI rebalance this week and next" : "Drag or type a number to reorder")}
+            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button variant="ghost" onClick={onClose} disabled={applying}>
+                Close
+              </Button>
+              <Button onClick={apply} loading={applying} disabled={loading || rows.length === 0}>
+                {applying ? "Rebalancing…" : "Apply and rebalance"}
+              </Button>
             </div>
-          )}
-          {!loading && rows.length === 0 && (
-            <p className="text-sm text-muted-gray py-8 text-center">Nothing on the schedule yet.</p>
-          )}
-
-          <ol ref={listRef} className={`space-y-1.5 ${drag ? "cursor-grabbing" : ""}`} style={{ touchAction: drag ? "none" : "pan-y" }}>
-            {visibleRows.map((row, i) => {
-              // Real index in `rows` for number/arrow handlers
-              const realIdx = rows.findIndex((r) => r.listing_id === row.listing_id);
-              return (
-                <RowSlot key={row.listing_id} showLineBefore={!!drag && drag.insertIndex === i} InsertLine={InsertLine}>
-                  <li
-                    ref={(el) => {
-                      if (el) rowEls.current.set(row.listing_id, el);
-                      else rowEls.current.delete(row.listing_id);
-                    }}
-                    onPointerDown={(e) => startDrag(e, row, realIdx)}
-                    onPointerUp={() => {
-                      if (holdTimer.current) {
-                        window.clearTimeout(holdTimer.current);
-                        holdTimer.current = null;
-                      }
-                    }}
-                    className={`transition-transform duration-150 ${applying ? "" : "cursor-grab"}`}
-                  >
-                    {renderRow(row, realIdx)}
-                  </li>
-                </RowSlot>
-              );
-            })}
-            {drag && drag.insertIndex === visibleRows.length && <InsertLine />}
-          </ol>
-        </div>
-
-        {/* Footer */}
-        <div className="shrink-0 flex items-center justify-between px-6 py-4 border-t border-border-light">
-          <span className={`text-xs ${error ? "text-red-500" : "text-muted-gray"}`}>
-            {error || note || (dirty ? "Apply saves the order and lets the AI rebalance this week and next" : "Drag or type a number to reorder")}
-          </span>
-          <div className="flex items-center gap-2">
-            <button onClick={onClose} disabled={applying} className="px-4 py-2 text-sm font-medium text-muted-gray hover:text-charcoal disabled:opacity-40">
-              Close
-            </button>
-            <button
-              onClick={apply}
-              disabled={applying || loading || rows.length === 0}
-              className="px-5 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {applying ? "Rebalancing…" : "Apply & Rebalance"}
-            </button>
           </div>
-        </div>
-      </div>
+        }
+      >
+        {loading && <LoadingBlock />}
+        {!loading && rows.length === 0 && <EmptyState compact title="Nothing on the schedule yet" />}
 
-      {/* Floating card that follows the pointer while dragging */}
+        <ol ref={listRef} className={`space-y-1.5 ${drag ? "cursor-grabbing" : ""}`} style={{ touchAction: drag ? "none" : "pan-y" }}>
+          {visibleRows.map((row, i) => {
+            // Real index in `rows` for number/arrow handlers
+            const realIdx = rows.findIndex((r) => r.listing_id === row.listing_id);
+            return (
+              <RowSlot key={row.listing_id} showLineBefore={!!drag && drag.insertIndex === i} InsertLine={InsertLine}>
+                <li
+                  ref={(el) => {
+                    if (el) rowEls.current.set(row.listing_id, el);
+                    else rowEls.current.delete(row.listing_id);
+                  }}
+                  onPointerDown={(e) => startDrag(e, row, realIdx)}
+                  onPointerUp={() => {
+                    if (holdTimer.current) {
+                      window.clearTimeout(holdTimer.current);
+                      holdTimer.current = null;
+                    }
+                  }}
+                  className={`transition-transform duration-150 ${applying ? "" : "cursor-grab"}`}
+                >
+                  {renderRow(row, realIdx)}
+                </li>
+              </RowSlot>
+            );
+          })}
+          {drag && drag.insertIndex === visibleRows.length && <InsertLine />}
+        </ol>
+      </SlideOver>
+
+      {/* Floating card that follows the pointer while dragging (above the slide-over layer) */}
       {drag && draggedRow && (
         <div
-          className="fixed z-50 pointer-events-none"
+          className="fixed z-[60] pointer-events-none"
           style={{
             left: drag.x - drag.offsetX,
             top: drag.y - drag.offsetY,
@@ -378,7 +365,7 @@ export default function PriorityPanel({ campaigns, userEmail, onClose, onApplied
           {renderRow(draggedRow, drag.fromIndex, true)}
         </div>
       )}
-    </div>
+    </>
   );
 }
 

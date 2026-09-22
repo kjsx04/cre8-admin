@@ -571,10 +571,11 @@ export function suggestStageMove(deal: Deal, extracted: ExtractedDealData): Stag
   return null;
 }
 
+// Badge classes per deal status — design-system tokens (green = active/live, amber = in progress)
 export const STATUS_COLORS: Record<string, string> = {
-  active: "bg-green/10 text-green border-green/30",
-  due_diligence: "bg-amber-50 text-amber-700 border-amber-200",
-  closing: "bg-amber-50 text-amber-700 border-amber-200",
-  closed: "bg-charcoal/5 text-charcoal border-charcoal/20",
-  cancelled: "bg-red-50 text-red-600 border-red-200",
+  active: "bg-success-bg text-success-fg border-accent/40",
+  due_diligence: "bg-warning-bg text-warning-fg border-warning-fg/20",
+  closing: "bg-warning-bg text-warning-fg border-warning-fg/20",
+  closed: "bg-surface-2 text-text-2 border-border",
+  cancelled: "bg-danger-bg text-danger-fg border-danger/30",
 };

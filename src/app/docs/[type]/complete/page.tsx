@@ -32,6 +32,30 @@ import FolderPicker from "@/components/FolderPicker";
 import SharePointBreadcrumb from "@/components/SharePointBreadcrumb";
 import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
+// Design-system primitives + lucide icons (UI refresh)
+import {
+  Button,
+  Card,
+  Field,
+  IconButton,
+  Input,
+  Modal,
+  Select,
+  Spinner,
+  cn,
+} from "@/components/ui";
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ChevronDown,
+  Circle,
+  CircleDot,
+  Download,
+  MapPin,
+  Upload,
+  X,
+  XCircle,
+} from "lucide-react";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
@@ -112,39 +136,35 @@ function CollapsibleSection({
   }, [aiFillingTokens, editableTokens, expanded]);
 
   return (
-    <div
+    // Card primitive (flush padding — the header row is a full-width toggle)
+    <Card
       ref={(el) => sectionRef?.(section.title, el)}
-      className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden"
+      padding="none"
+      className="overflow-hidden"
     >
       {/* Section header — click to expand/collapse */}
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors"
       >
-        <span className="text-[#1A1A1A] text-sm font-semibold">{section.title}</span>
+        <span className="text-text text-sm font-semibold">{section.title}</span>
         <div className="flex items-center gap-2">
-          <span className="text-medium-gray text-xs">
+          <span className="text-text-3 text-xs tabular-nums">
             {filledCount}/{editableTokens.length}
           </span>
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            className={`text-medium-gray transition-transform duration-200 ${
-              expanded ? "rotate-180" : ""
-            }`}
-          >
-            <polyline points="6 9 12 15 18 9" />
-          </svg>
+          <ChevronDown
+            size={16}
+            strokeWidth={1.75}
+            className={cn("text-text-2 transition-transform duration-200", expanded && "rotate-180")}
+          />
         </div>
       </button>
 
       {/* Fields — shown when expanded */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-3">
+        <div className="px-4 pb-4 space-y-4">
           {editableTokens.map((token) => {
             const def = varMap.get(token);
             const label = def?.label || token.replace(/_/g, " ");
@@ -160,61 +180,65 @@ function CollapsibleSection({
                   isFilling ? "ai-filling" : ""
                 }`}
               >
-                <label className="block text-medium-gray text-xs mb-1">
-                  {label}
-                  {/* Small hint for dollar fields: formatting happens when you leave the input */}
-                  {isDollar && (
-                    <span className="text-[#777] ml-1 font-normal">
-                      — type number, formats on exit
-                    </span>
-                  )}
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={fieldValues[token] || ""}
-                    onChange={(e) => onFieldChange(token, e.target.value)}
-                    onBlur={() => onFieldBlur(token)}
-                    placeholder={isDollar ? "e.g. 2500000" : ""}
-                    className={`flex-1 bg-white border rounded px-3 py-1.5
-                               text-[#1A1A1A] text-sm transition-all duration-300
-                               focus:border-green
-                               ${isFilling
-                                 ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]"
-                                 : "border-[#E0E0E0]"
-                               }`}
-                  />
-                  {/* Verification checkmark — strict mode only */}
-                  {strictMode && onToggleVerify && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleVerify(token)}
-                      disabled={!hasFillValue}
-                      title={
-                        !hasFillValue ? "Fill field first" :
-                        isVerified ? "Verified — click to un-verify" :
-                        "Click to verify this field"
-                      }
-                      className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200
-                        ${!hasFillValue
-                          ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
-                          : isVerified
-                            ? "bg-green/15 border border-green text-green hover:bg-green/25"
-                            : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
-                        }`}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17L4 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                {/* Field primitive — the dollar hint rides in its `action` slot */}
+                <Field
+                  label={label}
+                  action={
+                    /* Small hint for dollar fields: formatting happens when you leave the input */
+                    isDollar ? "Type a number — formats on exit" : undefined
+                  }
+                >
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="text"
+                      value={fieldValues[token] || ""}
+                      onChange={(e) => onFieldChange(token, e.target.value)}
+                      onBlur={() => onFieldBlur(token)}
+                      placeholder={isDollar ? "e.g. 2500000" : ""}
+                      className={cn(
+                        "flex-1 text-sm transition-all duration-300",
+                        // Green ring while the AI is filling this field (status)
+                        isFilling && "border-accent ring-2 ring-accent/30"
+                      )}
+                    />
+                    {/* Verification checkmark — strict mode only.
+                        grey = empty · yellow = needs verifying · green = verified (status colors) */}
+                    {strictMode && onToggleVerify && (
+                      <button
+                        type="button"
+                        onClick={() => onToggleVerify(token)}
+                        disabled={!hasFillValue}
+                        title={
+                          !hasFillValue ? "Fill field first" :
+                          isVerified ? "Verified — click to un-verify" :
+                          "Click to verify this field"
+                        }
+                        className={cn(
+                          "flex-shrink-0 w-control h-control rounded-control flex items-center justify-center transition-colors duration-200",
+                          !hasFillValue
+                            ? "text-text-3 cursor-not-allowed"
+                            : isVerified
+                              ? "text-accent-strong hover:bg-accent-soft"
+                              : "text-warning-fg hover:bg-warning-bg"
+                        )}
+                      >
+                        {!hasFillValue ? (
+                          <Circle size={18} strokeWidth={1.75} />
+                        ) : isVerified ? (
+                          <CheckCircle2 size={18} strokeWidth={1.75} />
+                        ) : (
+                          <CircleDot size={18} strokeWidth={1.75} />
+                        )}
+                      </button>
+                    )}
+                  </div>
+                </Field>
               </div>
             );
           })}
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -303,7 +327,8 @@ function SellerBrokerTypeahead({
   return (
     <div ref={containerRef} className="relative">
       <div className="relative">
-        <input
+        {/* Input primitive — same ref/value/handlers as before */}
+        <Input
           ref={inputRef}
           type="text"
           value={query}
@@ -318,28 +343,23 @@ function SellerBrokerTypeahead({
           onBlur={handleBlur}
           onKeyDown={handleKeyDown}
           placeholder="Search seller broker..."
-          className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5 pr-7
-                     text-[#1A1A1A] text-sm focus:border-green transition-colors
-                     placeholder:text-[#777]"
+          className="pr-9 text-sm"
         />
         {/* Clear button (X) — only shows when there's text */}
         {query && (
-          <button
-            type="button"
+          <IconButton
+            label="Clear"
+            size="sm"
+            icon={<X size={16} strokeWidth={1.75} />}
             onClick={clearSelection}
-            className="absolute right-2 top-1/2 -translate-y-1/2 text-medium-gray hover:text-[#1A1A1A] transition-colors"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+            className="absolute right-1 top-1/2 -translate-y-1/2"
+          />
         )}
       </div>
 
-      {/* Dropdown results */}
+      {/* Dropdown results — floating layer, so it gets the popover shadow */}
       {isOpen && filtered.length > 0 && (
-        <div className="absolute z-50 w-full mt-1 bg-white border border-[#E0E0E0] rounded shadow-lg max-h-64 overflow-y-auto">
+        <div className="absolute z-50 w-full mt-1 bg-surface border border-border rounded-card shadow-popover max-h-64 overflow-y-auto p-1">
           {filtered.map((broker, idx) => (
             <button
               key={`${broker.name}-${broker.company}`}
@@ -347,12 +367,13 @@ function SellerBrokerTypeahead({
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => selectBroker(broker)}
               onMouseEnter={() => setHighlightIdx(idx)}
-              className={`w-full flex items-center justify-between px-3 py-2 text-sm text-left transition-colors ${
-                idx === highlightIdx ? "bg-[#F5F5F5]" : "hover:bg-[#F5F5F5]"
-              }`}
+              className={cn(
+                "w-full flex items-center justify-between rounded-control px-3 py-2 text-sm text-text text-left transition-colors hover:bg-surface-2",
+                idx === highlightIdx && "bg-surface-2"
+              )}
             >
-              <span className="text-[#1A1A1A] truncate">{broker.name}</span>
-              <span className="text-medium-gray text-xs ml-2 truncate max-w-[45%] text-right">{broker.company}</span>
+              <span className="truncate">{broker.name}</span>
+              <span className="text-text-3 text-xs ml-2 truncate max-w-[45%] text-right">{broker.company}</span>
             </button>
           ))}
         </div>
@@ -384,77 +405,61 @@ function CmsDropdowns({
   const [expanded, setExpanded] = useState(true);
 
   return (
-    <div className="bg-white border border-[#E0E0E0] rounded-card overflow-hidden">
+    // Card primitive (flush padding — the header row is a full-width toggle)
+    <Card padding="none" className="overflow-hidden">
       <button
+        type="button"
         onClick={() => setExpanded(!expanded)}
-        className="w-full flex items-center justify-between px-4 py-3 hover:bg-[#F5F5F5] transition-colors"
+        aria-expanded={expanded}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-surface-2 transition-colors"
       >
-        <span className="text-[#1A1A1A] text-sm font-semibold">Brokers & Listing</span>
-        <svg
-          width="14"
-          height="14"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          className={`text-medium-gray transition-transform duration-200 ${
-            expanded ? "rotate-180" : ""
-          }`}
-        >
-          <polyline points="6 9 12 15 18 9" />
-        </svg>
+        <span className="text-text text-sm font-semibold">Brokers & listing</span>
+        <ChevronDown
+          size={16}
+          strokeWidth={1.75}
+          className={cn("text-text-2 transition-transform duration-200", expanded && "rotate-180")}
+        />
       </button>
 
       {expanded && (
-        <div className="px-4 pb-3 space-y-3">
-          {/* CRE8 Broker */}
-          <div>
-            <label className="block text-medium-gray text-xs mb-1">CRE8 Broker (you)</label>
-            <select
+        <div className="px-4 pb-4 space-y-4">
+          {/* CRE8 Broker — Field + Select primitives */}
+          <Field label="CRE8 broker (you)">
+            <Select
               value={selectedCre8Broker}
               onChange={(e) => onCre8BrokerChange(e.target.value)}
               disabled={loadingCms}
-              className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5
-                         text-[#1A1A1A] text-sm focus:border-green transition-colors
-                         disabled:opacity-50"
+              className="text-sm"
             >
               <option value="">Select broker...</option>
               {teamMembers.map((m) => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
 
           {/* Seller Broker — searchable typeahead */}
-          <div>
-            <label className="block text-medium-gray text-xs mb-1">
-              Seller Broker <span className="text-[#777]">(optional)</span>
-            </label>
+          <Field label="Seller broker" action="Optional">
             <SellerBrokerTypeahead onSelect={onSellerBrokerChange} />
-          </div>
+          </Field>
 
           {/* CRE8 Listing */}
-          <div>
-            <label className="block text-medium-gray text-xs mb-1">
-              CRE8 Listing <span className="text-[#777]">(pre-fills address)</span>
-            </label>
-            <select
+          <Field label="CRE8 listing" action="Pre-fills address">
+            <Select
               value={selectedListing}
               onChange={(e) => onListingChange(e.target.value)}
               disabled={loadingCms}
-              className="w-full bg-white border border-[#E0E0E0] rounded px-3 py-1.5
-                         text-[#1A1A1A] text-sm focus:border-green transition-colors
-                         disabled:opacity-50"
+              className="text-sm"
             >
               <option value="">None</option>
               {listings.map((l) => (
                 <option key={l.id} value={l.id}>{l.name || l.address}</option>
               ))}
-            </select>
-          </div>
+            </Select>
+          </Field>
         </div>
       )}
-    </div>
+    </Card>
   );
 }
 
@@ -526,7 +531,7 @@ function FieldSidebar({
   onToggleParcelMap?: () => void;
 }) {
   return (
-    <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
+    <div className="space-y-4 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
       {/* AI Assist Bar */}
       <AIAssistBar
         docTypeId={docTypeId}
@@ -535,26 +540,26 @@ function FieldSidebar({
         onExtracting={onExtracting}
       />
 
-      {/* Shimmer overlay when AI is extracting */}
+      {/* Status line while AI is extracting — shared Spinner */}
       {isAiExtracting && (
         <div className="text-center py-2">
-          <div className="inline-flex items-center gap-2 text-green text-xs">
-            <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
+          <div className="inline-flex items-center gap-2 text-text-2 text-xs">
+            <Spinner size="sm" />
             AI is analyzing...
           </div>
         </div>
       )}
 
-      {/* Verification reminder banner — strict mode only */}
+      {/* Verification reminder banner — strict mode only (warning tint) */}
       {strictMode && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded px-3 py-2 text-yellow-500 text-xs">
+        <div className="bg-warning-bg text-warning-fg rounded-control px-3 py-2 text-xs">
           Verify all filled fields before saving
         </div>
       )}
 
       {/* Section header */}
-      <h2 className="font-bebas text-lg tracking-wide text-medium-gray mb-1">
-        EDIT FIELDS
+      <h2 className="text-sm font-semibold text-text mb-1">
+        Edit fields
       </h2>
 
       {/* Field sections — inject helpers before Property and Date & Brokers sections */}
@@ -575,42 +580,43 @@ function FieldSidebar({
           )}
           {/* "Select from Map" button + parcel map toggle at the top of the Property section */}
           {section.title === "Property" && (
-            <div className="mb-2 space-y-2">
-              <button
+            <div className="mb-3 space-y-3">
+              {/* Secondary Button primitive — opens the map parcel picker */}
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={onOpenParcelPicker}
-                className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
+                icon={<MapPin size={18} strokeWidth={1.75} />}
               >
-                {/* Map pin icon */}
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                Select from Map
-              </button>
+                Select from map
+              </Button>
               {/* Toggle: include parcel map image in document — only visible when an image exists */}
               {hasParcelMapImage && onToggleParcelMap && (
                 <div className="space-y-1">
                   <label className="flex items-center gap-2 cursor-pointer group">
+                    {/* Switch — green when on (selected state) */}
                     <button
                       type="button"
                       role="switch"
                       aria-checked={includeParcelMap}
                       onClick={onToggleParcelMap}
-                      className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${
-                        includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"
-                      }`}
+                      className={cn(
+                        "relative w-8 h-[18px] rounded-pill transition-colors duration-200",
+                        includeParcelMap ? "bg-accent" : "bg-border-strong"
+                      )}
                     >
                       <span
-                        className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${
-                          includeParcelMap ? "translate-x-[14px]" : ""
-                        }`}
+                        className={cn(
+                          "absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-pill bg-white transition-transform duration-200",
+                          includeParcelMap && "translate-x-[14px]"
+                        )}
                       />
                     </button>
-                    <span className="text-xs text-medium-gray group-hover:text-[#1A1A1A] transition-colors">
+                    <span className="text-xs text-text-2 group-hover:text-text transition-colors">
                       Attach parcel map to document
                     </span>
                   </label>
-                  <p className="text-[10px] text-[#777] leading-tight pl-10">
+                  <p className="text-xs text-text-3 leading-tight pl-10">
                     Satellite image of the selected parcel(s) will appear at the end of the downloaded document.
                   </p>
                 </div>
@@ -1735,7 +1741,7 @@ export default function CompletePage() {
   if (!docType) {
     return (
       <div className="max-w-2xl mx-auto px-6 py-12 text-center">
-        <p className="text-medium-gray">Document type not found.</p>
+        <p className="text-text-2 text-sm">Document type not found.</p>
       </div>
     );
   }
@@ -1750,59 +1756,39 @@ export default function CompletePage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {/* Save-to location + change button */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <span className="text-medium-gray text-sm flex-shrink-0">Save to:</span>
+            <span className="text-text-2 text-sm flex-shrink-0">Save to:</span>
             <SharePointBreadcrumb folderPath={saveFolder} />
-            <button
+            {/* Ghost Button primitive — opens the folder picker */}
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={() => setShowFolderPicker(true)}
               disabled={!driveId || !accessToken}
-              className="text-green text-sm hover:underline disabled:text-[#777] disabled:cursor-not-allowed flex-shrink-0"
+              className="flex-shrink-0"
             >
               {driveId && accessToken ? "Change" : "Loading..."}
-            </button>
+            </Button>
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons — secondary Download, primary (black) Save */}
           <div className="flex items-center gap-3 flex-shrink-0">
-            <button
+            <Button
+              variant="secondary"
               onClick={downloadFile}
               disabled={!fileBase64 || isExporting}
-              className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
-                         hover:border-green transition-colors duration-200
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         flex items-center gap-2"
+              loading={isExporting}
+              icon={<Download size={18} strokeWidth={1.75} />}
             >
-              {isExporting ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Exporting...
-                </>
-              ) : (
-                <>
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Download
-                </>
-              )}
-            </button>
-            <button
+              {isExporting ? "Exporting..." : "Download"}
+            </Button>
+            <Button
               onClick={handleSave}
               disabled={isRegenerating || isExporting || !fileBase64 || !allFieldsVerified}
               title={!allFieldsVerified ? "Verify all filled fields before saving" : ""}
-              className="bg-green text-black font-semibold text-sm px-5 py-2.5 rounded-btn
-                         hover:brightness-110 transition-all duration-200
-                         flex items-center gap-2
-                         disabled:opacity-50 disabled:cursor-not-allowed"
+              icon={<Upload size={18} strokeWidth={1.75} />}
             >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="17 8 12 3 7 8" />
-                <line x1="12" y1="3" x2="12" y2="15" />
-              </svg>
               Save to SharePoint
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -1823,22 +1809,17 @@ export default function CompletePage() {
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
           {/* Saved confirmation + breadcrumb */}
           <div className="flex items-center gap-2 flex-1 min-w-0">
-            <div className="w-6 h-6 rounded-full bg-green/15 flex items-center justify-center flex-shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 6L9 17L4 12" />
-              </svg>
-            </div>
-            <span className="text-green text-sm font-semibold flex-shrink-0">Saved</span>
+            {/* Green check = success status */}
+            <CheckCircle2 size={18} strokeWidth={1.75} className="text-accent-strong flex-shrink-0" />
+            <span className="text-accent-strong text-sm font-semibold flex-shrink-0">Saved</span>
             <SharePointBreadcrumb folderPath={saveFolder} />
           </div>
 
-          {/* Post-save actions */}
+          {/* Post-save actions — plain anchors styled like the Button primitive (external links) */}
           <div className="flex items-center gap-3 flex-shrink-0">
             <a
               href={getWordUrl(sharePointUrl)}
-              className="bg-green text-black font-semibold text-sm px-5 py-2.5 rounded-btn
-                         hover:brightness-110 transition-all duration-200
-                         flex items-center gap-2"
+              className="inline-flex items-center justify-center h-control px-3.5 text-base font-medium rounded-control bg-ink text-white hover:bg-ink-hover transition-colors duration-150"
             >
               Open in Word
             </a>
@@ -1846,18 +1827,13 @@ export default function CompletePage() {
               href={sharePointUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
-                         hover:border-green transition-colors duration-200
-                         flex items-center gap-2"
+              className="inline-flex items-center justify-center h-control px-3.5 text-base font-medium rounded-control bg-surface text-text border border-border hover:bg-surface-2 hover:border-border-strong transition-colors duration-150"
             >
               Word Online
             </a>
-            <button
-              onClick={() => router.push("/docs")}
-              className="text-medium-gray text-sm hover:text-[#1A1A1A] transition-colors px-3 py-2.5"
-            >
+            <Button variant="ghost" onClick={() => router.push("/docs")}>
               New
-            </button>
+            </Button>
           </div>
         </div>
       );
@@ -1867,32 +1843,22 @@ export default function CompletePage() {
     return (
       <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
         <div className="flex items-center gap-2 flex-1 min-w-0">
-          <div className="w-6 h-6 rounded-full bg-red-500/15 flex items-center justify-center flex-shrink-0">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#EF4444" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </div>
-          <span className="text-red-400 text-sm">{errorMessage}</span>
+          {/* Red x = error status */}
+          <XCircle size={18} strokeWidth={1.75} className="text-danger flex-shrink-0" />
+          <span className="text-danger-fg text-sm">{errorMessage}</span>
         </div>
         <div className="flex items-center gap-3 flex-shrink-0">
-          <button
+          <Button
             onClick={() => {
               setPageState("preview");
               setErrorMessage("");
             }}
-            className="bg-green text-black font-semibold text-sm px-5 py-2.5 rounded-btn
-                       hover:brightness-110 transition-all duration-200"
           >
-            Try Again
-          </button>
-          <button
-            onClick={downloadFile}
-            className="bg-[#F0F0F0] border border-[#E0E0E0] text-[#1A1A1A] font-semibold text-sm px-5 py-2.5 rounded-btn
-                       hover:border-green transition-colors duration-200"
-          >
-            Download Instead
-          </button>
+            Try again
+          </Button>
+          <Button variant="secondary" onClick={downloadFile} icon={<Download size={18} strokeWidth={1.75} />}>
+            Download instead
+          </Button>
         </div>
       </div>
     );
@@ -1902,7 +1868,7 @@ export default function CompletePage() {
   // ── Render ──
   // ══════════════════════════════════════════════════
   return (
-    <div className="flex flex-col h-[calc(100vh-56px)] bg-[#F5F5F5]">
+    <div className="flex flex-col h-full bg-canvas">
       {/* AI fill animation styles */}
       <style jsx global>{`
         .ai-filling input {
@@ -1915,50 +1881,47 @@ export default function CompletePage() {
       `}</style>
 
       {/* Header bar */}
-      <div className="flex items-center justify-between px-6 py-3 border-b border-[#E0E0E0] flex-shrink-0">
+      <div className="flex items-center justify-between px-6 py-3 border-b border-border bg-surface flex-shrink-0">
         <div className="flex items-center gap-3">
-          <button
+          {/* IconButton primitive — back to the documents list */}
+          <IconButton
+            label="Back to documents"
+            size="sm"
+            icon={<ArrowLeft size={18} strokeWidth={1.75} />}
             onClick={() => router.push("/docs")}
-            className="text-medium-gray hover:text-[#1A1A1A] transition-colors"
-            title="Back to documents"
-          >
-            <svg width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M10 12L6 8L10 4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </button>
-          <h1 className="font-bebas text-2xl tracking-wide text-[#1A1A1A]">
-            DOCUMENT <span className="text-green">EDITOR</span>
-          </h1>
+          />
+          <h1 className="text-lg font-semibold text-text">Document editor</h1>
         </div>
-        <span className="text-medium-gray text-sm">{docType.name}</span>
+        <span className="text-text-2 text-sm">{docType.name}</span>
       </div>
 
       {/* ── Mobile tab bar — only visible on small screens ──
            Lets users switch between the edit form and the document preview.
            On desktop (lg+) both panes are always visible side by side. */}
-      <div className="flex lg:hidden border-b border-[#E0E0E0] flex-shrink-0">
+      <div className="flex lg:hidden border-b border-border bg-surface flex-shrink-0">
+        {/* Underline tabs — green underline marks the active tab (status) */}
         <button
+          type="button"
           onClick={() => setMobileTab("form")}
-          className={`flex-1 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
-            mobileTab === "form"
-              ? "text-[#1A1A1A] border-green"
-              : "text-medium-gray border-transparent"
-          }`}
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium transition-colors border-b-2",
+            mobileTab === "form" ? "text-text border-accent" : "text-text-2 border-transparent"
+          )}
         >
-          Edit Fields
+          Edit fields
         </button>
         <button
+          type="button"
           onClick={() => setMobileTab("preview")}
-          className={`flex-1 py-2.5 text-sm font-semibold transition-colors border-b-2 ${
-            mobileTab === "preview"
-              ? "text-[#1A1A1A] border-green"
-              : "text-medium-gray border-transparent"
-          }`}
+          className={cn(
+            "flex-1 py-2.5 text-sm font-medium transition-colors border-b-2",
+            mobileTab === "preview" ? "text-text border-accent" : "text-text-2 border-transparent"
+          )}
         >
-          Preview Doc
+          Preview doc
           {/* Show a subtle indicator when a regen is in progress */}
           {isRegenerating && (
-            <span className="ml-1.5 inline-block w-1.5 h-1.5 bg-green rounded-full animate-pulse" />
+            <span className="ml-1.5 inline-block w-1.5 h-1.5 bg-accent rounded-pill animate-pulse" />
           )}
         </button>
       </div>
@@ -1975,10 +1938,11 @@ export default function CompletePage() {
         >
           {/* Regenerating overlay */}
           {isRegenerating && (
-            <div className="absolute inset-0 bg-white/60 z-20 flex items-center justify-center rounded-lg">
-              <div className="flex items-center gap-3 bg-white px-5 py-3 rounded-card border border-[#E0E0E0] shadow-lg">
-                <div className="w-5 h-5 border-2 border-green border-t-transparent rounded-full animate-spin" />
-                <span className="text-[#1A1A1A] text-sm">Updating...</span>
+            <div className="absolute inset-0 bg-surface/60 z-20 flex items-center justify-center rounded-card">
+              {/* Floating status pill — popover shadow is allowed on floating layers */}
+              <div className="flex items-center gap-3 bg-surface px-5 py-3 rounded-card border border-border shadow-popover">
+                <Spinner size="sm" />
+                <span className="text-text text-sm">Updating...</span>
               </div>
             </div>
           )}
@@ -2000,15 +1964,12 @@ export default function CompletePage() {
 
           {/* Parcel map placeholder — shown when a map image is captured and toggle is on */}
           {fileBase64 && parcelMapImage && includeParcelMap && (
-            <div className="mt-3 border border-dashed border-[#E0E0E0] rounded-card px-4 py-3 flex items-center gap-3 bg-[#F5F5F5]">
+            <div className="mt-3 border border-dashed border-border-strong rounded-card px-4 py-3 flex items-center gap-3 bg-surface-2">
               {/* Map pin icon */}
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8CC644" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="flex-shrink-0">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
+              <MapPin size={20} strokeWidth={1.75} className="text-text-2 flex-shrink-0" />
               <div>
-                <p className="text-[#1A1A1A] text-xs font-medium">Parcel map image will be included at the end of the document</p>
-                <p className="text-medium-gray text-[10px] leading-tight mt-0.5">
+                <p className="text-text text-xs font-medium">Parcel map image will be included at the end of the document</p>
+                <p className="text-text-2 text-xs leading-tight mt-0.5">
                   Not shown in preview — appears in downloaded and saved files only.
                 </p>
               </div>
@@ -2017,19 +1978,19 @@ export default function CompletePage() {
 
           {/* Helper note for mobile users */}
           {fileBase64 && (
-            <p className="text-medium-gray text-xs mt-2 lg:hidden">
+            <p className="text-text-3 text-xs mt-2 lg:hidden">
               Pinch to zoom · scroll sideways if needed
             </p>
           )}
 
           {/* Preview background note */}
-          <p className="text-medium-gray text-xs mt-2 hidden lg:block">
+          <p className="text-text-3 text-xs mt-2 hidden lg:block">
             Template backgrounds will appear in the downloaded file.
           </p>
 
           {/* File name below preview */}
           {fileName && (
-            <p className="text-medium-gray text-xs mt-2 truncate">{fileName}</p>
+            <p className="text-text-3 text-xs mt-2 truncate">{fileName}</p>
           )}
         </div>
 
@@ -2037,7 +1998,7 @@ export default function CompletePage() {
              On mobile: only visible when mobileTab === "form"
              On desktop: always visible */}
         <div
-          className={`lg:w-[35%] w-full border-t lg:border-t-0 lg:border-l border-[#E0E0E0] overflow-y-auto p-4
+          className={`lg:w-[35%] w-full border-t lg:border-t-0 lg:border-l border-border overflow-y-auto p-4
             ${mobileTab === "form" ? "block" : "hidden lg:block"}`}
         >
           <FieldSidebar
@@ -2079,7 +2040,7 @@ export default function CompletePage() {
       </div>
 
       {/* Bottom bar — full width, always visible */}
-      <div className="border-t border-[#E0E0E0] px-6 py-3 flex-shrink-0 bg-white">
+      <div className="border-t border-border px-6 py-3 flex-shrink-0 bg-surface">
         <BottomBar />
       </div>
 
@@ -2096,54 +2057,41 @@ export default function CompletePage() {
 
       {/* Parcel Picker Modal — map-based parcel selection */}
       {/* Parcel map preview modal — 80% of screen, shows captured map image */}
-      {showMapPreview && parcelMapImageRef.current && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          {/* Backdrop */}
-          <div className="absolute inset-0 bg-black/60" onClick={() => setShowMapPreview(false)} />
-
-          {/* Modal — 80% of viewport */}
-          <div className="relative bg-white rounded-card border border-[#E0E0E0] flex flex-col"
-               style={{ width: "80vw", height: "80vh" }}>
-            {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-[#E0E0E0] shrink-0">
-              <h3 className="text-[#1A1A1A] font-semibold text-sm">Parcel Map Preview</h3>
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => {
-                    const baseName = fileName.replace(/\.docx$/i, "");
-                    downloadDataUrl(parcelMapImageRef.current!, `${baseName}_Parcel_Map.jpg`);
-                  }}
-                  className="bg-green text-black uppercase tracking-wide font-semibold text-xs px-4 py-2 rounded-btn
-                             hover:brightness-110 transition-all duration-200 flex items-center gap-2"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Download
-                </button>
-                <button
-                  onClick={() => setShowMapPreview(false)}
-                  className="text-medium-gray hover:text-[#1A1A1A] text-xl transition-colors"
-                >
-                  &times;
-                </button>
-              </div>
-            </div>
-
-            {/* Image container — fills remaining space */}
-            <div className="flex-1 overflow-auto p-4 flex items-center justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={parcelMapImageRef.current}
-                alt="Parcel map"
-                className="max-w-full max-h-full object-contain rounded"
-              />
-            </div>
+      {/* Modal primitive — shows the captured map image with a Download action */}
+      <Modal
+        open={!!(showMapPreview && parcelMapImageRef.current)}
+        onClose={() => setShowMapPreview(false)}
+        title="Parcel map preview"
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setShowMapPreview(false)}>
+              Close
+            </Button>
+            <Button
+              icon={<Download size={18} strokeWidth={1.75} />}
+              onClick={() => {
+                const baseName = fileName.replace(/\.docx$/i, "");
+                downloadDataUrl(parcelMapImageRef.current!, `${baseName}_Parcel_Map.jpg`);
+              }}
+            >
+              Download
+            </Button>
+          </>
+        }
+      >
+        {/* Image container */}
+        {parcelMapImageRef.current && (
+          <div className="flex items-center justify-center">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={parcelMapImageRef.current}
+              alt="Parcel map"
+              className="max-w-full max-h-[70vh] object-contain rounded-control"
+            />
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {showParcelPicker && (
         <ParcelPickerModal

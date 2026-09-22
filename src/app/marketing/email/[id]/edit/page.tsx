@@ -2,10 +2,10 @@
 
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Link from "next/link";
 import { Campaign } from "@/lib/email/types";
 import { canEdit } from "@/lib/email/utils";
 import { ListingItem } from "@/lib/admin-constants";
+import { Button, EmptyState, LoadingBlock } from "@/components/ui";
 import EmailComposer from "@/components/email/composer/EmailComposer";
 
 /**
@@ -56,24 +56,23 @@ export default function EditCampaignPage() {
     })();
   }, [id, router]);
 
+  // Error → shared empty state with a way back
   if (error) {
     return (
-      <div className="text-center py-20 text-[#CC3333] text-sm">
-        {error}
-        <div className="mt-3">
-          <Link href="/marketing/email" className="text-green hover:underline">Back to campaigns</Link>
-        </div>
-      </div>
+      <EmptyState
+        title={error}
+        action={
+          <Button variant="secondary" href="/marketing/email">
+            Back to campaigns
+          </Button>
+        }
+      />
     );
   }
 
+  // Loading → shared spinner block
   if (!campaign) {
-    return (
-      <div className="flex items-center justify-center py-20 text-[#777] text-sm">
-        <div className="w-[18px] h-[18px] border-2 border-[#E5E5E5] border-t-green rounded-full animate-spin mr-2.5" />
-        Loading campaign...
-      </div>
-    );
+    return <LoadingBlock message="Loading campaign..." />;
   }
 
   return (
