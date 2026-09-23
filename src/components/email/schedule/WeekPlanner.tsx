@@ -6,6 +6,10 @@ import { DateKey, weekKeys, isWeekend, dayParts } from "@/lib/email/schedule-dat
 import SendCard from "./SendCard";
 
 interface WeekPlannerProps {
+  /** The email that was just placed — gets a ring */
+  placedId?: string | null;
+  /** Emails the AI shuffled to make room — brief flash */
+  movedIds?: Set<string>;
   weekStart: DateKey; // a Monday
   itemsByDay: Map<DateKey, ScheduleItem[]>;
   today: DateKey;
@@ -21,7 +25,7 @@ interface WeekPlannerProps {
  *
  * NOTE: no overflow-hidden on the wrapper — it would break the sticky headers.
  */
-export default function WeekPlanner({ weekStart, itemsByDay, today, maxPerDay, onSelect }: WeekPlannerProps) {
+export default function WeekPlanner({ weekStart, itemsByDay, today, maxPerDay, onSelect, placedId, movedIds }: WeekPlannerProps) {
   const keys = weekKeys(weekStart);
 
   return (
@@ -37,6 +41,8 @@ export default function WeekPlanner({ weekStart, itemsByDay, today, maxPerDay, o
             isLast={i === keys.length - 1}
             maxPerDay={maxPerDay}
             onSelect={onSelect}
+            placedId={placedId}
+            movedIds={movedIds}
           />
         ))}
       </div>
@@ -52,6 +58,8 @@ function DayColumn({
   isLast,
   maxPerDay,
   onSelect,
+  placedId,
+  movedIds,
 }: {
   dayKey: DateKey;
   items: ScheduleItem[];
@@ -60,6 +68,8 @@ function DayColumn({
   isLast: boolean;
   maxPerDay: number;
   onSelect: (campaign: Campaign) => void;
+  placedId?: string | null;
+  movedIds?: Set<string>;
 }) {
   const weekend = isWeekend(dayKey);
   const { weekday, dayNum } = dayParts(dayKey);
@@ -99,7 +109,7 @@ function DayColumn({
       {/* Sends */}
       <div className="p-2 lg:flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
         {items.map((it) => (
-          <SendCard key={it.key} item={it} onClick={onSelect} />
+          <SendCard key={it.key} item={it} onClick={onSelect} placed={it.campaign.id === placedId} moved={!!movedIds?.has(it.campaign.id)} />
         ))}
         {count === 0 && !weekend && (
           <p className="text-[11px] text-muted-gray/70 text-center pt-6 col-span-full">No sends</p>

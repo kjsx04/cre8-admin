@@ -10,6 +10,10 @@ import { useAudienceCounts, formatCount, audienceForCampaign } from "@/lib/email
 interface SendCardProps {
   item: ScheduleItem;
   onClick: (campaign: Campaign) => void;
+  /** This is the email that was just placed */
+  placed?: boolean;
+  /** The AI moved this one to make room */
+  moved?: boolean;
 }
 
 /**
@@ -18,7 +22,7 @@ interface SendCardProps {
  *   projected → dashed card (future recurring occurrence, or not yet synced)
  *   sent      → muted card with a check
  */
-export default function SendCard({ item, onClick }: SendCardProps) {
+export default function SendCard({ item, onClick, placed, moved }: SendCardProps) {
   const { campaign: c, state, time, isRecurring, frequency } = item;
   const color = getTypeColor(c.email_label);
   const isSent = state === "sent";
@@ -33,7 +37,10 @@ export default function SendCard({ item, onClick }: SendCardProps) {
       onClick={() => onClick(c)}
       className={`w-full text-left rounded-card bg-white p-2 border transition-colors hover:border-border-medium ${
         isProjected ? "border-dashed border-border-medium" : "border-border-light"
-      } ${isSent ? "opacity-60" : ""}`}
+      } ${isSent ? "opacity-60" : ""} ${
+        // Just placed: solid ring. Just moved: soft ring. Both fade out on their own.
+        placed ? "ring-2 ring-green ring-offset-1 animate-slide-up" : moved ? "ring-2 ring-green/40 animate-slide-up" : ""
+      }`}
     >
       {/* Time + state */}
       <div className="flex items-center justify-between gap-2">

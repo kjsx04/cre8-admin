@@ -18,16 +18,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types";
+import { Campaign } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
-import { endDateProblem } from "@/lib/email/validate-schedule";
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
-import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
-import { saveCampaignDraft, submitCampaign } from "@/lib/email/submit";
-import SchedulingAnimation from "../SchedulingAnimation";
+import { buildCmsChips } from "@/lib/email/utils";
+import { saveCampaignDraft } from "@/lib/email/submit";
 import LivePreviewFrame from "./LivePreviewFrame";
 import TestSendControl from "./TestSendControl";
 import ListingPicker from "./ListingPicker";
@@ -74,22 +72,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
 
-  // Highest number the Custom priority box accepts = listings on the schedule + 1 (room for this one)
-  const [rankMax, setRankMax] = useState(1);
-  useEffect(() => {
-    if (!userEmail) return;
-    let alive = true;
-    fetch("/api/email/priorities", { headers: { "x-user-email": userEmail } })
-      .then((r) => (r.ok ? r.json() : { listings: [] }))
-      .then((d) => {
-        if (!alive) return;
-        const listings: { listing_id: string }[] = d.listings || [];
-        setRankMax(Math.max(1, listings.length + 1));
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [userEmail]);
-
   const {
     draft, set, pickListing,
     addHighlight, updateHighlight, moveHighlight, removeHighlight,
@@ -99,15 +81,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   const isEdit = mode === "edit";
 
-  // "Ends" must leave room for at least one send — earliest allowed is tomorrow (Phoenix)
-  const minEndDate = useMemo(() => {
-    const d = new Date(Date.now() + 86_400_000);
-    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Phoenix" }).format(d);
-  }, []);
-  const endDateWarning = useMemo(
-    () => (draft.campaignType === "recurring" ? endDateProblem(draft.endDate) : null),
-    [draft.campaignType, draft.endDate]
-  );
   const selectedListing = useMemo(
     () => listings.find((l) => l.id === draft.listingId),
     [listings, draft.listingId]
@@ -195,12 +168,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     setActiveField(field);
   }, []);
 
-  // ── Submit + toast ──
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastDone, setToastDone] = useState(false);
-  const [toastError, setToastError] = useState<string | null>(null);
+  // Set once we've saved, so the "unsaved work" guard stops firing
   const submittedRef = useRef(false);
-  const lastPayloadRef = useRef(formData);
 
   const withAudienceNames = useCallback(
     (data: typeof formData) => ({
@@ -209,26 +178,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     }),
     [audience.map, selectedAudienceName]
   );
-
-  const runSubmit = useCallback(async () => {
-    setToastVisible(true);
-    setToastDone(false);
-    setToastError(null);
-    try {
-      await submitCampaign(lastPayloadRef.current, userEmail, campaign?.id);
-      submittedRef.current = true;
-      forgetStored(); // it's saved for real now
-      setToastDone(true);
-    } catch (err) {
-      setToastError(err instanceof Error ? err.message : "Something went wrong");
-    }
-  }, [userEmail, campaign?.id, forgetStored]);
-
-  const handleSubmit = () => {
-    if (!isValid || (toastVisible && !toastError)) return;
-    lastPayloadRef.current = withAudienceNames(formData);
-    runSubmit();
-  };
 
   // ── Save campaign: persist a draft. Not live / not on the calendar. ──
   const [saving, setSaving] = useState(false);
@@ -243,6 +192,26 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       submittedRef.current = true;
       forgetStored();
       router.push("/marketing/email");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Couldn't save");
+      setSaving(false);
+    }
+  };
+
+  /**
+   * Schedule — saves the draft, then hands off to the calendar.
+   * No AI runs here any more: frequency, priority and the slot are chosen on the
+   * schedule page, where you can watch the placement happen.
+   */
+  const handleScheduleHandoff = async () => {
+    if (!isValid || saving) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await saveCampaignDraft(withAudienceNames(formData), userEmail, campaign?.id);
+      submittedRef.current = true;
+      forgetStored();
+      router.push(`/marketing/email?place=${saved.id}`);
     } catch (err) {
       setSaveError(err instanceof Error ? err.message : "Couldn't save");
       setSaving(false);
@@ -303,7 +272,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     return () => window.removeEventListener("beforeunload", onUnload);
   }, [dirty]);
 
-  const submitting = toastVisible && !toastError;
+  const submitting = false; // scheduling no longer happens here — it lives on the calendar
   const isGroup = draft.kind === "group";
   // Everything after "Type" shows as soon as the type is chosen (edit mode: always)
   const revealed = isEdit || draft.kind !== "";
@@ -625,103 +594,11 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              <Section title="Frequency">
-                <div className="space-y-3">
-                  <Segmented
-                    value={draft.campaignType}
-                    options={[
-                      { id: "one-time", label: "One-time" },
-                      { id: "recurring", label: "Recurring" },
-                    ]}
-                    onChange={(v) => set("campaignType", v as "one-time" | "recurring")}
-                  />
-                  {draft.campaignType === "recurring" && (
-                    <div className="space-y-3 composer-reveal">
-                      <label className="flex items-center gap-2 text-xs text-charcoal cursor-pointer">
-                        <input type="checkbox" checked={draft.pinned} onChange={(e) => set("pinned", e.target.checked)} className="accent-[#8CC644]" />
-                        Keep this cadence (don&apos;t slow it down as the listing ages)
-                      </label>
-                      <Segmented
-                        value={draft.frequency}
-                        options={[
-                          { id: "weekly", label: "Weekly" },
-                          { id: "bi-weekly", label: "Bi-weekly" },
-                          { id: "monthly", label: "Monthly" },
-                        ]}
-                        onChange={(v) => set("frequency", v as CampaignFrequency)}
-                      />
-                      <div className="space-y-1.5">
-                        <div className="flex items-center gap-3">
-                          <label className="text-[12px] font-medium text-medium-gray">Ends</label>
-                          <input
-                            type="date"
-                            value={draft.endDate}
-                            // Tomorrow at the earliest — an end date today (or earlier) would
-                            // close the campaign before its first send ever goes out
-                            min={minEndDate}
-                            onChange={(e) => set("endDate", e.target.value)}
-                            className={`${INPUT} w-auto`}
-                          />
-                          {draft.endDate && (
-                            <button type="button" onClick={() => set("endDate", "")} className="text-xs text-muted-gray hover:text-charcoal">
-                              Clear
-                            </button>
-                          )}
-                        </div>
-                        {endDateWarning && <p className="text-xs text-red-500">{endDateWarning}</p>}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </Section>
-
-              <Section title="Priority">
-                <div className="space-y-2">
-                  {/* Top = #1 and the AI moves others · Fit = best free slot, nothing moves · Custom = exact slot, AI rebalances */}
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Segmented
-                      value={draft.priority}
-                      options={[
-                        { id: "high", label: "Top" },
-                        { id: "normal", label: "Fit" },
-                        { id: "custom", label: "Custom" },
-                      ]}
-                      onChange={(v) => set("priority", v as CampaignPriority)}
-                    />
-                    {draft.priority === "custom" && (
-                      <label className="flex items-center gap-1.5 text-sm text-charcoal composer-reveal">
-                        <span className="text-muted-gray">#</span>
-                        <input
-                          type="number"
-                          min={1}
-                          max={rankMax}
-                          value={draft.priorityRank}
-                          onChange={(e) => {
-                            const n = Math.round(Number(e.target.value));
-                            set("priorityRank", Number.isFinite(n) ? Math.max(1, Math.min(rankMax, n)) : 1);
-                          }}
-                          className="w-16 h-8 px-2 text-sm border border-border-light rounded-btn text-center tabular-nums focus:outline-none focus:ring-1 focus:ring-green"
-                        />
-                        <span className="text-xs text-muted-gray">of {rankMax}</span>
-                      </label>
-                    )}
-                  </div>
-                  <p className="text-xs text-muted-gray">
-                    {draft.priority === "high"
-                      ? "Goes to #1 in the Priorities list — AI grabs the best slot in the next few days and moves other emails around it."
-                      : draft.priority === "custom"
-                        ? `Goes to exactly #${draft.priorityRank} in the Priorities list — AI moves the other emails around to match.`
-                        : "Joins the bottom of the Priorities list — AI takes the best slot that's still open and moves nothing else."}
-                    {isEdit && campaign?.scheduled_date && (
-                      <> Currently {formatScheduleDate(campaign.scheduled_date)}.</>
-                    )}
-                  </p>
-                </div>
-              </Section>
             </div>
           )}
 
-          {/* Send now / Schedule — go live. Save campaign (toolbar) only persists a draft. */}
+          {/* Save parks it below the calendar. Schedule hands off to the calendar,
+              where frequency and priority are chosen. Send now skips both. */}
           <div className="pt-8 border-t border-black/[0.05] space-y-2">
             <div className="flex items-center justify-end gap-2">
               <button
@@ -729,17 +606,26 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow || saving}
                 className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
-                title="Send to the audience right now instead of letting the AI pick a time"
+                title="Send to the audience right now instead of putting it on the schedule"
               >
                 Send now
               </button>
               <button
                 type="button"
-                onClick={handleSubmit}
+                onClick={handleSave}
+                disabled={!canSave || submitting || sendingNow || saving}
+                className="px-4 py-1.5 border border-border-light text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Save without scheduling — it waits below the calendar"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+              <button
+                type="button"
+                onClick={handleScheduleHandoff}
                 disabled={!isValid || submitting || sendingNow || saving}
                 className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {isEdit && campaign?.status !== "draft" ? "Update" : "Schedule"}
+                {saving ? "Opening…" : "Schedule"}
               </button>
             </div>
             {hint && <p className="text-[11px] text-muted-gray text-right">{hint}</p>}
@@ -775,17 +661,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             </div>
           </div>
         </div>
-      )}
-
-      {/* ── Scheduling toast ── */}
-      {toastVisible && (
-        <SchedulingAnimation
-          apiDone={toastDone}
-          apiError={toastError}
-          onComplete={goBack}
-          onRetry={runSubmit}
-          mode={mode}
-        />
       )}
 
       {/* Reveal animation for sections that appear after a listing is picked */}
@@ -833,28 +708,3 @@ function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onCha
   );
 }
 
-/** Segmented toggle (same look as the old form's button pairs) */
-function Segmented({
-  value,
-  options,
-  onChange,
-}: {
-  value: string;
-  options: { id: string; label: string; badge?: string }[]; // badge = small count after the label ("860")
-  onChange: (id: string) => void;
-}) {
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {options.map((o) => (
-        <ChoiceButton key={o.id} selected={value === o.id} onClick={() => onChange(o.id)}>
-          {o.label}
-          {o.badge !== undefined && (
-            <span className="ml-1.5 text-xs tabular-nums text-muted-gray">
-              · {o.badge}
-            </span>
-          )}
-        </ChoiceButton>
-      ))}
-    </div>
-  );
-}

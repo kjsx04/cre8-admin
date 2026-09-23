@@ -31,6 +31,7 @@ import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
 import { needsTemplateSync } from "@/lib/email/template-version";
 import { ChoiceButton } from "@/components/email/composer/composer-ui";
 import CampaignDetail from "@/components/email/CampaignDetail";
+import PlacementBar, { type PlacementResult } from "@/components/email/schedule/PlacementBar";
 
 type View = "week" | "month";
 
@@ -69,6 +70,14 @@ function EmailSchedule() {
   const [syncingAll, setSyncingAll] = useState(false);
   const [syncAllNote, setSyncAllNote] = useState<string | null>(null);
 
+  // ── Placing a saved draft on the calendar (?place=<id>) ──
+  const [placing, setPlacing] = useState(false);
+  const [placeResult, setPlaceResult] = useState<PlacementResult | null>(null);
+  const [placeError, setPlaceError] = useState<string | null>(null);
+  const [placedId, setPlacedId] = useState<string | null>(null);   // ring the email that just landed
+  const [movedIds, setMovedIds] = useState<Set<string>>(new Set()); // flash the ones that shuffled
+  const [rankMax, setRankMax] = useState(1);
+
   const fetchCampaigns = useCallback(async () => {
     try {
       const res = await fetch("/api/email/campaigns");
@@ -106,14 +115,41 @@ function EmailSchedule() {
   const anchor: DateKey = isDateKey(rawDate) ? rawDate : today;
 
   const setQuery = useCallback(
-    (next: { view?: View; date?: DateKey }) => {
+    (next: { view?: View; date?: DateKey; place?: string }) => {
       const q = new URLSearchParams(params.toString());
       q.set("view", next.view ?? view);
       q.set("date", next.date ?? anchor);
+      if (next.place) q.set("place", next.place);
       router.replace(`${pathname}?${q.toString()}`, { scroll: false });
     },
     [params, router, pathname, view, anchor]
   );
+
+  // The draft we were sent here to place, if any
+  const placeId = params.get("place");
+  const placingCampaign = useMemo(
+    () => (placeId ? campaigns.find((c) => c.id === placeId) || null : null),
+    [placeId, campaigns]
+  );
+
+  /** Drop ?place= from the URL and clear the placement state */
+  const closePlacement = useCallback(() => {
+    const q = new URLSearchParams(params.toString());
+    q.delete("place");
+    router.replace(`${pathname}?${q.toString()}`, { scroll: false });
+    setPlaceResult(null);
+    setPlaceError(null);
+  }, [params, router, pathname]);
+
+  /** Highlight the placed email and anything that moved, then fade it out */
+  const flashPlacement = useCallback((placed: string, moves: { id: string }[]) => {
+    setPlacedId(placed);
+    setMovedIds(new Set(moves.map((m) => m.id)));
+    window.setTimeout(() => {
+      setPlacedId(null);
+      setMovedIds(new Set());
+    }, 2600);
+  }, []);
 
   const weekStart = startOfWeekMonday(anchor);
   const visibleKeys = view === "week" ? weekKeys(weekStart) : monthGridKeys(anchor);
@@ -133,6 +169,72 @@ function EmailSchedule() {
   const onNext = () =>
     view === "week" ? setQuery({ date: addDays(weekStart, 7) }) : setQuery({ date: addMonths(anchor, 1) });
   const onToday = () => setQuery({ date: today });
+
+  // ── Place / undo ──
+  const handlePlace = useCallback(
+    async (body: Record<string, unknown>) => {
+      if (!placeId) return;
+      setPlacing(true);
+      setPlaceError(null);
+      try {
+        const res = await fetch(`/api/email/campaigns/${placeId}/place`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Placement failed");
+
+        setPlaceResult({
+          placedAt: data.placed_at || null,
+          moves: data.moves || [],
+          undoToken: data.undo_token,
+          test: !!data.test,
+        });
+        // Jump to the week it landed in, reload, then light everything up
+        if (data.placed_at) {
+          const key = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Phoenix" }).format(new Date(data.placed_at));
+          if (isDateKey(key)) setQuery({ view: "week", date: key });
+        }
+        await fetchCampaigns();
+        flashPlacement(placeId, data.moves || []);
+      } catch (err) {
+        setPlaceError(err instanceof Error ? err.message : "Placement failed");
+      } finally {
+        setPlacing(false);
+      }
+    },
+    [placeId, userEmail, setQuery, fetchCampaigns, flashPlacement]
+  );
+
+  const handleUndoPlace = useCallback(async () => {
+    if (!placeId || !placeResult) return;
+    setPlacing(true);
+    try {
+      const res = await fetch(`/api/email/campaigns/${placeId}/place/undo`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ undo_token: placeResult.undoToken }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Undo failed");
+      setPlaceResult(null);
+      await fetchCampaigns();
+    } catch (err) {
+      setPlaceError(err instanceof Error ? err.message : "Undo failed");
+    } finally {
+      setPlacing(false);
+    }
+  }, [placeId, placeResult, userEmail, fetchCampaigns]);
+
+  // How high Custom can go — listings already on the schedule, plus this one
+  useEffect(() => {
+    if (!placeId || !userEmail) return;
+    fetch("/api/email/priorities", { headers: { "x-user-email": userEmail } })
+      .then((r) => (r.ok ? r.json() : { listings: [] }))
+      .then((d) => setRankMax(Math.max(1, (d.listings || []).length + 1)))
+      .catch(() => {});
+  }, [placeId, userEmail]);
   const label = view === "week" ? weekLabel(weekStart) : monthLabel(anchor);
 
   // ── Handlers (unchanged) ──
@@ -375,6 +477,20 @@ function EmailSchedule() {
         </div>
       </div>
 
+      {/* Placing a saved draft (arrived here from the composer or an off-schedule card) */}
+      {placingCampaign && (
+        <PlacementBar
+          campaign={placingCampaign}
+          rankMax={rankMax}
+          placing={placing}
+          result={placeResult}
+          error={placeError}
+          onPlace={handlePlace}
+          onUndo={handleUndoPlace}
+          onDone={closePlacement}
+        />
+      )}
+
       {/* Alerts: stale content, cadence decay */}
       <AlertsStrip userEmail={userEmail} />
 
@@ -399,7 +515,7 @@ function EmailSchedule() {
             optimizeNote={optimizeNote}
           />
           {view === "week" ? (
-            <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} maxPerDay={settings.maxSendsPerDay} onSelect={setSelectedCampaign} />
+            <WeekPlanner weekStart={weekStart} itemsByDay={itemsByDay} today={today} maxPerDay={settings.maxSendsPerDay} onSelect={setSelectedCampaign} placedId={placedId} movedIds={movedIds} />
           ) : (
             <MonthOverview
               anchor={anchor}
@@ -409,7 +525,13 @@ function EmailSchedule() {
               onSelectDay={(key) => setQuery({ view: "week", date: key })}
             />
           )}
-          <OffScheduleSection waiting={waiting} finished={finished} onSelect={setSelectedCampaign} />
+          <OffScheduleSection
+            waiting={waiting}
+            finished={finished}
+            onSelect={setSelectedCampaign}
+            onEdit={(c: Campaign) => router.push(`/marketing/email/${c.id}/edit`)}
+            onSchedule={(c: Campaign) => setQuery({ place: c.id })}
+          />
         </div>
       )}
 
