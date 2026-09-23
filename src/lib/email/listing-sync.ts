@@ -11,8 +11,9 @@
  */
 
 import { supabase } from "@/lib/flow/supabase";
+import { resolveHeroPhoto } from "./listing-hydrate";
 import { ListingFieldData } from "@/lib/admin-constants";
-import { refreshHighlights, buildGroupSummary } from "./utils";
+import { buildGroupSummary } from "./utils";
 
 export type ListingSyncResult = {
   updated: string[];  // campaign ids whose row changed
@@ -46,9 +47,11 @@ export async function syncCampaignsForListing(
         updates.listing_name = fieldData.name;
       }
 
-      const heroUrl = fieldData.gallery?.[0]?.url;
-      if (heroUrl && heroUrl !== campaign.photo_url) {
-        updates.photo_url = heroUrl;
+      // Hero photo: the one picked in the composer wins. Only fill an empty slot
+      // or replace a CMS photo that no longer exists in the gallery.
+      const nextPhoto = resolveHeroPhoto(campaign.photo_url, fieldData.gallery);
+      if (nextPhoto && nextPhoto !== campaign.photo_url) {
+        updates.photo_url = nextPhoto;
       }
 
       if (fieldData.slug) {
@@ -56,10 +59,8 @@ export async function syncCampaignsForListing(
         if (url !== campaign.listing_page_url) updates.listing_page_url = url;
       }
 
-      const nextHighlights = refreshHighlights(campaign.highlights || [], fieldData);
-      if (JSON.stringify(nextHighlights) !== JSON.stringify(campaign.highlights || [])) {
-        updates.highlights = nextHighlights;
-      }
+      // Details rows are the user's text. Saving a listing never rewrites them —
+      // to change a stat, edit the campaign (or delete and recreate it).
 
       if (Object.keys(updates).length === 0) continue;
 

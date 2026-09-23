@@ -61,28 +61,6 @@ export function buildAutoHighlights(fd: Partial<ListingFieldData>): string[] {
   return rows;
 }
 
-/**
- * Refresh listing-derived highlight rows with new listing data, in place.
- * Rows are matched by their title ("Price:", "Acreage:", "Zoning:", etc.)
- * so custom rows and the user's ordering are preserved. A row is only
- * rewritten when the matching listing field is present in `fd`.
- */
-export function refreshHighlights(
-  highlights: string[],
-  fd: Partial<ListingFieldData>
-): string[] {
-  return highlights.map((h) => {
-    const t = h.trim();
-    if (/^Price:/i.test(t) && fd["list-price"]) return `Price: ${fd["list-price"]}`;
-    if ((/^Acreage:/i.test(t) || /^[\d.,]+\s*Acres$/i.test(t)) && fd["square-feet"]) return `Acreage: ${fd["square-feet"]} Acres`;
-    if ((/^Building SF:/i.test(t) || /SF Building$/i.test(t)) && fd["building-sqft"]) return `Building SF: ${Number(fd["building-sqft"]).toLocaleString()} SF`;
-    if (/^Zoning:/i.test(t) && fd.zoning) return `Zoning: ${fd.zoning}`;
-    if (/^Location:/i.test(t) && fd["city-county"]) return `Location: ${fd["city-county"]}`;
-    if (/^Cross Streets:/i.test(t) && fd["cross-streets"]) return `Cross Streets: ${fd["cross-streets"]}`;
-    if (/^Traffic Count:/i.test(t) && fd["traffic-count"]) return `Traffic Count: ${fd["traffic-count"]}`;
-    return h;
-  });
-}
 
 // ── Listing → highlight chips (used by the composer's "+ from listing" row) ──
 export interface CmsChip {

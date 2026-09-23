@@ -56,13 +56,14 @@ assert(campaign.broker_name === "Kevin Smith", "broker stays");
 assert((campaign.highlights as string[])[0] === "Price: $1", "typed stat row is left alone");
 assert((campaign.highlights as string[])[1] === "Custom: stay", "custom highlight stays");
 
-const refreshed = overlayListingOnCampaign(
-  { listing_id: "list-1", highlights: ["Price: $1", "Custom: stay"] },
-  listing,
-  { refreshStats: true }
+// The overlay never rewrites stats, whatever the CMS says
+const cmsChanged = overlayListingOnCampaign(
+  { listing_id: "list-1", highlights: ["Acreage: 1-28 Acres", "Location: ds"] },
+  listing
 );
-assert((refreshed.highlights as string[])[0] === "Price: $9", "opt-in refresh still pulls the CMS price");
-assert((refreshed.highlights as string[])[1] === "Custom: stay", "opt-in refresh leaves custom rows alone");
+assert((cmsChanged.highlights as string[])[0] === "Acreage: 1-28 Acres", "typed acreage survives a CMS value");
+assert((cmsChanged.highlights as string[])[1] === "Location: ds", "typed location survives a CMS value");
+
 
 // Hero photo rules (single emails)
 const twoPhotos = [{ url: "https://cdn.prod.website-files.com/a/1.jpg" }, { url: "https://cdn.prod.website-files.com/a/2.jpg" }];

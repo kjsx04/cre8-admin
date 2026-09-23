@@ -5,7 +5,7 @@
  */
 
 import { API_BASE, ListingItem } from "@/lib/admin-constants";
-import { buildGroupSummary, refreshHighlights } from "./utils";
+import { buildGroupSummary } from "./utils";
 
 type CampaignRow = Record<string, unknown>;
 
@@ -26,11 +26,7 @@ async function fetchListings(): Promise<ListingItem[]> {
   return items;
 }
 
-export function overlayListingOnCampaign(
-  campaign: CampaignRow,
-  item: ListingItem,
-  opts: { refreshStats?: boolean } = {}
-): CampaignRow {
+export function overlayListingOnCampaign(campaign: CampaignRow, item: ListingItem): CampaignRow {
   const fd = item.fieldData || {};
   const next: CampaignRow = { ...campaign };
   if (fd.name) next.listing_name = fd.name;
@@ -41,12 +37,9 @@ export function overlayListingOnCampaign(
   // (Before this rule the preview always forced photo #1, so picking another photo did nothing.)
   next.photo_url = resolveHeroPhoto(campaign.photo_url, fd.gallery);
   if (fd.slug) next.listing_page_url = `https://cre8advisors.com/listings/${fd.slug}`;
-  // Stats rows are editable in the composer, so only pull CMS values when the
-  // caller asked for it (a listing save). While typing, what's on screen wins —
-  // otherwise every keystroke was overwritten by the listing's value.
-  if (opts.refreshStats) {
-    next.highlights = refreshHighlights((campaign.highlights as string[]) || [], fd);
-  }
+  // Details rows are never touched. Whatever was typed in the composer is the
+  // campaign's text — nothing in the CMS overrides it. To change a stat, edit
+  // the campaign (or delete and recreate it).
   return next;
 }
 
