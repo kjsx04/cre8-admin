@@ -50,8 +50,19 @@ assert(campaign.intro_text === "Keep intro", "intro stays campaign copy");
 assert(campaign.body_text === "Keep body", "body stays campaign copy");
 assert(campaign.partner_logo_url === "https://cdn/logo.png", "partner logo stays");
 assert(campaign.broker_name === "Kevin Smith", "broker stays");
-assert((campaign.highlights as string[])[0] === "Price: $9", "auto highlight refreshes");
+// Stats rows are the user's text — the overlay never rewrites them (only an
+// explicit listing save does, via listing-sync). This is what made typing in the
+// composer's Details rows appear to do nothing.
+assert((campaign.highlights as string[])[0] === "Price: $1", "typed stat row is left alone");
 assert((campaign.highlights as string[])[1] === "Custom: stay", "custom highlight stays");
+
+const refreshed = overlayListingOnCampaign(
+  { listing_id: "list-1", highlights: ["Price: $1", "Custom: stay"] },
+  listing,
+  { refreshStats: true }
+);
+assert((refreshed.highlights as string[])[0] === "Price: $9", "opt-in refresh still pulls the CMS price");
+assert((refreshed.highlights as string[])[1] === "Custom: stay", "opt-in refresh leaves custom rows alone");
 
 // Hero photo rules (single emails)
 const twoPhotos = [{ url: "https://cdn.prod.website-files.com/a/1.jpg" }, { url: "https://cdn.prod.website-files.com/a/2.jpg" }];

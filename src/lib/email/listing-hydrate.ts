@@ -26,7 +26,11 @@ async function fetchListings(): Promise<ListingItem[]> {
   return items;
 }
 
-export function overlayListingOnCampaign(campaign: CampaignRow, item: ListingItem): CampaignRow {
+export function overlayListingOnCampaign(
+  campaign: CampaignRow,
+  item: ListingItem,
+  opts: { refreshStats?: boolean } = {}
+): CampaignRow {
   const fd = item.fieldData || {};
   const next: CampaignRow = { ...campaign };
   if (fd.name) next.listing_name = fd.name;
@@ -37,7 +41,12 @@ export function overlayListingOnCampaign(campaign: CampaignRow, item: ListingIte
   // (Before this rule the preview always forced photo #1, so picking another photo did nothing.)
   next.photo_url = resolveHeroPhoto(campaign.photo_url, fd.gallery);
   if (fd.slug) next.listing_page_url = `https://cre8advisors.com/listings/${fd.slug}`;
-  next.highlights = refreshHighlights((campaign.highlights as string[]) || [], fd);
+  // Stats rows are editable in the composer, so only pull CMS values when the
+  // caller asked for it (a listing save). While typing, what's on screen wins —
+  // otherwise every keystroke was overwritten by the listing's value.
+  if (opts.refreshStats) {
+    next.highlights = refreshHighlights((campaign.highlights as string[]) || [], fd);
+  }
   return next;
 }
 
@@ -108,6 +117,8 @@ export async function hydrateCampaignListing(campaign: CampaignRow): Promise<Cam
     let next = { ...campaign };
     if (!isGroup) {
       const item = byId.get(listingId);
+      // Stats stay as typed. Only an explicit listing save refreshes them
+      // (see listing-sync.ts) — a preview or send never rewrites the user's text.
       if (item) next = overlayListingOnCampaign(next, item);
       return next;
     }
