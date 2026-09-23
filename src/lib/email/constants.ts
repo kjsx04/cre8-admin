@@ -11,7 +11,7 @@ import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupList
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-22-2"; // heading 20px, CTA spacing, Multiple template switches on immediately
+export const CURRENT_TEMPLATE_VERSION = "2026-09-23-1"; // heading 20px, CTA spacing, Multiple template switches on immediately
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -96,13 +96,20 @@ const CRE8_PHONE = "602.888.2738";
 const CRE8_LINKEDIN = "https://www.linkedin.com/company/cre8-advisors";
 const CRE8_INSTAGRAM = "https://www.instagram.com/cre8advisors";
 
-// ── Broker headshot URLs (square PNGs from Webflow CDN) ──
+// ── Broker headshot URLs ──
+// 160x160 PNGs (rendered at 80px, so 2x for retina) on Supabase Storage.
+// The Webflow originals were 1-2 MB each for an 80px thumbnail — around 3.7 MB of
+// pictures on a three-broker email, re-fetched through Gmail's image proxy for
+// every recipient. These are ~30 KB each, the same crop, flattened onto the
+// #000000 broker band. Source images live in Webflow; regenerate by resizing to
+// 160x160 and re-uploading to email-assets/brokers/.
+const BROKER_HEADSHOT_BASE = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/email-assets/brokers";
 export const BROKER_HEADSHOTS: Record<string, string> = {
-  "6987ab84b1ac0ee1e143f72f": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c6e8ac15213b103fbb_Rommie%20Square.png",
-  "6987abdaa473a39098593f50": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c62928977ac46368d0_Andy%20Square.png",
-  "6987fada67c88dd8b9b89e39": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df7c60e361af25a1df351_Lindsey%20Square.png",
-  "6987fb2fa8757569eefd70fa": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df94cb2df1528325e4331_Chad%20Square.png",
-  "6987fb6d372758be66e14cb8": "https://cdn.prod.website-files.com/66f22f3dc46f9da5825ff2f7/674df83087f7eb9ee3c964bd_Kevin%20Square.png",
+  "6987ab84b1ac0ee1e143f72f": `${BROKER_HEADSHOT_BASE}/rommie.png`,
+  "6987abdaa473a39098593f50": `${BROKER_HEADSHOT_BASE}/andy.png`,
+  "6987fada67c88dd8b9b89e39": `${BROKER_HEADSHOT_BASE}/lindsey.png`,
+  "6987fb2fa8757569eefd70fa": `${BROKER_HEADSHOT_BASE}/chad.png`,
+  "6987fb6d372758be66e14cb8": `${BROKER_HEADSHOT_BASE}/kevin.png`,
 };
 
 // ── Broker titles ──
