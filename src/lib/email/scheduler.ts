@@ -10,6 +10,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { syncCampaignToProvider, CampaignLike } from "./provider";
 import { splitProviderIds } from "./audience-tokens";
 import { templateStamp } from "./template-version";
+import { endDateProblem } from "./validate-schedule";
 import { hydrateCampaignListing, listingSnapshotFields } from "./listing-hydrate";
 import { CalendarChange, Campaign } from "./types";
 import { expandOccurrences } from "./occurrences";
@@ -283,6 +284,13 @@ export async function scheduleCampaign(
 ): Promise<{ campaign: CampaignLike | null; sync: Awaited<ReturnType<typeof syncCampaignToProvider>> | null }> {
   const slot = await requestAiSlot(baseUrl, campaign, targetDate);
   if (!slot) return { campaign: null, sync: null };
+
+  // Never create a broadcast the cron would cancel the next morning
+  const endProblem = endDateProblem(campaign.end_date as string | null, slot.scheduledDate);
+  if (endProblem) {
+    console.error(`[Scheduler] refusing to schedule ${campaign.id}: ${endProblem}`);
+    return { campaign: null, sync: null };
+  }
 
   const result = await applySlotAndSync(campaign.id as string, slot.scheduledDate, slot.reasoning);
 

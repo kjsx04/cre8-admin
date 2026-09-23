@@ -15,6 +15,7 @@ import { EMAIL_SENDERS } from "@/lib/email/constants";
 import { BROKERS, BROKER_CONTACTS, brokerIdForEmail, ListingItem } from "@/lib/admin-constants";
 import { buildAutoHighlights, splitHighlight, joinHighlight } from "@/lib/email/utils";
 import { parseAudienceTokens, serializeAudienceTokens } from "@/lib/email/audience-tokens";
+import { endDateProblem } from "@/lib/email/validate-schedule";
 
 export interface HighlightRow {
   id: number;
@@ -49,7 +50,7 @@ export interface CampaignDraft {
   pinned: boolean;              // exempt from freshness decay
 }
 
-export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo" | "audience";
+export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo" | "audience" | "endDate";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -340,8 +341,11 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     if (draft.brokerIds.length === 0) m.push("broker");
     if (draft.segmentIds.length === 0 && draft.extraEmails.length === 0) m.push("audience");
     if (draft.partnerLogoUrl.startsWith("data:")) m.push("partnerLogo"); // chosen but not applied
+    // An end date that's already passed would let this schedule, then be cancelled
+    // by the nightly cron before it ever sends
+    if (draft.campaignType === "recurring" && endDateProblem(draft.endDate)) m.push("endDate");
     return m;
-  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl]);
+  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl, draft.campaignType, draft.endDate]);
 
   const isValid = missing.length === 0;
   // Save campaign only needs a listing (or group) and a broker — audience waits for Schedule.

@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/email/auth";
 import { syncCampaignToProvider, cancelSend } from "@/lib/email/provider";
 import { scheduleCampaign, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 import { placeForCampaign, normalizePriority } from "@/lib/email/priorities";
+import { endDateProblem } from "@/lib/email/validate-schedule";
 import { addDays } from "@/lib/email/schedule-dates";
 import { templateStamp } from "@/lib/email/template-version";
 
@@ -86,7 +87,12 @@ export async function PATCH(
   if (body.pinned !== undefined) updates.pinned = !!body.pinned;
   if (body.scheduled_date !== undefined) updates.scheduled_date = body.scheduled_date;
   if (body.next_send_date !== undefined) updates.next_send_date = body.next_send_date;
-  if (body.end_date !== undefined) updates.end_date = body.end_date || null;
+  if (body.end_date !== undefined) {
+    // Same guard as create: never accept an end date that kills the next send
+    const endProblem = endDateProblem(body.end_date);
+    if (endProblem) return NextResponse.json({ error: endProblem }, { status: 400 });
+    updates.end_date = body.end_date || null;
+  }
   if (body.status !== undefined) updates.status = body.status;
   if (body.ai_reasoning !== undefined) updates.ai_reasoning = body.ai_reasoning;
 

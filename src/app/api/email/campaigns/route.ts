@@ -3,6 +3,7 @@ import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { scheduleCampaign } from "@/lib/email/scheduler";
 import { placeForCampaign, normalizePriority } from "@/lib/email/priorities";
+import { endDateProblem } from "@/lib/email/validate-schedule";
 import { optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 import { addDays } from "@/lib/email/schedule-dates";
 import { templateStamp } from "@/lib/email/template-version";
@@ -76,6 +77,13 @@ export async function POST(request: NextRequest) {
   // Schedule / Send now need an audience. Save campaign may persist a draft without one.
   if (body.auto_schedule && !body.segment_id) {
     return NextResponse.json({ error: "Pick at least one audience list or contact" }, { status: 400 });
+  }
+
+  // An end date already in the past would let the campaign schedule, then get
+  // closed and cancelled by the next nightly cron without ever sending.
+  if (body.auto_schedule) {
+    const endProblem = endDateProblem(body.end_date);
+    if (endProblem) return NextResponse.json({ error: endProblem }, { status: 400 });
   }
 
   // Insert campaign as draft

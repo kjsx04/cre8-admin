@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { EMAIL_RE } from "@/lib/email/audience-tokens";
+import { lookalikeWarning } from "@/lib/email/lookalike-domain";
 import { contactChipLabel, formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
 import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
@@ -193,6 +194,10 @@ export default function AudiencePicker({
                 className="w-full text-left px-3 py-2 text-sm hover:bg-light-gray"
               >
                 Add <span className="font-medium">{query.trim().toLowerCase()}</span>
+                {/* Catches near-misses like cre8adivsors.com — it would bounce silently */}
+                {lookalikeWarning(query.trim()) && (
+                  <span className="block text-xs text-amber-600 mt-0.5">{lookalikeWarning(query.trim())}</span>
+                )}
               </button>
             )}
           </div>
@@ -204,9 +209,12 @@ export default function AudiencePicker({
               return (
                 <span
                   key={email}
-                  title={email}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-card border border-border-light bg-white text-xs text-charcoal"
+                  title={lookalikeWarning(email) ? `${email} — ${lookalikeWarning(email)}` : email}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-card border bg-white text-xs ${
+                    lookalikeWarning(email) ? "border-amber-400 text-amber-700" : "border-border-light text-charcoal"
+                  }`}
                 >
+                  {lookalikeWarning(email) && <span aria-hidden>⚠</span>}
                   {label}
                   <button type="button" onClick={() => removeEmail(email)} className="text-muted-gray hover:text-charcoal" aria-label={`Remove ${label}`}>
                     ×

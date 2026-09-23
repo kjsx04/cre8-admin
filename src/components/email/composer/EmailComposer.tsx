@@ -22,6 +22,7 @@ import { Campaign, CampaignFrequency, CampaignPriority } from "@/lib/email/types
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
+import { endDateProblem } from "@/lib/email/validate-schedule";
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips, formatScheduleDate } from "@/lib/email/utils";
@@ -57,6 +58,7 @@ const MISSING_COPY: Record<MissingField, string> = {
   broker: "a broker",
   partnerLogo: "the partner logo (click Apply)",
   audience: "an audience",
+  endDate: "a valid end date",
 };
 
 /** "Add a listing, a broker and a label" */
@@ -96,6 +98,16 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   } = useCampaignDraft({ campaign, userEmail });
 
   const isEdit = mode === "edit";
+
+  // "Ends" must leave room for at least one send — earliest allowed is tomorrow (Phoenix)
+  const minEndDate = useMemo(() => {
+    const d = new Date(Date.now() + 86_400_000);
+    return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Phoenix" }).format(d);
+  }, []);
+  const endDateWarning = useMemo(
+    () => (draft.campaignType === "recurring" ? endDateProblem(draft.endDate) : null),
+    [draft.campaignType, draft.endDate]
+  );
   const selectedListing = useMemo(
     () => listings.find((l) => l.id === draft.listingId),
     [listings, draft.listingId]
@@ -638,19 +650,25 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                         ]}
                         onChange={(v) => set("frequency", v as CampaignFrequency)}
                       />
-                      <div className="flex items-center gap-3">
-                        <label className="text-[12px] font-medium text-medium-gray">Ends</label>
-                        <input
-                          type="date"
-                          value={draft.endDate}
-                          onChange={(e) => set("endDate", e.target.value)}
-                          className={`${INPUT} w-auto`}
-                        />
-                        {draft.endDate && (
-                          <button type="button" onClick={() => set("endDate", "")} className="text-xs text-muted-gray hover:text-charcoal">
-                            Clear
-                          </button>
-                        )}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center gap-3">
+                          <label className="text-[12px] font-medium text-medium-gray">Ends</label>
+                          <input
+                            type="date"
+                            value={draft.endDate}
+                            // Tomorrow at the earliest — an end date today (or earlier) would
+                            // close the campaign before its first send ever goes out
+                            min={minEndDate}
+                            onChange={(e) => set("endDate", e.target.value)}
+                            className={`${INPUT} w-auto`}
+                          />
+                          {draft.endDate && (
+                            <button type="button" onClick={() => set("endDate", "")} className="text-xs text-muted-gray hover:text-charcoal">
+                              Clear
+                            </button>
+                          )}
+                        </div>
+                        {endDateWarning && <p className="text-xs text-red-500">{endDateWarning}</p>}
                       </div>
                     </div>
                   )}
