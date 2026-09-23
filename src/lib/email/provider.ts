@@ -182,6 +182,31 @@ async function resendFetch(path: string, init: RequestInit = {}): Promise<Respon
 }
 
 /** Build the broadcast payload for one Resend segment */
+/** Resend caps a broadcast's `name` field. Anything longer is a 422 for the whole request. */
+const BROADCAST_NAME_MAX = 70;
+
+/**
+ * The label a broadcast shows in Resend's dashboard.
+ *
+ * `name` is internal only — recipients never see it — but Resend rejects the
+ * entire create call when it runs long ("Field `name` has a maximum of 70 items"),
+ * which silently blocked every campaign with a long subject from going to a
+ * segment. So the name gets trimmed here while `subject` is left untouched.
+ *
+ * The suffix (" (sent now)", " (9/23/2026)") is what tells two broadcasts of the
+ * same campaign apart, so it is always kept whole and the subject is cut instead.
+ * The marker is ASCII "..." on purpose: Resend says "items", and if it is counting
+ * bytes rather than characters a multi-byte ellipsis could still trip the limit.
+ */
+export function buildBroadcastName(subject: string, suffix = ""): string {
+  const full = `${subject}${suffix}`;
+  if (full.length <= BROADCAST_NAME_MAX) return full;
+
+  const room = BROADCAST_NAME_MAX - suffix.length - 3; // 3 for "..."
+  if (room <= 0) return full.slice(0, BROADCAST_NAME_MAX); // absurd suffix — just cut
+  return `${subject.slice(0, room).trimEnd()}...${suffix}`;
+}
+
 function buildBroadcastBody(campaign: CampaignLike, segmentId: string, nameSuffix = "") {
   return {
     segment_id: segmentId,
@@ -189,7 +214,8 @@ function buildBroadcastBody(campaign: CampaignLike, segmentId: string, nameSuffi
     reply_to: ((campaign.broker_email as string) || "").toLowerCase() || undefined,
     subject: buildSubject(campaign),
     html: renderCampaignHtml(campaign),
-    name: `${buildSubject(campaign)}${nameSuffix}`,
+    // Subject goes out in full; only this internal label is trimmed to Resend's limit
+    name: buildBroadcastName(buildSubject(campaign), nameSuffix),
   };
 }
 
