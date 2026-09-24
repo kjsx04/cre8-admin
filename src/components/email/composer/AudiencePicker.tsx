@@ -10,12 +10,15 @@ import { EMAIL_RE } from "@/lib/email/audience-tokens";
 import { lookalikeWarning } from "@/lib/email/lookalike-domain";
 import { contactChipLabel, formatContactPrimaryLine } from "@/lib/email/contact-match";
 import { AudienceCount } from "@/lib/email/types";
-import { combineAudience, formatCount, recipientLine } from "@/lib/email/audience-client";
+import { combineAudience, duplicateCount, formatCount, recipientLine } from "@/lib/email/audience-client";
+import type { AudienceOverlap } from "@/lib/email/audience-overlap";
 import { COMPOSER_FIELD, ChoiceButton } from "./composer-ui";
 
 interface AudiencePickerProps {
   list: AudienceCount[];
   map: Record<string, AudienceCount>;
+  /** Contacts grouped by the lists they're on — makes a multi-list count exact */
+  overlaps?: AudienceOverlap[];
   loaded: boolean;
   error: boolean;
   segmentIds: string[];
@@ -37,6 +40,7 @@ type ContactHit = {
 export default function AudiencePicker({
   list,
   map,
+  overlaps,
   loaded,
   error,
   segmentIds,
@@ -53,8 +57,14 @@ export default function AudiencePicker({
   const [searchError, setSearchError] = useState<string | null>(null);
 
   const combined = useMemo(
-    () => combineAudience(map, segmentIds, extraEmails.length),
-    [map, segmentIds, extraEmails.length]
+    () => combineAudience(map, segmentIds, extraEmails.length, overlaps),
+    [map, segmentIds, extraEmails.length, overlaps]
+  );
+
+  // People on more than one of the picked lists. They get one email, not two.
+  const onBothLists = useMemo(
+    () => duplicateCount(map, segmentIds, overlaps),
+    [map, segmentIds, overlaps]
   );
 
   const toggle = (id: string) => {
@@ -233,9 +243,10 @@ export default function AudiencePicker({
           ? recipientLine(combined)
           : "Select at least one list (or add a contact) to send"}
       </p>
-      {segmentIds.length > 1 && (
+      {segmentIds.length > 1 && onBothLists > 0 && (
         <p className="text-[11px] text-muted-gray">
-          Each list is sent as its own broadcast — someone on two lists may get the email twice.
+          {formatCount(onBothLists)} {onBothLists === 1 ? "person is" : "people are"} on more than one of these
+          lists. {onBothLists === 1 ? "They get" : "They each get"} one email.
         </p>
       )}
     </div>

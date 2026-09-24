@@ -52,6 +52,8 @@ export async function PATCH(
   if (body.listing_name !== undefined) updates.listing_name = body.listing_name;
   if (body.campaign_type !== undefined) updates.campaign_type = body.campaign_type;
   if (body.email_label !== undefined) updates.email_label = body.email_label;
+  if (body.email_subject !== undefined) updates.email_subject = body.email_subject || null;
+  if (body.preview_text !== undefined) updates.preview_text = body.preview_text || null;
   if (body.campaign_kind !== undefined) updates.campaign_kind = body.campaign_kind === "group" ? "group" : "single";
   if (body.group_listings !== undefined) {
     updates.group_listings = Array.isArray(body.group_listings) ? body.group_listings : [];

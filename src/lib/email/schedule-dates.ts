@@ -76,21 +76,40 @@ export function addMonths(key: DateKey, n: number): DateKey {
   return civilToKey(new Date(Date.UTC(c.getUTCFullYear(), c.getUTCMonth() + n, 1)));
 }
 
-/** Monday on or before the key */
+/**
+ * Monday on or before the key.
+ *
+ * The AI scheduler still thinks in Mon–Sun weeks, so this stays. The calendar
+ * displays Sun–Sat (see startOfWeekSunday) — the two only ever differ on the
+ * weekend, and the scheduler never places a send there.
+ */
 export function startOfWeekMonday(key: DateKey): DateKey {
   const offset = (keyToCivil(key).getUTCDay() + 6) % 7; // Mon=0 … Sun=6
   return addDays(key, -offset);
 }
 
-/** The 7 keys of the week starting on `monday` */
-export function weekKeys(monday: DateKey): DateKey[] {
-  return Array.from({ length: 7 }, (_, i) => addDays(monday, i));
+/** Sunday on or before the key — how the calendar is laid out */
+export function startOfWeekSunday(key: DateKey): DateKey {
+  return addDays(key, -keyToCivil(key).getUTCDay()); // Sun=0 … Sat=6
 }
 
-/** 42 keys covering the month grid (Monday on/before the 1st, six rows) */
+/** The 7 keys of the week starting on `start` */
+export function weekKeys(start: DateKey): DateKey[] {
+  return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+}
+
+/** How many days the planner shows at once — two weeks, so next week is never a click away */
+export const PLANNER_DAYS = 14;
+
+/** The planner's day keys, starting on `start` (a Sunday) */
+export function plannerKeys(start: DateKey, days = PLANNER_DAYS): DateKey[] {
+  return Array.from({ length: days }, (_, i) => addDays(start, i));
+}
+
+/** 42 keys covering the month grid (Sunday on/before the 1st, six rows) */
 export function monthGridKeys(key: DateKey): DateKey[] {
   const first = `${key.slice(0, 7)}-01`;
-  const start = startOfWeekMonday(first);
+  const start = startOfWeekSunday(first);
   return Array.from({ length: 42 }, (_, i) => addDays(start, i));
 }
 
@@ -127,16 +146,24 @@ export function dayParts(key: DateKey): { weekday: string; dayNum: number; month
   };
 }
 
-/** "Sep 7 – 13, 2026" · "Sep 28 – Oct 4, 2026" · "Dec 29, 2025 – Jan 4, 2026" */
-export function weekLabel(monday: DateKey): string {
-  const a = keyToCivil(monday);
-  const b = keyToCivil(addDays(monday, 6));
+/**
+ * "Sep 21 – Oct 4, 2026" — any run of days.
+ * "Sep 28 – Oct 4" when it crosses a month, and both years when it crosses one.
+ */
+export function rangeLabel(firstKey: DateKey, lastKey: DateKey): string {
+  const a = keyToCivil(firstKey);
+  const b = keyToCivil(lastKey);
   const mon = (d: Date) => d.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" });
   const ya = a.getUTCFullYear();
   const yb = b.getUTCFullYear();
   if (ya !== yb) return `${mon(a)} ${a.getUTCDate()}, ${ya} – ${mon(b)} ${b.getUTCDate()}, ${yb}`;
   if (a.getUTCMonth() !== b.getUTCMonth()) return `${mon(a)} ${a.getUTCDate()} – ${mon(b)} ${b.getUTCDate()}, ${yb}`;
   return `${mon(a)} ${a.getUTCDate()} – ${b.getUTCDate()}, ${yb}`;
+}
+
+/** "Sep 7 – 13, 2026" — the one-week case */
+export function weekLabel(start: DateKey): string {
+  return rangeLabel(start, addDays(start, 6));
 }
 
 /** "September 2026" */

@@ -8,6 +8,21 @@
 import { buildTemplateVars, renderEmailHtml } from "./constants";
 import { wrapPreviewHtml } from "./preview-wrapper";
 
+/**
+ * Where a piece of copy appears in the visible email.
+ *
+ * The hidden preheader sits above everything and now carries the opening of the
+ * body copy as inbox preview text, so a plain indexOf finds that first. Layout
+ * assertions care about the real slots, so searching starts after the preheader.
+ */
+function bodyIndexOf(html: string, needle: string): number {
+  const afterPreheader = html.indexOf("</div>", html.indexOf("Preheader"));
+  const start = afterPreheader > 0 ? afterPreheader : 0;
+  const at = html.indexOf(needle, start);
+  return at;
+}
+
+
 let failed = 0;
 function assert(cond: unknown, msg: string) {
   if (!cond) {
@@ -40,9 +55,9 @@ assert(vars.bodyText === "BODY_SLOT_COPY", "body stays on body_text");
 assert(vars.groupListings.length === 2, "group cards present");
 
 const html = renderEmailHtml(vars);
-const introAt = html.indexOf("INTRO_SLOT_COPY");
-const cardAt = html.indexOf("Queen Creek Station");
-const bodyAt = html.indexOf("BODY_SLOT_COPY");
+const introAt = bodyIndexOf(html, "INTRO_SLOT_COPY");
+const cardAt = bodyIndexOf(html, "Queen Creek Station");
+const bodyAt = bodyIndexOf(html, "BODY_SLOT_COPY");
 
 assert(introAt > 0, "intro renders");
 assert(cardAt > 0, "listing card renders");
@@ -133,8 +148,8 @@ const four = renderEmailHtml(buildTemplateVars({
 }));
 assert((four.match(/class="group-card"/g) || []).length === 4, "four listings → four stacked strips");
 assert(!four.includes('class="group-col"'), "four listings stay full-width, not 2-up");
-assert(four.indexOf("INTRO_SLOT_COPY") < four.indexOf("Queen Creek Station"), "intro stays above cards with 4 listings");
-assert(four.indexOf("Fourth Listing") < four.indexOf("BODY_SLOT_COPY"), "body stays under cards with 4 listings");
+assert(bodyIndexOf(four, "INTRO_SLOT_COPY") < bodyIndexOf(four, "Queen Creek Station"), "intro stays above cards with 4 listings");
+assert(bodyIndexOf(four, "Fourth Listing") < bodyIndexOf(four, "BODY_SLOT_COPY"), "body stays under cards with 4 listings");
 
 const mixed = renderEmailHtml(buildTemplateVars({
   campaign_kind: "group",
@@ -178,7 +193,7 @@ const single = renderEmailHtml(buildTemplateVars({
 
 assert(single.includes("SINGLE_BODY"), "single still renders body");
 assert(!single.includes("INTRO_SHOULD_NOT_RENDER"), "single ignores intro_text");
-assert(single.indexOf("cdn/hero.jpg") < single.indexOf("SINGLE_BODY"), "single body stays under photo");
+assert(bodyIndexOf(single, "cdn/hero.jpg") < bodyIndexOf(single, "SINGLE_BODY"), "single body stays under photo");
 assert(single.includes("max-width:600px;width:100%;background-color:#1A1A1A"), "single keeps dark chrome");
 assert(!single.includes('class="card-bg group-shell"'), "single does not use the Multiple light shell");
 assert(single.includes("color:#FFFFFF;line-height:1.15;letter-spacing:1px"), "single heading stays white on dark");

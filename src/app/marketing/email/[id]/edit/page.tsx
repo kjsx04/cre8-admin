@@ -11,7 +11,10 @@ import EmailComposer from "@/components/email/composer/EmailComposer";
 /**
  * /marketing/email/[id]/edit — edit an existing campaign.
  * Loads the campaign + listings, then renders the composer prefilled.
- * Campaigns that can't be edited (completed / cancelled / paused) bounce back to the calendar.
+ * Campaigns that can't be edited (completed / cancelled) bounce back to the
+ * calendar — that mail has already gone out. Paused ones ARE editable: they are
+ * waiting under "Saved campaigns" and Edit is how you check them before
+ * putting them back on.
  */
 export default function EditCampaignPage() {
   const params = useParams();

@@ -96,6 +96,8 @@ export async function POST(request: NextRequest) {
       campaign_kind: isGroup ? "group" : "single",
       group_listings: groupListings,
       email_label: body.email_label,
+      email_subject: body.email_subject || null,
+      preview_text: body.preview_text || null,
       heading_text: body.heading_text || null,
       intro_text: body.intro_text || null,
       body_text: body.body_text || null,

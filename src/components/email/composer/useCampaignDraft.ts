@@ -30,6 +30,8 @@ export interface CampaignDraft {
   listingName: string;
   campaignType: CampaignType;
   emailLabel: string;
+  emailSubject: string;   // typed subject line; blank falls back to "<label>: <listing>"
+  previewText: string;    // grey line under the subject in an inbox / on a phone
   headingText: string;
   introText: string;            // group emails: under heading, above listing cards
   bodyText: string;
@@ -129,6 +131,8 @@ function emptyDraft(userEmail: string): CampaignDraft {
     listingName: "",
     campaignType: "one-time",
     emailLabel: "",
+    emailSubject: "",
+    previewText: "",
     headingText: "",
     introText: "",
     bodyText: "",
@@ -159,6 +163,8 @@ function fromCampaign(c: Campaign): CampaignDraft {
     listingName: c.listing_name || "",
     campaignType: c.campaign_type || "one-time",
     emailLabel: c.email_label || "",
+    emailSubject: c.email_subject || "",
+    previewText: c.preview_text || "",
     headingText: c.heading_text || "",
     introText: c.intro_text || "",
     bodyText: c.body_text || "",
@@ -296,6 +302,8 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
       campaign_type: draft.campaignType,
       // Blank label → the email's default, exactly what the placeholder shows
       email_label: isGroup ? draft.emailLabel.trim() : (draft.emailLabel.trim() || "Just Listed"),
+      email_subject: draft.emailSubject.trim() || undefined,
+      preview_text: draft.previewText.trim() || undefined,
       heading_text: draft.headingText || undefined,
       intro_text: isGroup ? draft.introText || undefined : undefined,
       body_text: draft.bodyText || undefined,

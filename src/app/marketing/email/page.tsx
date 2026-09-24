@@ -1,21 +1,22 @@
 "use client";
 
-import { Suspense, useState, useEffect, useCallback, useMemo } from "react";
+import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { Campaign, CampaignFormData } from "@/lib/email/types";
+import { Campaign } from "@/lib/email/types";
 import {
   DateKey,
   isDateKey,
   todayKey,
   addDays,
   addMonths,
-  startOfWeekMonday,
-  weekKeys,
+  startOfWeekSunday,
   monthGridKeys,
   keyRangeToInstants,
-  weekLabel,
+  rangeLabel,
   monthLabel,
+  plannerKeys,
+  PLANNER_DAYS,
 } from "@/lib/email/schedule-dates";
 import { expandOccurrences, groupByDay } from "@/lib/email/occurrences";
 
@@ -25,11 +26,12 @@ import MonthOverview from "@/components/email/schedule/MonthOverview";
 import OffScheduleSection from "@/components/email/schedule/OffScheduleSection";
 import PriorityPanel from "@/components/email/schedule/PriorityPanel";
 import SettingsPanel from "@/components/email/schedule/SettingsPanel";
+import { Button } from "@/components/ui";
+import { Plus } from "lucide-react";
 import CalendarToolsMenu from "@/components/email/schedule/CalendarToolsMenu";
 import AlertsStrip from "@/components/email/schedule/AlertsStrip";
 import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
 import { needsTemplateSync } from "@/lib/email/template-version";
-import { ChoiceButton } from "@/components/email/composer/composer-ui";
 import CampaignDetail from "@/components/email/CampaignDetail";
 import PlacementBar, { type PlacementResult } from "@/components/email/schedule/PlacementBar";
 
@@ -127,10 +129,21 @@ function EmailSchedule() {
 
   // The draft we were sent here to place, if any
   const placeId = params.get("place");
+  // Scheduling from a saved card lower down the page would otherwise leave you
+  // staring at the same list while the placement bar sat off-screen above.
+  const placementRef = useRef<HTMLDivElement | null>(null);
   const placingCampaign = useMemo(
     () => (placeId ? campaigns.find((c) => c.id === placeId) || null : null),
     [placeId, campaigns]
   );
+
+  // The placement bar renders above the calendar. Scheduling from a saved card
+  // lower down the page would otherwise leave you staring at the same list while
+  // the bar sat off-screen above, so bring it into view once it has the campaign.
+  useEffect(() => {
+    if (!placeId || !placingCampaign) return;
+    placementRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [placeId, placingCampaign]);
 
   /** Drop ?place= from the URL and clear the placement state */
   const closePlacement = useCallback(() => {
@@ -151,8 +164,10 @@ function EmailSchedule() {
     }, 2600);
   }, []);
 
-  const weekStart = startOfWeekMonday(anchor);
-  const visibleKeys = view === "week" ? weekKeys(weekStart) : monthGridKeys(anchor);
+  // The calendar is laid out Sunday → Saturday
+  const weekStart = startOfWeekSunday(anchor);
+  // The planner shows a fortnight, so the range it loads has to cover both weeks
+  const visibleKeys = view === "week" ? plannerKeys(weekStart) : monthGridKeys(anchor);
   const { start, end } = keyRangeToInstants(visibleKeys[0], visibleKeys[visibleKeys.length - 1]);
   const startMs = start.getTime();
   const endMs = end.getTime();
@@ -165,9 +180,13 @@ function EmailSchedule() {
 
   // ── Nav ──
   const onPrev = () =>
-    view === "week" ? setQuery({ date: addDays(weekStart, -7) }) : setQuery({ date: addMonths(anchor, -1) });
+    view === "week"
+      ? setQuery({ date: addDays(weekStart, -PLANNER_DAYS) })
+      : setQuery({ date: addMonths(anchor, -1) });
   const onNext = () =>
-    view === "week" ? setQuery({ date: addDays(weekStart, 7) }) : setQuery({ date: addMonths(anchor, 1) });
+    view === "week"
+      ? setQuery({ date: addDays(weekStart, PLANNER_DAYS) })
+      : setQuery({ date: addMonths(anchor, 1) });
   const onToday = () => setQuery({ date: today });
 
   // ── Place / undo ──
@@ -235,27 +254,12 @@ function EmailSchedule() {
       .then((d) => setRankMax(Math.max(1, (d.listings || []).length + 1)))
       .catch(() => {});
   }, [placeId, userEmail]);
-  const label = view === "week" ? weekLabel(weekStart) : monthLabel(anchor);
+  const label =
+    view === "week"
+      ? rangeLabel(weekStart, addDays(weekStart, PLANNER_DAYS - 1))
+      : monthLabel(anchor);
 
   // ── Handlers (unchanged) ──
-  const handleUpdate = async (id: string, data: Partial<CampaignFormData>) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
-        body: JSON.stringify(data),
-      });
-      if (!res.ok) throw new Error("Failed to update campaign");
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) {
-        const updated = await res.json();
-        setSelectedCampaign(updated);
-      }
-    } catch (err) {
-      console.error("Update failed:", err);
-    }
-  };
-
   const handleDelete = async (id: string) => {
     try {
       const res = await fetch(`/api/email/campaigns/${id}`, {
@@ -287,59 +291,7 @@ function EmailSchedule() {
     }
   };
 
-  const handleResume = async (id: string) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}/resume`, {
-        method: "POST",
-        headers: { "x-user-email": userEmail },
-      });
-      if (!res.ok) throw new Error("Failed to resume campaign");
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) {
-        const updated = await res.json();
-        setSelectedCampaign(updated);
-      }
-    } catch (err) {
-      console.error("Resume failed:", err);
-    }
-  };
-
   // Re-slot one campaign (after an edit, or from the detail panel)
-  const handleReschedule = async (id: string) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}/reschedule`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
-        body: "{}",
-      });
-      if (!res.ok) throw new Error("Failed to reschedule");
-      const updated = await res.json();
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) setSelectedCampaign(updated);
-    } catch (err) {
-      console.error("Reschedule failed:", err);
-    }
-  };
-
-  const handleSyncTemplate = async (id: string) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}/sync-template`, {
-        method: "POST",
-        headers: { "x-user-email": userEmail },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to sync template");
-      if (data.provider_sync && data.provider_sync.ok === false) {
-        throw new Error(data.provider_sync.error || "Template synced, but the scheduled send wasn't updated");
-      }
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) setSelectedCampaign(data);
-    } catch (err) {
-      console.error("Sync template failed:", err);
-      window.alert(err instanceof Error ? err.message : "Failed to sync template");
-    }
-  };
-
   const handleSyncAllTemplates = async () => {
     setSyncingAll(true);
     setSyncAllNote(null);
@@ -368,55 +320,28 @@ function EmailSchedule() {
     }
   };
 
-  const handleRefreshListing = async (id: string) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}/refresh-listing`, {
-        method: "POST",
-        headers: { "x-user-email": userEmail },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to refresh listing");
-      if (data.provider_sync && data.provider_sync.ok === false) {
-        throw new Error(data.provider_sync.error || "Listing refreshed, but the scheduled send wasn't updated");
-      }
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) setSelectedCampaign(data);
-    } catch (err) {
-      console.error("Refresh listing failed:", err);
-      window.alert(err instanceof Error ? err.message : "Failed to refresh listing");
-    }
-  };
-
   // Send a campaign right now (skips the AI)
-  const handleSendNow = async (id: string) => {
-    try {
-      const res = await fetch(`/api/email/campaigns/${id}/send-now`, {
-        method: "POST",
-        headers: { "x-user-email": userEmail },
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Failed to send");
-      await fetchCampaigns();
-      if (selectedCampaign?.id === id) setSelectedCampaign(data);
-    } catch (err) {
-      console.error("Send now failed:", err);
-      window.alert(err instanceof Error ? err.message : "Failed to send");
-    }
-  };
-
   // Ask the AI to rebalance the visible week
   const handleOptimize = async () => {
     setOptimizing(true);
     setOptimizeNote(null);
     try {
-      const res = await fetch("/api/email/campaigns/optimize-week", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
-        body: JSON.stringify({ week_start: weekStart }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(data.error || "Optimize failed");
-      const n = data.moved?.length || 0;
+      // The planner shows a fortnight, so rebalance both weeks it displays.
+      // The endpoint takes one week at a time; run them in order so the second
+      // pass sees where the first one left things.
+      // optimizeWeek() snaps whatever it is given to a Monday, so hand it the
+      // Monday inside each displayed Sun–Sat row rather than the Sunday itself.
+      let n = 0;
+      for (let offset = 1; offset < PLANNER_DAYS; offset += 7) {
+        const res = await fetch("/api/email/campaigns/optimize-week", {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+          body: JSON.stringify({ week_start: addDays(weekStart, offset) }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || "Optimize failed");
+        n += data.moved?.length || 0;
+      }
       setOptimizeNote(n === 0 ? "Already balanced" : `Moved ${n} send${n === 1 ? "" : "s"}`);
       await fetchCampaigns();
     } catch (err) {
@@ -432,7 +357,7 @@ function EmailSchedule() {
   const finished = campaigns.filter((c) => c.status === "completed" || c.status === "cancelled");
   const onSchedule = campaigns.filter((c) => c.status === "scheduled" || c.status === "active");
   const listingsOnSchedule = new Set(onSchedule.map((c) => c.listing_id)).size;
-  const weekSends = weekKeys(weekStart).reduce((n, k) => n + (itemsByDay.get(k)?.length ?? 0), 0);
+  const plannerSends = plannerKeys(weekStart).reduce((n, k) => n + (itemsByDay.get(k)?.length ?? 0), 0);
   const staleTemplateCount = campaigns.filter(needsTemplateSync).length;
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -443,19 +368,11 @@ function EmailSchedule() {
         <div>
           <h1 className="font-bebas text-3xl tracking-wide text-charcoal">Email Campaigns</h1>
           <p className="text-sm text-muted-gray mt-0.5">
-            {view === "week" && <>{plural(weekSends, "send")} this week &middot; </>}
+            {view === "week" && <>{plural(plannerSends, "send")} in view &middot; </>}
             {plural(listingsOnSchedule, "listing")} on schedule &middot; {waiting.length} waiting
           </p>
         </div>
         <div className="flex items-center gap-2.5">
-          <div className="flex items-center gap-1.5">
-            {(["week", "month"] as const).map((v) => (
-              <ChoiceButton key={v} selected={view === v} onClick={() => setQuery({ view: v })}>
-                {v === "week" ? "Week" : "Month"}
-              </ChoiceButton>
-            ))}
-          </div>
-
           <CalendarToolsMenu
             staleCount={staleTemplateCount}
             syncing={syncingAll}
@@ -464,21 +381,25 @@ function EmailSchedule() {
             onSyncAll={handleSyncAllTemplates}
           />
           {syncAllNote && (
-            <span className="max-w-[160px] truncate text-[11px] text-muted-gray">{syncAllNote}</span>
+            <span className="max-w-[160px] truncate text-xs text-text-3">{syncAllNote}</span>
           )}
 
-          <button
-            type="button"
+          {/* Primary action. Black, not green — green is reserved for status. */}
+          <Button
+            size="sm"
+            aria-label="New campaign"
+            title="New campaign"
             onClick={() => router.push("/marketing/email/new")}
-            className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 transition"
+            className="px-2.5"
           >
-            ADD
-          </button>
+            <Plus size={18} strokeWidth={2} />
+          </Button>
         </div>
       </div>
 
       {/* Placing a saved draft (arrived here from the composer or an off-schedule card) */}
       {placingCampaign && (
+        <div ref={placementRef}>
         <PlacementBar
           campaign={placingCampaign}
           rankMax={rankMax}
@@ -489,6 +410,7 @@ function EmailSchedule() {
           onUndo={handleUndoPlace}
           onDone={closePlacement}
         />
+        </div>
       )}
 
       {/* Alerts: stale content, cadence decay */}
@@ -507,6 +429,8 @@ function EmailSchedule() {
         <div>
           <ScheduleToolbar
             label={label}
+            view={view}
+            onViewChange={(v) => setQuery({ view: v })}
             onPrev={onPrev}
             onNext={onNext}
             onToday={onToday}
@@ -522,6 +446,7 @@ function EmailSchedule() {
               itemsByDay={itemsByDay}
               today={today}
               maxPerDay={settings.maxSendsPerDay}
+              onSelect={setSelectedCampaign}
               onSelectDay={(key) => setQuery({ view: "week", date: key })}
             />
           )}
@@ -554,14 +479,8 @@ function EmailSchedule() {
       {selectedCampaign && (
         <CampaignDetail
           campaign={selectedCampaign}
-          onUpdate={handleUpdate}
           onDelete={handleDelete}
           onPause={handlePause}
-          onResume={handleResume}
-          onReschedule={handleReschedule}
-          onSendNow={handleSendNow}
-          onSyncTemplate={handleSyncTemplate}
-          onRefreshListing={handleRefreshListing}
           onClose={() => setSelectedCampaign(null)}
         />
       )}

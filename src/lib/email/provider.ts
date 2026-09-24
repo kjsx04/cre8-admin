@@ -38,6 +38,8 @@ import {
   type MatchedContact,
 } from "./contact-match";
 import { nextContactPageCursor, retryAfterMs } from "./audience-count";
+import { unionSegmentName, unionMembers, membershipDiff, membersCsv } from "./union-segment";
+import { buildSubjectLine } from "./subject";
 
 const RESEND_API = "https://api.resend.com";
 
@@ -116,11 +118,12 @@ export async function listSegments(): Promise<ResendSegment[]> {
   return out;
 }
 
-/** Subject line: "Just Listed: 6933 N 7th St" */
+/**
+ * Subject line. A subject typed in the composer wins; otherwise it is built as
+ * "Just Listed: 6933 N 7th St" (or, for a group email, the heading alone).
+ */
 export function buildSubject(campaign: CampaignLike): string {
-  // Group emails: the heading IS the subject ("Land Opportunities in the West Valley")
-  if (campaign.campaign_kind === "group") return String(campaign.email_label || campaign.listing_name || "Featured Listings");
-  return `${campaign.email_label || "Just Listed"}: ${campaign.listing_name || "Property"}`;
+  return buildSubjectLine(campaign as Parameters<typeof buildSubjectLine>[0]);
 }
 
 /** From header: "Andy Kroot <andy@cre8advisors.com>" — any address on the verified domain works */
@@ -164,12 +167,15 @@ async function resendFetch(path: string, init: RequestInit = {}): Promise<Respon
     for (let attempt = 0; attempt < RESEND_MAX_ATTEMPTS; attempt++) {
       // Next.js 14 caches GET fetch by default — never cache Resend reads
       // (a failed/empty first page would otherwise stick as 0 counts).
+      // FormData sets its own multipart Content-Type (with the boundary) —
+      // forcing application/json on it breaks the upload.
+      const isForm = typeof FormData !== "undefined" && init.body instanceof FormData;
       const res = await fetch(`${RESEND_API}${path}`, {
         ...init,
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
+          ...(isForm ? {} : { "Content-Type": "application/json" }),
           ...(init.headers || {}),
         },
       });
@@ -223,6 +229,111 @@ function buildBroadcastBody(campaign: CampaignLike, segmentId: string, nameSuffi
  * Create one Resend broadcast per selected segment, plus a transactional email
  * per extra recipient. Returns the ids joined with commas (fits provider_send_id).
  */
+/**
+ * Block until a bulk contact import has finished.
+ *
+ * Resend queues imports and returns immediately. In practice a few thousand
+ * contacts land in well under a second, but a broadcast created against a
+ * still-filling list would go to whoever happened to be in it at that moment.
+ */
+async function waitForImport(importId: string, timeoutMs = 60_000): Promise<void> {
+  const started = Date.now();
+  let wait = 250;
+  while (Date.now() - started < timeoutMs) {
+    const res = await resendFetch(`/contacts/imports/${importId}`);
+    if (res.ok) {
+      const job = (await res.json()) as { status?: string; counts?: { failed?: number } };
+      if (job.status === "completed") return;
+      if (job.status === "failed" || job.status === "canceled") {
+        throw new Error(`Filling the combined list ${job.status}`);
+      }
+    }
+    await new Promise((r) => setTimeout(r, wait));
+    wait = Math.min(2000, Math.round(wait * 1.5));
+  }
+  throw new Error("Filling the combined list timed out — try again in a moment");
+}
+
+/**
+ * Find (or create) the managed segment for a combination of lists, and make its
+ * membership match the de-duplicated union.
+ *
+ * Why this exists: a broadcast targets one segment, so picking two lists used to
+ * send two emails — and 883 contacts are on both Buyers and Sellers. Segments are
+ * static with no filter support, so the union has to be materialised.
+ *
+ * Adds go through the bulk CSV import (one request, thousands of contacts).
+ * Removals are per-contact but rare — only when someone drops off every source list.
+ */
+export async function ensureUnionSegment(segmentIds: string[]): Promise<string> {
+  const ids = Array.from(new Set(segmentIds));
+  if (ids.length === 1) return ids[0];
+  if (ids.length === 0) throw new Error("No lists selected");
+
+  const all = await listSegments();
+  const byId = new Map(all.map((s) => [s.id, s]));
+  const sourceNames = ids.map((id) => byId.get(id)?.name || id);
+  const name = unionSegmentName(sourceNames);
+
+  // Find or create
+  let target = all.find((s) => s.name === name);
+  if (!target) {
+    const res = await resendFetch("/segments", { method: "POST", body: JSON.stringify({ name }) });
+    if (!res.ok) throw new Error(`Could not create the combined list (${res.status}): ${await res.text()}`);
+    const created = (await res.json()) as { id?: string };
+    if (!created.id) throw new Error("Resend created no combined list");
+    target = { id: created.id, name };
+  }
+
+  // Make membership match the mirror
+  const want = await unionMembers(ids);
+  if (want.length === 0) throw new Error("The selected lists have no contacts in the mirror — run a contact sync first");
+
+  const have = (await listAllContacts(target.id)).map((c) => c.email);
+  const { add, remove } = membershipDiff(have, want);
+
+  if (add.length > 0) {
+    const form = new FormData();
+    form.append("file", new Blob([membersCsv(add)], { type: "text/csv" }), "union.csv");
+    form.append("column_map", JSON.stringify({ email: "email" }));
+    form.append("on_conflict", "upsert");
+    form.append("segments", JSON.stringify([{ id: target.id }]));
+    const res = await resendFetch("/contacts/imports", { method: "POST", body: form });
+    if (!res.ok) throw new Error(`Could not fill the combined list (${res.status}): ${await res.text()}`);
+    const job = (await res.json()) as { id?: string };
+    // The import runs in the background. Returning before it finishes would
+    // create the broadcast against a half-filled list.
+    if (job.id) await waitForImport(job.id);
+  }
+
+  // Anyone who left every source list
+  for (const email of remove) {
+    try {
+      await resendFetch(`/contacts/${encodeURIComponent(email)}/segments/${target.id}`, { method: "DELETE" });
+    } catch (err) {
+      console.error("[union] could not remove", email, err);
+    }
+  }
+
+  return target.id;
+}
+
+/**
+ * Drop hand-typed recipients who are already inside the selected lists.
+ * Falls back to the full list if the mirror is empty or unreachable.
+ */
+async function withoutSegmentMembers(emails: string[], segmentIds: string[]): Promise<string[]> {
+  if (emails.length === 0 || segmentIds.length === 0) return emails;
+  try {
+    const members = new Set(await unionMembers(segmentIds));
+    if (members.size === 0) return emails;
+    return emails.filter((e) => !members.has(e.trim().toLowerCase()));
+  } catch (err) {
+    console.error("[audience] could not check for duplicate recipients:", err);
+    return emails;
+  }
+}
+
 async function deliverCampaign(
   campaign: CampaignLike,
   opts: { send: boolean; scheduledAt?: string; nameSuffix: string }
@@ -233,10 +344,19 @@ async function deliverCampaign(
     throw new Error("No audience selected — pick a Resend list or add a contact");
   }
 
+  // Several lists → one de-duplicated list, so nobody on two lists gets two copies
+  const targets = segmentIds.length > 1 ? [await ensureUnionSegment(segmentIds)] : segmentIds;
+
+  // A typed-in contact who is already on a selected list is already getting the
+  // broadcast. Sending them a transactional copy as well would be a second email
+  // and a billed send. If the mirror can't answer, send to everyone typed in —
+  // a duplicate is better than silently dropping someone who was added by hand.
+  const extras = await withoutSegmentMembers(extraEmails, segmentIds);
+
   // Scheduled rows already hold the listing snapshot. Never pull live CMS here.
   const created: string[] = [];
   try {
-    for (const segmentId of segmentIds) {
+    for (const segmentId of targets) {
       const body: Record<string, unknown> = {
         ...buildBroadcastBody(campaign, segmentId, opts.nameSuffix),
         send: opts.send,
@@ -250,7 +370,7 @@ async function deliverCampaign(
       if (data.id) created.push(data.id);
     }
 
-    for (const email of extraEmails) {
+    for (const email of extras) {
       const id = await sendToRecipient(email, campaign, opts.scheduledAt);
       if (id) created.push(id);
     }
@@ -540,6 +660,26 @@ export async function lookupContactByEmail(email: string): Promise<ResendContact
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Resend contact lookup failed (${res.status}): ${await res.text()}`);
   return unwrapContact(await res.json());
+}
+
+/**
+ * Stop mailing an address, permanently.
+ *
+ * Resend does not do this on its own — after the first broker send every one of
+ * the 112 hard-bounced contacts was still marked subscribed. Unsubscribing
+ * rather than deleting means a later CSV import cannot quietly resurrect a dead
+ * address, and the record stays for the audit trail.
+ */
+export async function markContactUnsubscribed(email: string): Promise<void> {
+  const res = await resendFetch(`/contacts/${encodeURIComponent(email.toLowerCase())}`, {
+    method: "PATCH",
+    body: JSON.stringify({ unsubscribed: true }),
+  });
+  // A contact that is already gone needs no suppressing
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Could not suppress the contact (${res.status}): ${await res.text()}`);
+  }
+  invalidateContactCaches();
 }
 
 /**

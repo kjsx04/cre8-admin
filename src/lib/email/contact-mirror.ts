@@ -19,6 +19,8 @@
 import { supabase } from "@/lib/flow/supabase";
 import { listAllContacts, listSegments, lookupContactByEmail } from "./provider";
 import type { MatchedContact } from "./contact-match";
+import type { AudienceOverlap } from "./audience-overlap";
+import { isManagedAudienceName } from "./audience-count";
 
 /** One row of the mirror */
 export type MirroredContact = MatchedContact & {
@@ -40,7 +42,10 @@ export async function syncContactMirror(): Promise<{
   segments: number;
   removed: number;
 }> {
-  const segments = await listSegments();
+  // Managed union lists ("Auto: Buyers + Sellers") are built FROM the mirror, so
+  // walking them back in adds thousands of redundant Resend reads and clutters
+  // every contact's membership with an id nobody picks.
+  const segments = (await listSegments()).filter((s) => !isManagedAudienceName(s.name));
   const byEmail = new Map<string, MirroredContact>();
 
   for (const seg of segments) {
@@ -228,4 +233,31 @@ export async function mirrorStatus(): Promise<{ count: number; syncedAt: string 
     .order("synced_at", { ascending: false })
     .limit(1);
   return { count: count || 0, syncedAt: data?.[0]?.synced_at || null };
+}
+
+/**
+ * Contacts grouped by the exact set of lists they belong to.
+ *
+ * Feeds the composer's de-duplicated recipient count. The grouping happens in
+ * Postgres (`audience_overlaps()`) so this is one small round trip — there are
+ * only a handful of distinct combinations even across 5,000 contacts.
+ *
+ * Returns an empty array rather than throwing: a missing count should fall back
+ * to summing the lists, never block the composer.
+ */
+export async function loadAudienceOverlaps(): Promise<AudienceOverlap[]> {
+  try {
+    const { data, error } = await supabase.rpc("audience_overlaps");
+    if (error) throw new Error(error.message);
+    return ((data || []) as Array<{ segment_ids: string[]; total: number | string; subscribed: number | string }>)
+      .map((row) => ({
+        segment_ids: [...(row.segment_ids || [])].sort(),
+        total: Number(row.total) || 0,
+        subscribed: Number(row.subscribed) || 0,
+      }))
+      .filter((row) => row.segment_ids.length > 0);
+  } catch (err) {
+    console.error("[audience] overlap load failed:", err);
+    return [];
+  }
 }

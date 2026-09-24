@@ -8,10 +8,11 @@
  */
 
 import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupListing } from "./types";
+import { buildPreviewText } from "./subject";
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-23-1"; // heading 20px, CTA spacing, Multiple template switches on immediately
+export const CURRENT_TEMPLATE_VERSION = "2026-09-23-2"; // preheader is real preview text, no longer a repeat of the subject
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -168,8 +169,9 @@ export function buildTemplateVars(
     brokerName: (data.broker_name as string) || "",
     brokerEmail: (data.broker_email as string) || "",
     brokerPhone: (data.broker_phone as string) || "",
-    // New fields — auto-derived from campaign data
-    preheaderText: `${label}: ${heading}`,
+    // The grey line under the subject on a phone. Typed preview text wins;
+    // otherwise it opens with the body copy so it never echoes the subject.
+    preheaderText: buildPreviewText(data as Parameters<typeof buildPreviewText>[0]),
     brokerHeadshotUrl: BROKER_HEADSHOTS[brokerId] || "",
     brokerTitle: BROKER_TITLES[brokerId] || "Advisor",
     propertyAddress: (data.property_address as string) || "",

@@ -1,30 +1,29 @@
 /**
- * Shared light-tool classes for the email composer column.
+ * Shared controls for the email composer column and the placement bar.
  *
- * Tokens from the CRE8 Design System in tailwind.config.ts + globals.css:
- *   green #8CC644, charcoal #1A1A1A, subtle-gray #FAFAFA, light-gray #F5F5F5,
- *   rounded-card 8px, rounded-btn 4px.
- * Selected = pressed in (inset shadow). No checks, no green wash.
+ * A ChoiceButton is a toggle, not a button, so it keeps its own "pressed in"
+ * look rather than borrowing the Button styles. It uses the same design tokens
+ * as everything else (surface, border, accent, rounded-control) so the two
+ * read as one family instead of two.
  */
 
 import { ButtonHTMLAttributes, ReactNode } from "react";
 
 export const COMPOSER_FIELD =
-  "w-full bg-white rounded-card px-3 py-2.5 text-sm text-charcoal placeholder:text-muted-gray/65 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.05)] focus:outline-none focus:shadow-[inset_0_0_0_1px_rgba(140,198,68,0.55)]";
+  "w-full bg-surface rounded-control px-3 py-2.5 text-sm text-text placeholder:text-text-3 border border-border focus:outline-none focus:border-accent-strong focus:ring-2 focus:ring-accent/25";
 
 export const COMPOSER_FIELD_SEARCH = `${COMPOSER_FIELD} pl-9`;
 
 /** 8px choice chip. Shadow/transform only — no color-transition flash. */
 export const COMPOSER_CHOICE =
-  "inline-flex items-center px-3 py-1.5 rounded-card text-sm font-medium active:scale-[0.98] transition-[box-shadow,transform,opacity] duration-100";
+  "inline-flex items-center h-control-sm px-3 rounded-control text-sm font-medium transition-colors duration-150";
 
 /** Recessed: inner shadow + thin brand hairline. */
-export const COMPOSER_CHOICE_ON =
-  "bg-light-gray text-charcoal shadow-[inset_0_1px_2px_rgba(0,0,0,0.12),inset_0_0_0_1px_rgba(140,198,68,0.4)]";
+export const COMPOSER_CHOICE_ON = "bg-surface-2 text-text border border-accent-strong";
 
 /** Soft surface, quiet hairline. */
 export const COMPOSER_CHOICE_OFF =
-  "bg-white text-medium-gray shadow-[inset_0_0_0_1px_rgba(0,0,0,0.08)] hover:text-charcoal hover:shadow-[inset_0_0_0_1px_rgba(0,0,0,0.14)]";
+  "bg-surface text-text-2 border border-border hover:text-text hover:border-border-strong";
 
 type ChoiceButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   selected: boolean;

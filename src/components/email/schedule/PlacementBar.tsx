@@ -5,6 +5,7 @@ import { Campaign } from "@/lib/email/types";
 import { endDateProblem } from "@/lib/email/validate-schedule";
 import { placementProblem, type PlacementMove } from "@/lib/email/place";
 import { ChoiceButton } from "@/components/email/composer/composer-ui";
+import { Button } from "@/components/ui";
 
 export interface PlacementResult {
   placedAt: string | null;
@@ -121,21 +122,12 @@ export default function PlacementBar({
           )}
         </span>
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onUndo}
-            disabled={placing}
-            className="px-3 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal disabled:opacity-40"
-          >
-            {placing ? "Undoing…" : "Undo"}
-          </button>
-          <button
-            type="button"
-            onClick={onDone}
-            className="px-4 py-1.5 bg-charcoal text-white text-sm font-medium rounded-btn hover:bg-black"
-          >
+          <Button variant="ghost" size="sm" onClick={onUndo} loading={placing}>
+            Undo
+          </Button>
+          <Button size="sm" onClick={onDone}>
             Done
-          </button>
+          </Button>
         </div>
       </div>
     );
@@ -154,13 +146,9 @@ export default function PlacementBar({
           <p className="text-[11px] text-muted-gray">Placing on the schedule</p>
           <p className="text-sm font-medium text-charcoal truncate">{label}</p>
         </div>
-        <button
-          type="button"
-          onClick={onDone}
-          className="ml-auto text-xs text-muted-gray hover:text-charcoal"
-        >
+        <Button variant="ghost" size="sm" onClick={onDone} className="ml-auto">
           Cancel
-        </button>
+        </Button>
       </div>
 
       {/* How often */}
@@ -196,9 +184,9 @@ export default function PlacementBar({
         )}
       </div>
 
-      {/* Where it goes */}
+      {/* Priority */}
       <div className="space-y-2">
-        <p className="text-[12px] font-medium text-medium-gray">Where it goes</p>
+        <p className="text-[12px] font-medium text-medium-gray">Priority</p>
         <div className="flex flex-wrap gap-2">
           {PRIORITY.map((p) => (
             <ChoiceButton key={p.id} selected={priority === p.id} onClick={() => setPriority(p.id)}>
@@ -248,16 +236,11 @@ export default function PlacementBar({
 
       {/* Go */}
       <div className="flex items-center gap-3 pt-1">
-        <button
-          type="button"
-          onClick={() => onPlace(body)}
-          disabled={!!problem || placing}
-          className="px-5 py-2 bg-green text-black text-sm font-semibold rounded-btn hover:brightness-110 disabled:opacity-40 disabled:cursor-not-allowed"
-        >
-          {placing ? (isTest ? "Setting the time…" : "Finding a slot…") : isTest ? "Set send time" : "Find a slot"}
-        </button>
-        {problem && <span className="text-xs text-muted-gray">{problem}</span>}
-        {error && <span className="text-xs text-red-500">{error}</span>}
+        <Button size="sm" onClick={() => onPlace(body)} disabled={!!problem} loading={placing}>
+          Schedule
+        </Button>
+        {problem && <span className="text-xs text-text-3">{problem}</span>}
+        {error && <span className="text-xs text-danger-fg">{error}</span>}
       </div>
     </div>
   );

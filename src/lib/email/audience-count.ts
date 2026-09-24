@@ -17,6 +17,15 @@ export function isAudienceZero(row: Pick<CountLike, "total" | "subscribed">): bo
   return !row.total && !row.subscribed;
 }
 
+/**
+ * Managed union lists ("Auto: Buyers + Sellers") are created by the app so a
+ * multi-list send can go out as one de-duplicated broadcast. They are plumbing,
+ * not something anyone should pick, so they never show in the audience picker.
+ */
+export function isManagedAudienceName(name: string): boolean {
+  return /^auto:/i.test(name.trim());
+}
+
 export function isPreferredAudienceName(name: string): boolean {
   return /^(brokers|test|buyers|sellers)$/i.test(name.trim());
 }

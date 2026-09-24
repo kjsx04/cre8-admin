@@ -51,6 +51,9 @@ const config: Config = {
         "border-gray": "#333333",
         "muted-gray": "#999999",
         "subtle-gray": "#FAFAFA",
+        // Weekends on the email calendar — the AI never schedules there, so they
+        // read as closed rather than merely quiet. #FAFAFA was too close to white.
+        "weekend-gray": "#D7D7DA",
         "border-light": "#E5E5E5",
         "border-medium": "#D0D0D0",
       },

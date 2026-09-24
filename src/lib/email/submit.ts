@@ -3,7 +3,7 @@
  *
  * Schedule / Update send auto_schedule: true so the AI picks a send time and
  * the server pushes the email to Resend. Save campaign sends auto_schedule:
- * false — the row stays a draft under "Not on the schedule" until Schedule
+ * false — the row stays a draft under "Saved campaigns" until Schedule
  * or Send now. If the server saved the row but Resend refused, the response
  * carries provider_sync.ok === false — we throw so the toast can retry.
  */

@@ -14,6 +14,7 @@
 import { listSegments, countSegmentContacts, isProviderConfigured, invalidateContactCaches } from "./provider";
 import { AudienceCount } from "./types";
 import {
+  isManagedAudienceName,
   isPreferredAudienceName,
   pickCountOnError,
   shouldCacheAudienceCounts,
@@ -51,7 +52,8 @@ export async function getAudienceCounts(force = false): Promise<AudienceCount[]>
     invalidateContactCaches();
   }
 
-  const segments = sortAudienceSegments(await listSegments());
+  // Managed union lists are internal plumbing — never offer them as a choice
+  const segments = sortAudienceSegments((await listSegments()).filter((s) => !isManagedAudienceName(s.name)));
   const preferred = segments.filter((seg) => isPreferredAudienceName(seg.name));
   const rest = segments.filter((seg) => !isPreferredAudienceName(seg.name));
 

@@ -23,6 +23,10 @@ import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
+import InboxLines from "./InboxLines";
+import ScheduledActions from "./ScheduledActions";
+import { Button } from "@/components/ui";
+import { EMAIL_SENDERS } from "@/lib/email/constants";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips } from "@/lib/email/utils";
 import { saveCampaignDraft } from "@/lib/email/submit";
@@ -121,7 +125,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const [activeField, setActiveField] = useState<PreviewField | null>(null);
   // Live Resend lists + counts — shown on the audience buttons + confirm dialogs
   const audience = useAudience();
-  const selectedAudience = combineAudience(audience.map, draft.segmentIds, draft.extraEmails.length);
+  const selectedAudience = combineAudience(audience.map, draft.segmentIds, draft.extraEmails.length, audience.overlaps);
   const selectedAudienceName = audienceLabel(
     audience.map,
     formData.segment_id,
@@ -307,17 +311,17 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             campaign={formData}
             disabled={isGroup ? draft.groupListings.length < 2 : !draft.listingId}
           />
-          <button
-            type="button"
+          <Button
+            size="sm"
             onClick={handleSave}
-            disabled={!canSave || saving || submitting || sendingNow}
-            className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+            disabled={!canSave || submitting || sendingNow}
+            loading={saving}
             title={canSave ? "Save a draft — not live until Schedule or Send now" : "Add a listing and a broker to save"}
           >
-            {saving ? "Saving…" : "Save campaign"}
-          </button>
+            Save campaign
+          </Button>
           {saveError && (
-            <span className="text-[11px] text-red-500 max-w-[160px] truncate" title={saveError}>
+            <span className="text-xs text-danger-fg max-w-[160px] truncate" title={saveError}>
               {saveError}
             </span>
           )}
@@ -384,6 +388,12 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             mobileTab === "edit" ? "block" : "hidden lg:block"
           }`}
         >
+          {/* Already on the calendar? Reschedule, sync the template or refresh the
+              listing right here, where the preview shows what changed. */}
+          {isEdit && campaign && (
+            <ScheduledActions campaign={campaign} onChanged={() => router.refresh()} />
+          )}
+
           {/* 1 — what kind of email. Everything else appears once this is chosen. */}
           <Section title="Type" note={isEdit ? "can't change after creating" : undefined}>
             {isEdit ? (
@@ -413,6 +423,27 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     onPick={pickListing}
                   />
                 )}
+              </Section>
+
+              {/* What the inbox shows before anyone opens it */}
+              <Section title="Subject & preview">
+                <InboxLines
+                  subject={draft.emailSubject}
+                  previewText={draft.previewText}
+                  senderName={EMAIL_SENDERS.find((b) => b.id === draft.brokerIds[0])?.name || "CRE8 Advisors"}
+                  campaign={{
+                    campaign_kind: draft.kind,
+                    email_label: draft.emailLabel,
+                    listing_name: isGroup
+                      ? draft.emailLabel || draft.headingText
+                      : draft.listingName,
+                    heading_text: draft.headingText,
+                    body_text: draft.bodyText,
+                    intro_text: draft.introText,
+                  }}
+                  onSubjectChange={(v) => set("emailSubject", v)}
+                  onPreviewChange={(v) => set("previewText", v)}
+                />
               </Section>
 
               {/* Same order as the email, top to bottom */}
@@ -581,6 +612,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 <AudiencePicker
                   list={audience.list}
                   map={audience.map}
+                  overlaps={audience.overlaps}
                   loaded={audience.loaded}
                   error={audience.error}
                   segmentIds={draft.segmentIds}
@@ -601,34 +633,36 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               where frequency and priority are chosen. Send now skips both. */}
           <div className="pt-8 border-t border-black/[0.05] space-y-2">
             <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setSendNowOpen(true)}
                 disabled={!isValid || submitting || sendingNow || saving}
-                className="px-3.5 py-1.5 text-sm font-medium text-medium-gray hover:text-charcoal rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
                 title="Send to the audience right now instead of putting it on the schedule"
               >
                 Send now
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
                 onClick={handleSave}
-                disabled={!canSave || submitting || sendingNow || saving}
-                className="px-4 py-1.5 border border-border-light text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!canSave || submitting || sendingNow}
+                loading={saving}
                 title="Save without scheduling — it waits below the calendar"
               >
-                {saving ? "Saving…" : "Save"}
-              </button>
-              <button
-                type="button"
+                Save
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleScheduleHandoff}
-                disabled={!isValid || submitting || sendingNow || saving}
-                className="px-4 py-1.5 bg-green text-charcoal text-sm font-medium rounded-card active:scale-[0.98] transition-[transform,opacity] duration-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                disabled={!isValid || submitting || sendingNow}
+                loading={saving}
+                title="Put it on the calendar — you pick frequency and priority there"
               >
-                {saving ? "Opening…" : "Schedule"}
-              </button>
+                Schedule
+              </Button>
             </div>
-            {hint && <p className="text-[11px] text-muted-gray text-right">{hint}</p>}
+            {hint && <p className="text-xs text-text-3 text-right">{hint}</p>}
           </div>
         </div>
       </div>

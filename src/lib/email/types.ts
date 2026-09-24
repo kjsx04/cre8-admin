@@ -59,6 +59,8 @@ export interface Campaign {
   campaign_kind: CampaignKind;    // "single" | "group"
   group_listings: GroupListing[]; // cards for group emails (empty for single)
   email_label: string;
+  email_subject: string | null;   // typed subject; blank = "<label>: <listing>"
+  preview_text: string | null;    // grey line under the subject in an inbox
   heading_text: string | null;
   intro_text: string | null;  // group emails: under heading, above listing cards
   body_text: string | null;
@@ -102,6 +104,8 @@ export interface CampaignFormData {
   campaign_kind?: CampaignKind;
   group_listings?: GroupListing[];
   email_label: string;
+  email_subject?: string;
+  preview_text?: string;
   heading_text?: string;
   intro_text?: string;
   body_text?: string;

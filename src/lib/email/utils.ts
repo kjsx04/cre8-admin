@@ -163,7 +163,12 @@ export function formatDateShort(isoStr: string | null): string {
 
 /** Check if a campaign can be edited (draft, scheduled, or active) */
 export function canEdit(status: string): boolean {
-  return status === "draft" || status === "scheduled" || status === "active";
+  // Paused campaigns are editable: they sit under "Saved campaigns" waiting
+  // to go back on, and Edit is the only way to check the email before scheduling
+  // it again. syncCampaignToProvider treats paused as "should have no pending
+  // send", so editing one can never put mail in flight.
+  // Completed and cancelled stay locked — that mail has already gone out.
+  return status === "draft" || status === "scheduled" || status === "active" || status === "paused";
 }
 
 /** Check if a campaign can be paused (only active recurring) */

@@ -3,53 +3,47 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { Campaign, CampaignFormData } from "@/lib/email/types";
-import { getTypeColor, formatScheduleDate, calculatePriority, canEdit, canPause, canResume } from "@/lib/email/utils";
-import { STATUS_LABELS, STATUS_COLORS } from "@/lib/email/constants";
-import { canRefreshListing, canSyncTemplate, usesCurrentTemplate } from "@/lib/email/template-version";
-import { listingStaysLive } from "@/lib/email/listing-hydrate";
-import PriorityBadge from "./PriorityBadge";
-import EmailPreview from "./EmailPreview";
-import { useAudienceCounts, formatCount, recipientLine, audienceForCampaign, audienceLabel } from "@/lib/email/audience-client";
+import { Campaign } from "@/lib/email/types";
+import { formatScheduleDate, canEdit, canPause } from "@/lib/email/utils";
+import { STATUS_LABELS } from "@/lib/email/constants";
+import { Button, Badge, IconButton, type Tone } from "@/components/ui";
+import { Pencil, Pause, Trash2, X } from "lucide-react";
+
+/** Campaign status → the shared badge tones, so these pills match the rest of the app */
+const STATUS_TONE: Record<string, Tone> = {
+  draft: "neutral",
+  scheduled: "info",
+  active: "success",
+  paused: "warning",
+  completed: "neutral",
+  cancelled: "danger",
+};
+import { useAudience, formatCount, recipientLine, audienceForCampaign, audienceLabel } from "@/lib/email/audience-client";
 
 interface CampaignDetailProps {
   campaign: Campaign;
-  onUpdate: (id: string, data: Partial<CampaignFormData>) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
   onPause: (id: string) => Promise<void>;
-  onResume: (id: string) => Promise<void>;
-  /** Ask the AI for a fresh slot (after edits, or when the current one is bad) */
-  onReschedule?: (id: string) => Promise<void>;
-  /** Send immediately, skipping the AI */
-  onSendNow?: (id: string) => Promise<void>;
-  /** Rebuild the pending send from today's template chrome; listing stays frozen */
-  onSyncTemplate?: (id: string) => Promise<void>;
-  /** Overlay live listing onto the pinned chrome and replace the pending send */
-  onRefreshListing?: (id: string) => Promise<void>;
   onClose: () => void;
 }
 
-/** Slide-over detail panel — same pattern as DealDetail */
-export default function CampaignDetail({
-  campaign,
-  onUpdate,
-  onDelete,
-  onPause,
-  onResume,
-  onReschedule,
-  onSendNow,
-  onSyncTemplate,
-  onRefreshListing,
-  onClose,
-}: CampaignDetailProps) {
-  void onUpdate; // reserved for inline edit
+/**
+ * Slide-over detail panel — what this send is and how it did.
+ *
+ * Read-only by design. Edit, Pause and Delete are the only actions: everything
+ * that changes the email itself (template sync, refreshing the listing,
+ * rescheduling, sending now) lives in the editor, where you can see what you're
+ * changing. Pausing takes it off the calendar and down to the saved campaigns,
+ * where Schedule puts it back.
+ */
+export default function CampaignDetail({ campaign, onDelete, onPause, onClose }: CampaignDetailProps) {
   const router = useRouter();
   const { accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
   // Audience size for the "Audience" row + send-now confirm
-  const audience = useAudienceCounts();
-  const audienceCount = audienceForCampaign(audience, campaign.segment_id);
-  const audienceName = audienceLabel(audience, campaign.segment_id, campaign.segment_name);
+  const audience = useAudience();
+  const audienceCount = audienceForCampaign(audience.map, campaign.segment_id, audience.overlaps);
+  const audienceName = audienceLabel(audience.map, campaign.segment_id, campaign.segment_name);
 
   // Delivery stats from Resend webhooks (per recipient, across all sends of this campaign)
   const [stats, setStats] = useState<{ sends: number; delivered: number; opened: number; clicked: number; bounced: number; unsubscribed: number } | null>(null);
@@ -64,13 +58,9 @@ export default function CampaignDetail({
       }
     })();
   }, [campaign.id, userEmail]);
-  const [showPreview, setShowPreview] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
-  const [showSendConfirm, setShowSendConfirm] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
-  const color = getTypeColor(campaign.email_label);
-  const priority = calculatePriority(campaign.email_label);
   const displayDate =
     campaign.campaign_type === "recurring"
       ? campaign.next_send_date
@@ -82,55 +72,12 @@ export default function CampaignDetail({
     setActionLoading(false);
   };
 
-  const handleResume = async () => {
-    setActionLoading(true);
-    await onResume(campaign.id);
-    setActionLoading(false);
-  };
-
-  const handleSendNow = async () => {
-    if (!onSendNow) return;
-    setActionLoading(true);
-    await onSendNow(campaign.id);
-    setActionLoading(false);
-    setShowSendConfirm(false);
-  };
-
-  const handleReschedule = async () => {
-    if (!onReschedule) return;
-    setActionLoading(true);
-    await onReschedule(campaign.id);
-    setActionLoading(false);
-  };
-
   const handleDelete = async () => {
     setActionLoading(true);
     await onDelete(campaign.id);
     setActionLoading(false);
     setShowDeleteConfirm(false);
   };
-
-  const handleSyncTemplate = async () => {
-    if (!onSyncTemplate) return;
-    setActionLoading(true);
-    await onSyncTemplate(campaign.id);
-    setActionLoading(false);
-  };
-
-  const handleRefreshListing = async () => {
-    if (!onRefreshListing) return;
-    setActionLoading(true);
-    await onRefreshListing(campaign.id);
-    setActionLoading(false);
-  };
-
-  const templateCurrent = usesCurrentTemplate(campaign);
-  const listingLive = listingStaysLive(campaign.status);
-  const showSync = !!onSyncTemplate && canSyncTemplate(campaign.status);
-  const showRefreshListing = !!onRefreshListing && canRefreshListing(campaign.status);
-  const listingLockedLabel = campaign.listing_synced_at
-    ? `Locked ${new Date(campaign.listing_synced_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-    : "Locked at schedule";
 
   return (
     <>
@@ -145,120 +92,53 @@ export default function CampaignDetail({
           <div className="sticky top-0 bg-white border-b border-border-light px-6 py-4 z-10">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                {/* Label badge */}
-                <div className="flex items-center gap-2 mb-2">
-                  <span
-                    className="text-xs font-bold uppercase tracking-wide px-2 py-0.5 rounded"
-                    style={{ color: "#fff", backgroundColor: color }}
-                  >
-                    {campaign.email_label || "Group"}
-                  </span>
-                  <PriorityBadge priority={priority} />
-                  <span
-                    className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded"
-                    style={{
-                      color: STATUS_COLORS[campaign.status],
-                      backgroundColor: `${STATUS_COLORS[campaign.status]}15`,
-                    }}
-                  >
-                    {STATUS_LABELS[campaign.status]}
-                  </span>
-                </div>
-
+                {/* The heading is email copy, not identity — the listing names this panel */}
                 <h2 className="font-bebas text-2xl tracking-wide text-charcoal truncate">
                   {campaign.listing_name}
                 </h2>
               </div>
 
-              <button
-                onClick={onClose}
-                className="text-muted-gray hover:text-charcoal text-xl shrink-0"
-              >
-                &times;
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge tone={STATUS_TONE[campaign.status] || "neutral"}>{STATUS_LABELS[campaign.status]}</Badge>
+                <IconButton label="Close" onClick={onClose} icon={<X size={18} strokeWidth={1.75} />} />
+              </div>
             </div>
+
+            {/* Edit is the one thing you do from here often, so it sits up top.
+                Everything that changes the email itself — template sync,
+                refreshing the listing, rescheduling — lives behind it. */}
+            {canEdit(campaign.status) && (
+              <div className="mt-3 flex justify-end">
+                <Button size="sm" icon={<Pencil size={16} strokeWidth={1.75} />} onClick={() => router.push(`/marketing/email/${campaign.id}/edit`)}>
+                  Edit
+                </Button>
+              </div>
+            )}
           </div>
 
           {/* Content */}
           <div className="px-6 py-5 space-y-5">
-            {/* Schedule info */}
-            <Section title="Schedule">
-              <InfoRow label="Scheduled" value={formatScheduleDate(displayDate)} />
+            {/* Read top to bottom: what kind of send, how often, when next, when it
+                stops, who gets it, who it comes from. */}
+            <Section title="Information">
+              <InfoRow label="Type" value={campaign.campaign_type === "recurring" ? "Recurring" : "One-time"} />
               {campaign.campaign_type === "recurring" && (
-                <>
-                  <InfoRow label="Frequency" value={campaign.frequency || "\u2014"} />
-                  <InfoRow
-                    label="End Date"
-                    value={campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : "None"}
-                  />
-                </>
+                <InfoRow label="Frequency" value={capitalize(campaign.frequency)} />
               )}
-              <InfoRow label="Type" value={campaign.campaign_type === "recurring" ? "Recurring" : "One-Time"} />
+              <InfoRow label="Next scheduled" value={formatScheduleDate(displayDate)} />
+              {campaign.campaign_type === "recurring" && (
+                <InfoRow
+                  label="End date"
+                  value={campaign.end_date ? new Date(campaign.end_date).toLocaleDateString() : "None"}
+                />
+              )}
               <InfoRow
                 label="Audience"
                 value={audienceCount ? `${audienceName} · ${formatCount(audienceCount.subscribed)}` : audienceName}
                 sub={audienceCount && audienceCount.unsubscribed > 0 ? recipientLine(audienceCount) : undefined}
               />
+              <InfoRow label="Sending broker" value={campaign.broker_name} />
             </Section>
-
-            {/* Content info */}
-            <Section title="Email Content">
-              <InfoRow
-                label="Template"
-                value={templateCurrent ? "Current layout" : "Layout updated"}
-                sub={
-                  templateCurrent
-                    ? "Layout stays until you sync. Sent mail is not changed."
-                    : "Sync template applies the new layout to the pending send only."
-                }
-              />
-              <InfoRow
-                label="Listing"
-                value={listingLive ? "Live" : listingLockedLabel}
-                sub={
-                  listingLive
-                    ? "Photos and fields follow the listing until you schedule."
-                    : "Frozen at schedule. Refresh listing to pull current photos and fields."
-                }
-              />
-              {campaign.heading_text && (
-                <InfoRow label="Heading" value={campaign.heading_text} />
-              )}
-              {campaign.intro_text && (
-                <InfoRow label="Intro" value={campaign.intro_text} />
-              )}
-              {campaign.body_text && (
-                <InfoRow label="Body" value={campaign.body_text} />
-              )}
-              {campaign.highlights && campaign.highlights.length > 0 && (
-                <div>
-                  <span className="text-xs text-muted-gray font-medium">Highlights</span>
-                  <ul className="mt-1 space-y-0.5">
-                    {campaign.highlights.map((h, i) => (
-                      <li key={i} className="text-sm text-charcoal">&bull; {h}</li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-            </Section>
-
-            {/* Broker info */}
-            <Section title="Sending Broker">
-              <InfoRow label="Name" value={campaign.broker_name} />
-              <InfoRow label="Email" value={campaign.broker_email} />
-              {campaign.broker_phone && (
-                <InfoRow label="Phone" value={campaign.broker_phone} />
-              )}
-            </Section>
-
-            {/* AI Reasoning */}
-            {campaign.ai_reasoning && (
-              <Section title="AI Scheduling Reasoning">
-                <p className="text-sm text-medium-gray leading-relaxed">
-                  {campaign.ai_reasoning}
-                </p>
-              </Section>
-            )}
 
             {/* Group listings */}
             {campaign.campaign_kind === "group" && (campaign.group_listings || []).length > 0 && (
@@ -309,146 +189,68 @@ export default function CampaignDetail({
               </Section>
             )}
 
-            {/* Actions */}
-            <div className="space-y-2 pt-2">
-              {/* Preview button */}
-              <button
-                onClick={() => setShowPreview(true)}
-                className="w-full px-4 py-2.5 bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-sm font-medium rounded-btn hover:bg-[#E0E0E0] transition-colors"
-              >
-                Preview Email
-              </button>
+            {/* Why the AI put it where it did — after the numbers it produced */}
+            {campaign.ai_reasoning && (
+              <Section title="AI Scheduling Reasoning">
+                <p className="text-sm text-medium-gray leading-relaxed">{campaign.ai_reasoning}</p>
+              </Section>
+            )}
 
-              {showSync && (
-                <button
-                  onClick={handleSyncTemplate}
-                  disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
-                >
-                  {actionLoading ? "Syncing..." : templateCurrent ? "Sync template" : "Sync template (layout updated)"}
-                </button>
-              )}
-
-              {showRefreshListing && (
-                <button
-                  onClick={handleRefreshListing}
-                  disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
-                >
-                  {actionLoading ? "Refreshing..." : "Refresh listing"}
-                </button>
-              )}
-
-              {/* Edit button — opens the full-page composer (draft/scheduled/active only) */}
-              {canEdit(campaign.status) && (
-                <button
-                  onClick={() => router.push(`/marketing/email/${campaign.id}/edit`)}
-                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors"
-                >
-                  Edit Campaign
-                </button>
-              )}
-
-              {/* Send now — goes out within a couple of minutes, skips the AI */}
-              {onSendNow && (campaign.status === "draft" || campaign.status === "scheduled" || campaign.status === "active") && (
-                showSendConfirm ? (
-                  <div className="rounded-btn border border-green bg-[#f7fdf0] p-3 space-y-2">
-                    <p className="text-sm text-charcoal">
-                      Send <span className="font-medium">{campaign.email_label ? `${campaign.email_label}: ` : ""}{campaign.listing_name}</span> to <span className="font-medium">{audienceName}{audienceCount ? ` (${formatCount(audienceCount.subscribed)} people)` : ""}</span> right now?
-                      {campaign.campaign_type === "recurring" && <span className="text-muted-gray"> The cadence restarts from today.</span>}
-                    </p>
-                    <div className="flex gap-2">
-                      <button onClick={handleSendNow} disabled={actionLoading} className="px-4 py-2 bg-green text-black uppercase tracking-wide text-sm font-semibold rounded-btn hover:brightness-110 disabled:opacity-50">
-                        {actionLoading ? "Sending..." : "Yes, send now"}
-                      </button>
-                      <button onClick={() => setShowSendConfirm(false)} disabled={actionLoading} className="px-3 py-2 text-sm text-muted-gray hover:text-charcoal">Cancel</button>
-                    </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => setShowSendConfirm(true)}
-                    disabled={actionLoading}
-                    className="w-full px-4 py-2.5 bg-charcoal text-white text-sm font-medium rounded-btn hover:bg-black transition-colors disabled:opacity-50"
-                  >
-                    Send Now
-                  </button>
-                )
-              )}
-
-              {/* Reschedule — AI picks a fresh slot (scheduled/active only) */}
-              {onReschedule && (campaign.status === "scheduled" || campaign.status === "active") && (
-                <button
-                  onClick={handleReschedule}
-                  disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-white border border-border-light text-charcoal text-sm font-medium rounded-btn hover:bg-light-gray transition-colors disabled:opacity-50"
-                >
-                  {actionLoading ? "Rescheduling..." : "Reschedule (AI picks a new time)"}
-                </button>
-              )}
-
-              {/* Pause / Resume */}
+            {/* The two that change something, kept to the bottom */}
+            <div className="flex items-center gap-2 pt-1">
               {canPause(campaign) && (
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={handlePause}
-                  disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-yellow-500 text-white text-sm font-medium rounded-btn hover:bg-yellow-600 transition-colors disabled:opacity-50"
+                  loading={actionLoading}
+                  icon={<Pause size={16} strokeWidth={1.75} />}
+                  title="Take it off the calendar — it moves down to your saved campaigns"
                 >
-                  {actionLoading ? "Pausing..." : "Pause Campaign"}
-                </button>
+                  Pause
+                </Button>
               )}
-              {canResume(campaign) && (
-                <button
-                  onClick={handleResume}
-                  disabled={actionLoading}
-                  className="w-full px-4 py-2.5 bg-green text-black uppercase tracking-wide text-sm font-medium rounded-btn hover:brightness-110 transition disabled:opacity-50"
-                >
-                  {actionLoading ? "Resuming..." : "Resume Campaign"}
-                </button>
-              )}
-
-              {/* Delete */}
               {canEdit(campaign.status) && !showDeleteConfirm && (
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setShowDeleteConfirm(true)}
-                  className="w-full px-4 py-2.5 border border-red-300 text-red-500 text-sm font-medium rounded-btn hover:bg-red-50 transition-colors"
+                  icon={<Trash2 size={16} strokeWidth={1.75} />}
+                  className="ml-auto text-danger-fg hover:bg-danger-bg"
                 >
-                  Delete Campaign
-                </button>
-              )}
-              {showDeleteConfirm && (
-                <div className="bg-red-50 border border-red-200 rounded-btn p-3 space-y-2">
-                  <p className="text-sm text-red-700">
-                    Delete this campaign? This will also cancel any pending scheduled send.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleDelete}
-                      disabled={actionLoading}
-                      className="px-3 py-1.5 bg-red-500 text-white text-sm rounded-btn hover:bg-red-600 transition-colors disabled:opacity-50"
-                    >
-                      {actionLoading ? "Deleting..." : "Confirm Delete"}
-                    </button>
-                    <button
-                      onClick={() => setShowDeleteConfirm(false)}
-                      className="px-3 py-1.5 text-sm text-muted-gray hover:text-charcoal"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+                  Delete
+                </Button>
               )}
             </div>
+
+            {showDeleteConfirm && (
+              <div className="bg-danger-bg border border-danger/20 rounded-control p-3 space-y-2">
+                <p className="text-sm text-danger-fg">
+                  Delete this campaign? This also cancels any pending scheduled send.
+                </p>
+                <div className="flex gap-2">
+                  <Button variant="danger" size="sm" onClick={handleDelete} loading={actionLoading}>
+                    Confirm delete
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeleteConfirm(false)}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
 
-      {/* Email preview modal */}
-      {showPreview && (
-        <EmailPreview campaign={campaign} onClose={() => setShowPreview(false)} />
-      )}
-
     </>
   );
+}
+
+/** "bi-weekly" → "Bi-weekly". Frequencies are stored lowercase. */
+function capitalize(value: string | null | undefined): string {
+  const v = (value || "").trim();
+  if (!v) return "\u2014";
+  return v.charAt(0).toUpperCase() + v.slice(1);
 }
 
 /** Section wrapper */

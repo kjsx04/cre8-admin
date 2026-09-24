@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "crypto";
 import { supabase } from "@/lib/flow/supabase";
+import { applyDeliveryEvent } from "@/lib/email/suppress";
 
 /**
  * POST /api/email/webhook/resend — Resend event webhook.
@@ -12,6 +13,13 @@ import { supabase } from "@/lib/flow/supabase";
  *
  * Each event is stored in email_events and attributed to a campaign through
  * email_sends (broadcast id → campaign id).
+ *
+ * Bounces also drive automatic list hygiene (`applyDeliveryEvent`): a hard
+ * bounce or spam complaint suppresses the contact in Resend immediately, three
+ * soft bounces in a row retire it, and any delivery resets the count. This runs
+ * after the event is stored and can never fail the webhook.
+ *
+ * Recipient addresses are used in memory and never written to email_events.
  */
 export async function POST(request: NextRequest) {
   const raw = await request.text();
@@ -68,6 +76,13 @@ export async function POST(request: NextRequest) {
     occurred_at: occurredAt,
     payload: { ...data, to: undefined }, // don't store recipient addresses
   });
+
+  // List hygiene. `to` is used here and deliberately not persisted above.
+  const recipient = Array.isArray(data.to) ? (data.to[0] as string) : (data.to as string | undefined);
+  const outcome = await applyDeliveryEvent(type, recipient, data, occurredAt);
+  if (outcome.action === "suppressed") {
+    console.log(`[webhook] suppressed a contact: ${outcome.reason}`);
+  }
 
   return NextResponse.json({ ok: true });
 }
