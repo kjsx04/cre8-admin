@@ -118,8 +118,8 @@ export async function POST(request: NextRequest) {
   for (const g of groups || []) {
     const { data: fresh } = await supabase.from("email_campaigns").select("*").eq("id", g.id).single();
     if (fresh && (fresh.status === "scheduled" || fresh.status === "active")) {
-      const { syncCampaignToProvider } = await import("@/lib/email/provider");
-      const sync = await syncCampaignToProvider(fresh);
+      const { syncAndRecord } = await import("@/lib/email/scheduler");
+      const sync = await syncAndRecord(fresh);
       if (sync.provider_send_id !== fresh.provider_send_id) {
         await supabase.from("email_campaigns").update({ provider_send_id: sync.provider_send_id }).eq("id", g.id);
       }

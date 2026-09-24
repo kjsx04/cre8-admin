@@ -61,10 +61,21 @@ export async function POST(request: NextRequest) {
   const emailId = (data.email_id as string) || null;
   const occurredAt = event.created_at || new Date().toISOString();
 
-  // Map the broadcast to a campaign
+  // Map the send back to a campaign.
+  //
+  // Broadcasts carry a broadcast_id. Transactional sends (extra recipients and
+  // the recurring campaigns that go to a handful of addresses) do not — but
+  // email_sends stores their Resend EMAIL id in the same column, so fall back to
+  // that. Without the fallback those campaigns report nothing at all: 91 events
+  // were sitting unattributed before this.
   let campaignId: string | null = null;
-  if (broadcastId) {
-    const { data: send } = await supabase.from("email_sends").select("campaign_id").eq("broadcast_id", broadcastId).maybeSingle();
+  const lookupId = broadcastId || emailId;
+  if (lookupId) {
+    const { data: send } = await supabase
+      .from("email_sends")
+      .select("campaign_id")
+      .eq("broadcast_id", lookupId)
+      .maybeSingle();
     campaignId = send?.campaign_id || null;
   }
 

@@ -7,7 +7,7 @@
  */
 
 import { supabase } from "@/lib/flow/supabase";
-import { syncCampaignToProvider, CampaignLike } from "./provider";
+import { syncCampaignToProvider, CampaignLike, type SyncResult } from "./provider";
 import { splitProviderIds } from "./audience-tokens";
 import { templateStamp } from "./template-version";
 import { endDateProblem } from "./validate-schedule";
@@ -215,6 +215,27 @@ export async function recordSend(campaignId: string, broadcastId: string | null,
       .from("email_sends")
       .upsert({ broadcast_id: id, campaign_id: campaignId, scheduled_at: scheduledAt }, { onConflict: "broadcast_id" });
   }
+}
+
+/**
+ * Push the campaign to Resend AND remember the resulting send ids.
+ *
+ * Every path that re-syncs a campaign mints NEW Resend ids (Resend only lets you
+ * edit a draft broadcast, so a change is always cancel + create). If the mapping
+ * in `email_sends` is not rewritten at the same time, the webhook cannot tell
+ * which campaign a later open/click belongs to and the event lands unattributed —
+ * which is exactly how 2 real Meridian & Pecos events ended up orphaned.
+ *
+ * Use this instead of calling syncCampaignToProvider() directly.
+ */
+export async function syncAndRecord(campaign: CampaignLike): Promise<SyncResult> {
+  const sync = await syncCampaignToProvider(campaign);
+  await recordSend(
+    campaign.id as string,
+    sync.provider_send_id,
+    (campaign.scheduled_date as string | null) || null
+  );
+  return sync;
 }
 
 /**

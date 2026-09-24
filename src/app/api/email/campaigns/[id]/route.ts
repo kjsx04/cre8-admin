@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
-import { syncCampaignToProvider, cancelSend } from "@/lib/email/provider";
+import { cancelSend } from "@/lib/email/provider";
+import { syncAndRecord } from "@/lib/email/scheduler";
 import { scheduleCampaign, optimizeWeek, currentWeekStart } from "@/lib/email/scheduler";
 import { placeForCampaign, normalizePriority } from "@/lib/email/priorities";
 import { endDateProblem } from "@/lib/email/validate-schedule";
@@ -148,7 +149,7 @@ export async function PATCH(
       providerSync = result.sync;
     } else if (campaign.status === "scheduled" || campaign.status === "active") {
       // Has (or should have) a pending send — make Resend match the new content
-      providerSync = await syncCampaignToProvider(campaign);
+      providerSync = await syncAndRecord(campaign);
       if (providerSync.provider_send_id !== campaign.provider_send_id) {
         await supabase
           .from("email_campaigns")

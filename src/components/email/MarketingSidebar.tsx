@@ -4,15 +4,18 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useMsal } from "@azure/msal-react";
-import { Mail } from "lucide-react";
+import { Calendar, BarChart3 } from "lucide-react";
 import { Badge, cn, FOCUS_RING } from "@/components/ui";
 
 // Sidebar modules — add more as new marketing features are built
-const MODULES = [{ label: "Email", href: "/marketing/email", icon: Mail }];
+const MODULES = [
+  { label: "Calendar", href: "/marketing/email", icon: Calendar },
+  { label: "Analyze", href: "/marketing/analyze", icon: BarChart3 },
+];
 
 /**
  * MarketingSidebar — second-level rail for the Marketing section.
- * Shows the open-alert count on Email (stale content / cadence slowed).
+ * Shows the open-alert count on Calendar (stale content / cadence slowed).
  */
 export default function MarketingSidebar() {
   const pathname = usePathname();
@@ -47,7 +50,7 @@ export default function MarketingSidebar() {
       <p className="px-5 text-xs font-medium text-text-3 mb-2">Marketing</p>
       <nav className="flex flex-col gap-0.5 px-3">
         {MODULES.map((mod) => {
-          const active = pathname.startsWith(mod.href);
+          const active = (pathname || "").startsWith(mod.href);
           const Icon = mod.icon;
           return (
             <Link

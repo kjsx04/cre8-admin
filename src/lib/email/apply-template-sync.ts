@@ -4,7 +4,8 @@
  */
 
 import { supabase } from "@/lib/flow/supabase";
-import { syncCampaignToProvider, type CampaignLike, type SyncResult } from "./provider";
+import { type CampaignLike, type SyncResult } from "./provider";
+import { syncAndRecord } from "./scheduler";
 import { canSyncTemplate, templateStamp } from "./template-version";
 
 export type TemplateSyncOutcome = {
@@ -36,7 +37,7 @@ export async function applyTemplateSync(campaign: CampaignLike): Promise<Templat
 
   let provider_sync: SyncResult | null = null;
   if (saved.status === "scheduled" || saved.status === "active") {
-    provider_sync = await syncCampaignToProvider(saved);
+    provider_sync = await syncAndRecord(saved);
     if (provider_sync.provider_send_id !== saved.provider_send_id) {
       await supabase
         .from("email_campaigns")

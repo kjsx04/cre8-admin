@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
 import { applySlotAndSync } from "@/lib/email/scheduler";
-import { syncCampaignToProvider } from "@/lib/email/provider";
+import { syncAndRecord } from "@/lib/email/scheduler";
 import type { SlotSnapshot } from "@/lib/email/place";
 
 export const dynamic = "force-dynamic";
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     // stale id so nothing later thinks there's still a send out there
     let cleared = reverted;
     if (campaign) {
-      const sync = await syncCampaignToProvider(reverted || { ...campaign, status: "draft", scheduled_date: null });
+      const sync = await syncAndRecord(reverted || { ...campaign, status: "draft", scheduled_date: null });
       const { data: final } = await supabase
         .from("email_campaigns")
         .update({ provider_send_id: sync.provider_send_id })

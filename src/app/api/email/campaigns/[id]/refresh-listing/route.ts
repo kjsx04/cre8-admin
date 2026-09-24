@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/flow/supabase";
 import { requireUser } from "@/lib/email/auth";
-import { syncCampaignToProvider } from "@/lib/email/provider";
+import { syncAndRecord } from "@/lib/email/scheduler";
 import { hydrateCampaignListing, listingSnapshotFields } from "@/lib/email/listing-hydrate";
 import { canRefreshListing } from "@/lib/email/template-version";
 
@@ -55,7 +55,7 @@ export async function POST(
 
   let providerSync = null;
   if (saved.status === "scheduled" || saved.status === "active") {
-    providerSync = await syncCampaignToProvider(saved);
+    providerSync = await syncAndRecord(saved);
     if (providerSync.provider_send_id !== saved.provider_send_id) {
       await supabase
         .from("email_campaigns")
