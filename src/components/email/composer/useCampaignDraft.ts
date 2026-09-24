@@ -69,17 +69,50 @@ interface StoredDraft {
   savedAt: string; // ISO
 }
 
-function normalizeDraft(draft: CampaignDraft & { segmentId?: string }): CampaignDraft {
-  const names =
-    draft.extraContactNames && typeof draft.extraContactNames === "object" && !Array.isArray(draft.extraContactNames)
-      ? draft.extraContactNames
-      : {};
-  const introText = typeof draft.introText === "string" ? draft.introText : "";
-  if (Array.isArray(draft.segmentIds) && Array.isArray(draft.extraEmails)) {
-    return { ...draft, extraContactNames: names, introText };
+/**
+ * Bring a draft saved by an older build up to the current shape.
+ *
+ * Every field the composer reads must exist and be the right type. A draft
+ * autosaved before `emailSubject` and `previewText` were added restored with
+ * them undefined, and `draft.emailSubject.trim()` in `formData` threw on mount
+ * — the whole composer went down with "a client-side exception" and the only
+ * way out was clearing localStorage by hand.
+ *
+ * Patching fields one at a time just moves the problem to the next field that
+ * gets added, so this merges the stored draft over a blank one and keeps a
+ * stored value only when its type matches the blank's. Anything missing,
+ * renamed or corrupted silently falls back to the default.
+ */
+export function normalizeDraft(draft: (Partial<CampaignDraft> & { segmentId?: string }) | null | undefined): CampaignDraft {
+  const skeleton = emptyDraft("");
+  const stored = draft && typeof draft === "object" ? draft : {};
+  const out = { ...skeleton };
+
+  for (const key of Object.keys(skeleton) as (keyof CampaignDraft)[]) {
+    const fallback = skeleton[key];
+    const value = (stored as Record<string, unknown>)[key];
+    if (value === undefined || value === null) continue;
+
+    // The blank draft is the schema: a stored value has to match its shape
+    const ok = Array.isArray(fallback)
+      ? Array.isArray(value)
+      : typeof fallback === "object"
+      ? typeof value === "object" && !Array.isArray(value)
+      : typeof fallback === "number"
+      ? typeof value === "number" && isFinite(value)
+      : typeof value === typeof fallback;
+
+    if (ok) (out as Record<string, unknown>)[key] = value;
   }
-  const parsed = parseAudienceTokens(draft.segmentId || "");
-  return { ...draft, segmentIds: parsed.segmentIds, extraEmails: parsed.extraEmails, extraContactNames: names, introText };
+
+  // Audience used to be one packed `segmentId` string rather than two arrays
+  if (!Array.isArray(stored.segmentIds) || !Array.isArray(stored.extraEmails)) {
+    const parsed = parseAudienceTokens(stored.segmentId || "");
+    out.segmentIds = parsed.segmentIds;
+    out.extraEmails = parsed.extraEmails;
+  }
+
+  return out;
 }
 
 function readStoredDraft(campaignId?: string | null): StoredDraft | null {
