@@ -52,14 +52,17 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
       {/* When it goes out and how many people get it.
           The count used to sit beside the cadence, where "Weekly 3" read as
           three weeks rather than three recipients. Up here next to the time,
-          with a person icon, it can only mean a headcount. */}
-      <div className="flex items-center justify-between gap-2">
+          with a person icon, it can only mean a headcount.
+
+          Nothing in this row may wrap: at planner width "11:00 AM" was breaking
+          across two lines, which read as two different times. */}
+      <div className="flex items-center justify-between gap-1.5">
         <span className="flex items-center gap-1.5 min-w-0">
           <SendDot state={state} />
-          <span className="text-xs font-semibold text-text">{time}</span>
+          <span className="text-xs font-semibold text-text whitespace-nowrap">{time}</span>
           {count && (
             <span
-              className="flex items-center gap-0.5 text-label tabular-nums text-text-3"
+              className="flex items-center gap-0.5 text-label tabular-nums text-text-3 whitespace-nowrap"
               title={`${count.name} · ${formatCount(count.subscribed)} recipients`}
             >
               <Users size={11} strokeWidth={1.75} aria-hidden />
@@ -67,18 +70,15 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
             </span>
           )}
         </span>
-        <span className="flex items-center gap-1.5 shrink-0">
+        <span className="shrink-0">
           {isProjected && <Badge tone="neutral" size="sm">projected</Badge>}
           {isSent && <Badge tone="success" size="sm">sent</Badge>}
           {isMissed && <Badge tone="danger" size="sm">didn&apos;t send</Badge>}
-          {/* Who it comes from. Only the sender — the other brokers are on the
-              email itself, but the From address is what a reader sees first. */}
-          <SenderAvatar brokerId={c.broker_id} name={c.broker_name} />
         </span>
       </div>
 
       {/* Listing */}
-      <p className="mt-1.5 text-sm font-medium text-text leading-snug line-clamp-2">{c.listing_name}</p>
+      <p className="mt-1.5 text-sm font-medium text-text leading-snug line-clamp-2 break-words">{c.listing_name}</p>
 
       {/* Only what changes where this send sits: how many listings, and its priority.
           The email heading is not shown — a long one ran to three lines and buried
@@ -95,15 +95,22 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
         </div>
       )}
 
-      {/* How often it repeats */}
-      {isRecurring && frequency && (
-        <div className="mt-1.5 flex items-center">
-          <span className="flex items-center gap-1 text-label text-text-3" title="Repeats">
+      {/* Footer: how often it repeats, and who it comes from.
+          The avatar sits here rather than beside the time — up there it competed
+          with the headcount for a narrow row and pushed the time onto two lines.
+          Only the sender is shown; the other brokers are on the email itself,
+          but the From address is what a reader sees first. */}
+      <div className="mt-1.5 flex items-end justify-between gap-2 min-h-[20px]">
+        {isRecurring && frequency ? (
+          <span className="flex items-center gap-1 text-label text-text-3 whitespace-nowrap" title="Repeats">
             <RefreshCw size={11} strokeWidth={1.75} aria-hidden />
             {FREQUENCY_LABELS[frequency] || frequency}
           </span>
-        </div>
-      )}
+        ) : (
+          <span />
+        )}
+        <SenderAvatar brokerId={c.broker_id} name={c.broker_name} />
+      </div>
     </button>
   );
 }
