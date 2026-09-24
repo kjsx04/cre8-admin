@@ -1,7 +1,7 @@
 "use client";
 
 import { Campaign } from "@/lib/email/types";
-import { ScheduleItem } from "@/lib/email/occurrences";
+import { ScheduleItem, ScheduleState } from "@/lib/email/occurrences";
 import { FREQUENCY_LABELS } from "@/lib/email/constants";
 import { Users, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui";
@@ -33,6 +33,7 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
   const { campaign: c, state, time, isRecurring, frequency } = item;
   const isSent = state === "sent";
   const isProjected = state === "projected";
+  const isMissed = state === "missed";
   // Audience size chip ("860") — one shared fetch for every card on the page
   const audience = useAudience();
   const count = audienceForCampaign(audience.map, c.segment_id, audience.overlaps);
@@ -42,7 +43,7 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
       type="button"
       onClick={() => onClick(c)}
       className={`w-full text-left rounded-card bg-surface p-2 border transition-colors hover:border-border-strong ${
-        isProjected ? "border-dashed border-border-strong" : "border-border"
+        isMissed ? "border-danger/50" : isProjected ? "border-dashed border-border-strong" : "border-border"
       } ${isSent ? "opacity-60" : ""} ${
         // Just placed: solid ring. Just moved: soft ring. Both fade out on their own.
         placed ? "ring-2 ring-accent ring-offset-1 animate-slide-up" : moved ? "ring-2 ring-accent/40 animate-slide-up" : ""
@@ -54,6 +55,7 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
           with a person icon, it can only mean a headcount. */}
       <div className="flex items-center justify-between gap-2">
         <span className="flex items-center gap-1.5 min-w-0">
+          <SendDot state={state} />
           <span className="text-xs font-semibold text-text">{time}</span>
           {count && (
             <span
@@ -67,6 +69,7 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
         </span>
         {isProjected && <Badge tone="neutral" size="sm" className="shrink-0">projected</Badge>}
         {isSent && <Badge tone="success" size="sm" className="shrink-0">sent</Badge>}
+        {isMissed && <Badge tone="danger" size="sm" className="shrink-0">didn&apos;t send</Badge>}
       </div>
 
       {/* Listing */}
@@ -98,5 +101,44 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
         )}
       </div>
     </button>
+  );
+}
+
+/**
+ * The state of one send, at a glance.
+ *
+ *   hollow green  — queued, still to come
+ *   solid green   — it went out
+ *   hollow grey   — a projected recurrence, nothing queued yet
+ *   red + slash   — its time passed and nothing was sent
+ *
+ * The last one is the point of this: a send that quietly disappeared used to be
+ * indistinguishable from one that was still waiting.
+ */
+function SendDot({ state }: { state: ScheduleState }) {
+  const label =
+    state === "sent" ? "Sent" : state === "missed" ? "Did not send" : state === "projected" ? "Projected" : "Scheduled";
+
+  if (state === "missed") {
+    return (
+      <span title={label} aria-label={label} className="relative inline-flex w-2.5 h-2.5 shrink-0">
+        <span className="absolute inset-0 rounded-full border-[1.5px] border-danger" />
+        <span className="absolute left-1/2 top-1/2 w-[1.5px] h-[12px] -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-danger" />
+      </span>
+    );
+  }
+
+  return (
+    <span
+      title={label}
+      aria-label={label}
+      className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${
+        state === "sent"
+          ? "bg-accent"
+          : state === "projected"
+          ? "border-[1.5px] border-text-3"
+          : "border-[1.5px] border-accent"
+      }`}
+    />
   );
 }

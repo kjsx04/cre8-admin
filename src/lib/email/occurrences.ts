@@ -13,7 +13,14 @@
 import { Campaign, CampaignFrequency } from "./types";
 import { DateKey, phoenixDateKey, phoenixParts, formatPhoenixTime, PHOENIX_OFFSET } from "./schedule-dates";
 
-export type ScheduleState = "confirmed" | "projected" | "sent";
+/**
+ * confirmed — queued at Resend, still to come
+ * projected — a future recurrence the AI hasn't pinned yet
+ * sent      — it went out
+ * missed    — its time came and went with nothing sent. Usually a provider sync
+ *             that failed silently, which is exactly what needs to be visible.
+ */
+export type ScheduleState = "confirmed" | "projected" | "sent" | "missed";
 
 export interface ScheduleItem {
   key: string;                    // `${campaign.id}:${dateKey}` — stable React key
@@ -28,6 +35,9 @@ export interface ScheduleItem {
 
 export const MAX_OCCURRENCES = 200;     // per expandOccurrences call
 const MAX_STEPS_PER_CAMPAIGN = 600;     // loop guard for stale anchors
+
+/** How late a send can be before the planner calls it missed. Resend queues take a few minutes. */
+const MISSED_GRACE_MS = 15 * 60 * 1000;
 
 const pad = (n: number) => String(n).padStart(2, "0");
 
@@ -56,6 +66,23 @@ export function stepDate(date: Date, frequency: CampaignFrequency | null): Date 
   }
 }
 
+/**
+ * What to show for a campaign's pending slot.
+ *
+ * A slot whose time has passed with nothing sent is `missed`, not `confirmed`.
+ * On 2026-09-24 a 9:00 AM send was cancelled by a failed provider sync and the
+ * calendar went on showing it as scheduled for over an hour, so the one state
+ * that mattered was the one the planner could not express.
+ */
+function firstState(c: Campaign, slot: Date, now: Date): ScheduleState {
+  const sentThisSlot =
+    !!c.last_sent_at &&
+    Math.abs(new Date(c.last_sent_at).getTime() - slot.getTime()) < 6 * 3600 * 1000;
+  if (sentThisSlot) return "sent";
+  if (slot.getTime() < now.getTime() - MISSED_GRACE_MS) return "missed";
+  return c.provider_send_id ? "confirmed" : "projected";
+}
+
 function makeItem(campaign: Campaign, date: Date, state: ScheduleState): ScheduleItem {
   const dateKey = phoenixDateKey(date);
   const isRecurring = campaign.campaign_type === "recurring";
@@ -72,7 +99,12 @@ function makeItem(campaign: Campaign, date: Date, state: ScheduleState): Schedul
 }
 
 /** Expand every campaign into dated sends inside [rangeStart, rangeEnd) */
-export function expandOccurrences(campaigns: Campaign[], rangeStart: Date, rangeEnd: Date): ScheduleItem[] {
+export function expandOccurrences(
+  campaigns: Campaign[],
+  rangeStart: Date,
+  rangeEnd: Date,
+  now: Date = new Date()
+): ScheduleItem[] {
   const items: ScheduleItem[] = [];
   const inRange = (d: Date) => d >= rangeStart && d < rangeEnd;
 
@@ -103,7 +135,7 @@ export function expandOccurrences(campaigns: Campaign[], rangeStart: Date, range
     }
 
     if (inRange(first)) {
-      items.push(makeItem(c, first, c.provider_send_id ? "confirmed" : "projected"));
+      items.push(makeItem(c, first, firstState(c, first, now)));
     }
 
     if (isRecurring && freq && freq !== "one-time") {

@@ -132,6 +132,7 @@ function SendLine({ item, onSelect }: { item: ScheduleItem; onSelect: (c: Campai
   const color = getTypeColor(c.email_label);
   const isSent = state === "sent";
   const isProjected = state === "projected";
+  const isMissed = state === "missed";
 
   // "9:00 AM" → "9:00a" so the name gets as much of the line as possible
   const shortTime = time.replace(/\s?([AP])M$/i, (_, ap: string) => ap.toLowerCase());
@@ -140,20 +141,28 @@ function SendLine({ item, onSelect }: { item: ScheduleItem; onSelect: (c: Campai
     <button
       type="button"
       onClick={() => onSelect(c)}
-      title={`${time} · ${c.listing_name}${isProjected ? " (projected)" : isSent ? " (sent)" : ""}`}
+      title={`${time} · ${c.listing_name}${isMissed ? " — did not send" : isProjected ? " (projected)" : isSent ? " (sent)" : ""}`}
       className={`w-full flex items-center gap-1 text-left rounded-[4px] px-1 py-0.5 hover:bg-surface-2 transition-colors ${
         isSent ? "opacity-50" : ""
-      }`}
+      } ${isMissed ? "text-danger-fg" : ""}`}
     >
-      {/* Label colour, so a glance still groups Just Listed against Price Reduced */}
-      <span
-        className="w-1.5 h-1.5 rounded-full shrink-0"
-        style={
-          isProjected
-            ? { border: `1.5px solid ${color}`, backgroundColor: "transparent" }
-            : { backgroundColor: color }
-        }
-      />
+      {/* Send state first — a send that never went out has to be obvious here too */}
+      {isMissed ? (
+        <span title="Did not send" className="relative inline-flex w-2 h-2 shrink-0">
+          <span className="absolute inset-0 rounded-full border-[1.5px] border-danger" />
+          <span className="absolute left-1/2 top-1/2 w-[1.5px] h-[10px] -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-danger" />
+        </span>
+      ) : (
+        <span
+          title={isSent ? "Sent" : isProjected ? "Projected" : "Scheduled"}
+          className="w-2 h-2 rounded-full shrink-0"
+          style={
+            isSent
+              ? { backgroundColor: color }
+              : { border: `1.5px solid ${isProjected ? "#9A9AA0" : color}`, backgroundColor: "transparent" }
+          }
+        />
+      )}
       <span className="text-label tabular-nums text-text-3 shrink-0">{shortTime}</span>
       <span className="text-label text-text truncate">{c.listing_name}</span>
     </button>

@@ -191,6 +191,10 @@ async function resendFetch(path: string, init: RequestInit = {}): Promise<Respon
 /** Resend caps a broadcast's `name` field. Anything longer is a 422 for the whole request. */
 const BROADCAST_NAME_MAX = 70;
 
+/** Resend refuses to cancel an email for a moment after it is created */
+const CANCEL_MAX_ATTEMPTS = 4;
+const CANCEL_RETRY_MS = 1500;
+
 /**
  * The label a broadcast shows in Resend's dashboard.
  *
@@ -412,14 +416,10 @@ export async function cancelSend(broadcastId: string | null | undefined): Promis
   for (const id of splitProviderIds(broadcastId)) {
     try {
       const res = await resendFetch(`/broadcasts/${id}`, { method: "DELETE" });
-      if (res.ok || res.status === 404) {
-        if (res.status === 404) {
-          // Might be a scheduled transactional email (extra recipient)
-          const emailRes = await resendFetch(`/emails/${id}/cancel`, { method: "POST" });
-          if (!emailRes.ok && emailRes.status !== 404 && emailRes.status !== 422) {
-            console.warn(`[Resend] Email cancel failed (${emailRes.status}): ${await emailRes.text()}`);
-          }
-        }
+      if (res.ok) continue;
+      if (res.status === 404) {
+        // Might be a scheduled transactional email (extra recipient)
+        await cancelScheduledEmail(id);
         continue;
       }
       console.warn(`[Resend] Cancel failed (${res.status}): ${await res.text()}`);
@@ -427,6 +427,38 @@ export async function cancelSend(broadcastId: string | null | undefined): Promis
       console.error("[Resend] Cancel error:", err);
     }
   }
+}
+
+/**
+ * Cancel one scheduled transactional email, and make sure it actually took.
+ *
+ * Resend answers 422 for a few seconds after an email is created, while it is
+ * still "queued" rather than "scheduled". The old code treated 422 as success,
+ * so a cancel could silently do nothing and the app would carry on believing
+ * the send was gone. Retry, then verify against last_event.
+ */
+async function cancelScheduledEmail(id: string): Promise<boolean> {
+  for (let attempt = 0; attempt < CANCEL_MAX_ATTEMPTS; attempt++) {
+    const res = await resendFetch(`/emails/${id}/cancel`, { method: "POST" });
+    if (res.ok) return true;
+    if (res.status === 404) return true; // already gone
+    if (res.status !== 422) {
+      console.warn(`[Resend] Email cancel failed (${res.status}): ${await res.text()}`);
+      return false;
+    }
+    // 422 = too early to cancel. Wait for it to settle, then try again.
+    await new Promise((r) => setTimeout(r, CANCEL_RETRY_MS * (attempt + 1)));
+  }
+
+  // Last word goes to the provider, not to us
+  const check = await resendFetch(`/emails/${id}`, { method: "GET" });
+  if (check.ok) {
+    const data = (await check.json()) as { last_event?: string };
+    const ev = String(data.last_event || "").toLowerCase();
+    if (ev === "canceled" || ev === "cancelled") return true;
+    console.error(`[Resend] Could not cancel scheduled email ${id} — still ${ev || "unknown"}`);
+  }
+  return false;
 }
 
 export type SendStatus = {
@@ -826,14 +858,40 @@ export async function syncCampaignToProvider(campaign: CampaignLike): Promise<Sy
       return { ok: true, provider_send_id: id, action: "recreated" };
     }
 
-    // Pending: Resend won't let us edit a scheduled broadcast, so replace it.
-    // Cancel first, then create from the current campaign row (content + time).
+    // Pending: Resend won't let us edit a scheduled send, so it has to be replaced.
+    //
+    // Create the replacement BEFORE cancelling the old one. The old order —
+    // cancel, then create — destroyed the send outright whenever the create hit
+    // a transient error, and the campaign was left on the calendar with nothing
+    // queued at Resend. That is how the 2026-09-24 09:00 send was lost: the
+    // cancel succeeded, the create did not, and nobody found out until the email
+    // failed to arrive.
+    //
+    // The worst case of this order is a brief overlap where two sends exist. That
+    // only turns into a duplicate if the process dies in the next few
+    // milliseconds, and a duplicate is recoverable in a way that a silently
+    // missing send is not.
     const timeChanged =
       !st.scheduledAt ||
       Math.abs(new Date(st.scheduledAt).getTime() - new Date(scheduledDate!).getTime()) > 60_000;
 
+    let id: string;
+    try {
+      id = await createScheduledSend(campaign, scheduledDate!);
+    } catch (err) {
+      // Keep the existing send. Nothing has been cancelled, so the campaign is
+      // still going to go out on its original schedule.
+      const message = err instanceof Error ? err.message : "Could not create the replacement send";
+      console.error("[Resend] Replacement send failed, keeping the existing one:", message);
+      return {
+        ok: false,
+        provider_send_id: existingId,
+        action: "kept existing send",
+        error: message,
+      };
+    }
+
     await cancelSend(existingId);
-    const id = await createScheduledSend(campaign, scheduledDate!);
     return { ok: true, provider_send_id: id, action: timeChanged ? "rescheduled" : "updated" };
   } catch (err) {
     const message = err instanceof Error ? err.message : "Provider sync failed";

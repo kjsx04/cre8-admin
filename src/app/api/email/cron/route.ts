@@ -136,6 +136,25 @@ export async function GET(request: NextRequest) {
           continue;
         }
 
+        // A failed sync leaves the campaign on the calendar with nothing queued at
+        // Resend. That used to pass silently — raise it so it shows up in the UI
+        // and somebody can act before the send time comes and goes.
+        if (!sync?.ok) {
+          await supabase.from("email_alerts").upsert(
+            {
+              campaign_id: campaign.id,
+              type: "send_failed",
+              message: `Could not queue the next send with Resend: ${sync?.error || sync?.action || "unknown error"}. Nothing is scheduled — reschedule this campaign.`,
+              created_at: now.toISOString(),
+              dismissed_until: null,
+            },
+            { onConflict: "campaign_id,type" }
+          );
+        } else {
+          // Recovered — clear any previous failure
+          await supabase.from("email_alerts").delete().eq("campaign_id", campaign.id).eq("type", "send_failed");
+        }
+
         results.push({
           id: campaign.id,
           action: sync?.ok
