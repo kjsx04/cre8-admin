@@ -5,7 +5,7 @@ import { ScheduleItem, ScheduleState } from "@/lib/email/occurrences";
 import { FREQUENCY_LABELS } from "@/lib/email/constants";
 import { Users, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui";
-import BrokerAvatarStack from "./BrokerAvatarStack";
+import { EMAIL_SENDERS, BROKER_HEADSHOTS } from "@/lib/email/constants";
 import { useAudience, formatCount, audienceForCampaign } from "@/lib/email/audience-client";
 
 interface SendCardProps {
@@ -67,9 +67,14 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
             </span>
           )}
         </span>
-        {isProjected && <Badge tone="neutral" size="sm" className="shrink-0">projected</Badge>}
-        {isSent && <Badge tone="success" size="sm" className="shrink-0">sent</Badge>}
-        {isMissed && <Badge tone="danger" size="sm" className="shrink-0">didn&apos;t send</Badge>}
+        <span className="flex items-center gap-1.5 shrink-0">
+          {isProjected && <Badge tone="neutral" size="sm">projected</Badge>}
+          {isSent && <Badge tone="success" size="sm">sent</Badge>}
+          {isMissed && <Badge tone="danger" size="sm">didn&apos;t send</Badge>}
+          {/* Who it comes from. Only the sender — the other brokers are on the
+              email itself, but the From address is what a reader sees first. */}
+          <SenderAvatar brokerId={c.broker_id} name={c.broker_name} />
+        </span>
       </div>
 
       {/* Listing */}
@@ -90,16 +95,15 @@ export default function SendCard({ item, onClick, placed, moved }: SendCardProps
         </div>
       )}
 
-      {/* Who it's from, and how often it repeats */}
-      <div className="mt-1.5 flex items-center justify-between gap-2">
-        <BrokerAvatarStack brokerIds={c.broker_ids || []} primaryId={c.broker_id} />
-        {isRecurring && frequency && (
-          <span className="flex items-center gap-1 text-label text-text-3 shrink-0" title="Repeats">
+      {/* How often it repeats */}
+      {isRecurring && frequency && (
+        <div className="mt-1.5 flex items-center">
+          <span className="flex items-center gap-1 text-label text-text-3" title="Repeats">
             <RefreshCw size={11} strokeWidth={1.75} aria-hidden />
             {FREQUENCY_LABELS[frequency] || frequency}
           </span>
-        )}
-      </div>
+        </div>
+      )}
     </button>
   );
 }
@@ -140,5 +144,25 @@ function SendDot({ state }: { state: ScheduleState }) {
           : "border-[1.5px] border-accent"
       }`}
     />
+  );
+}
+
+/** The one broker the email is sent from — the From address, not everyone on the card. */
+function SenderAvatar({ brokerId, name }: { brokerId?: string | null; name?: string | null }) {
+  const sender = EMAIL_SENDERS.find((b) => b.id === brokerId);
+  const label = sender?.name || name || "Sender";
+  const src = brokerId ? BROKER_HEADSHOTS[brokerId] : "";
+  return (
+    <span
+      title={`From ${label}`}
+      className="w-5 h-5 rounded-full overflow-hidden bg-ink text-white text-[8px] font-semibold flex items-center justify-center shrink-0"
+    >
+      {src ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={src} alt={label} className="w-full h-full object-cover" />
+      ) : (
+        label.split(" ").map((p) => p[0]).join("").slice(0, 2)
+      )}
+    </span>
   );
 }
