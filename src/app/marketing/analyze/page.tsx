@@ -3,7 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { RefreshCw, Info } from "lucide-react";
+import { RefreshCw } from "lucide-react";
 
 import { PageContainer, PageHeader, Card, CardHeader, Button, LoadingBlock, EmptyState } from "@/components/ui";
 import { StatCard, StatGrid } from "@/components/email/analyze/StatCard";
@@ -11,8 +11,8 @@ import CampaignPicker, { type PickerOption } from "@/components/email/analyze/Ca
 import BarChart from "@/components/email/analyze/BarChart";
 import TopLinks from "@/components/email/analyze/TopLinks";
 import CampaignTable from "@/components/email/analyze/CampaignTable";
-import type { AnalyticsSummary, QualityReasonLabel } from "@/lib/email/analyze-labels";
-import { REASON_LABELS, pct, num, shortDate } from "@/lib/email/analyze-labels";
+import type { AnalyticsSummary } from "@/lib/email/analyze-labels";
+import { pct, num, shortDate } from "@/lib/email/analyze-labels";
 
 /** Next 14 needs a Suspense boundary around anything reading search params */
 export default function AnalyzePage() {
@@ -84,8 +84,6 @@ function Analyze() {
     [data]
   );
 
-  const selected = data?.perCampaign.find((c) => c.id === scope) || null;
-  const title = selected ? selected.name : "All campaigns";
 
   return (
     <PageContainer>
@@ -94,7 +92,7 @@ function Analyze() {
         description={
           data && data.firstSendAt
             ? `${num(data.reach.emails)} emails across ${data.sends} send${data.sends === 1 ? "" : "s"} since ${shortDate(data.firstSendAt)}`
-            : "Email performance, with scanner traffic filtered out"
+            : "Email performance across every campaign"
         }
         actions={
           <>
@@ -136,8 +134,6 @@ function Analyze() {
 
       {!loading && !error && data && data.reach.emails > 0 && (
         <div className="space-y-6">
-          <Filtered data={data} scopeName={title} />
-
           <section>
             <h2 className="text-sm font-semibold text-text mb-2.5">Reach</h2>
             <StatGrid>
@@ -244,37 +240,6 @@ function Analyze() {
         </div>
       )}
     </PageContainer>
-  );
-}
-
-/**
- * The filtering disclosure.
- *
- * This sits above the numbers rather than in a footnote because it is the
- * single most surprising thing on the page: nine out of ten reported clicks
- * are thrown away. Someone comparing this screen to the Resend dashboard needs
- * to see why the two disagree before they read anything else.
- */
-function Filtered({ data, scopeName }: { data: AnalyticsSummary; scopeName: string }) {
-  if (data.noise.filteredClicks === 0 && data.noise.filteredOpens === 0) return null;
-
-  return (
-    <div className="flex items-start gap-2.5 bg-info-bg border border-border rounded-card px-4 py-3">
-      <Info size={18} strokeWidth={1.75} className="shrink-0 mt-0.5 text-info-fg" />
-      <div className="min-w-0 text-sm text-text-2">
-        <p className="text-text">
-          <span className="font-medium">{pct(data.noise.filteredClickShare)} of clicks on {scopeName} were machines, not people.</span>{" "}
-          Corporate mail gateways open every link before the recipient sees the email.
-        </p>
-        <p className="mt-1 text-xs">
-          Filtered out: {num(data.noise.filteredClicks)} clicks and {num(data.noise.filteredOpens)} opens
-          {data.noise.reasons.length > 0 && (
-            <> — {data.noise.reasons.map((r) => `${num(r.count)} ${REASON_LABELS[r.reason as QualityReasonLabel] || r.reason}`).join(", ")}</>
-          )}
-          . Every rate on this page is after filtering; hover a number to see what Resend reported.
-        </p>
-      </div>
-    </div>
   );
 }
 
