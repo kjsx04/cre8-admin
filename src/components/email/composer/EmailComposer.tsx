@@ -23,9 +23,10 @@ import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
 import { useAudience, formatCount, audienceLabel, combineAudience } from "@/lib/email/audience-client";
-import InboxLines from "./InboxLines";
+import InboxFields, { InboxPreview, type Surface, type InboxCampaign } from "./InboxLines";
 import ScheduledActions from "./ScheduledActions";
 import { Button } from "@/components/ui";
+import { Smartphone, Monitor } from "lucide-react";
 import { EMAIL_SENDERS } from "@/lib/email/constants";
 import { wrapPreviewHtml, PreviewField } from "@/lib/email/preview-wrapper";
 import { buildCmsChips } from "@/lib/email/utils";
@@ -160,6 +161,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   }, []);
 
   const [mobileTab, setMobileTab] = useState<"edit" | "preview">("edit");
+  // Which device the left pane imitates. Drives the inbox mock AND the width the
+  // email renders at, so Phone shows the notification and the phone layout together.
+  const [surface, setSurface] = useState<Surface>("desktop");
+
   const [introUndo, setIntroUndo] = useState<string | null>(null);
   const [bodyUndo, setBodyUndo] = useState<string | null>(null);
 
@@ -280,6 +285,23 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const isGroup = draft.kind === "group";
   // Everything after "Type" shows as soon as the type is chosen (edit mode: always)
   const revealed = isEdit || draft.kind !== "";
+
+  const senderName = EMAIL_SENDERS.find((b) => b.id === draft.brokerIds[0])?.name || "CRE8 Advisors";
+
+  // One object shared by the inbox mock on the left and the inputs on the right.
+  // A literal rebuilt in each place would change identity every render and
+  // defeat the memos that derive the subject and preview from it.
+  const inboxCampaign: InboxCampaign = useMemo(
+    () => ({
+      campaign_kind: draft.kind,
+      email_label: draft.emailLabel,
+      listing_name: isGroup ? draft.emailLabel || draft.headingText : draft.listingName,
+      heading_text: draft.headingText,
+      body_text: draft.bodyText,
+      intro_text: draft.introText,
+    }),
+    [draft.kind, draft.emailLabel, draft.listingName, draft.headingText, draft.bodyText, draft.introText, isGroup]
+  );
   const hint = missingHint(missing);
 
   return (
@@ -366,12 +388,54 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             mobileTab === "preview" ? "block" : "hidden lg:block"
           }`}
         >
-          <div className={`mx-auto w-full max-w-[600px] transition-opacity duration-300 ${revealed ? "opacity-100" : "opacity-40"}`}>
-            <LivePreviewFrame
-              html={previewHtml}
-              activeField={activeField}
-              onFieldClick={handleFieldClick}
-            />
+          <div
+            className={`mx-auto w-full transition-[max-width] duration-300 ${
+              surface === "phone" ? "max-w-[390px]" : "max-w-[600px]"
+            } ${revealed ? "opacity-100" : "opacity-40"}`}
+          >
+            {/* Phone / Desktop switches BOTH the notification and the width the
+                email renders at — the template stacks its cards under ~600px,
+                so this is the real phone layout, not a scaled picture of it. */}
+            <div className="flex items-center justify-end mb-3">
+              <div className="flex items-center h-control-sm rounded-control bg-white/70 p-0.5 border border-[#C9C9C9]" role="group" aria-label="Preview device">
+                {([
+                  ["phone", Smartphone, "Phone"],
+                  ["desktop", Monitor, "Desktop"],
+                ] as const).map(([id, Icon, label]) => (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => setSurface(id)}
+                    aria-pressed={surface === id}
+                    className={`flex items-center gap-1.5 px-2.5 h-full rounded-[4px] text-xs font-medium transition-colors ${
+                      surface === id ? "bg-surface text-text shadow-sm" : "text-text-2 hover:text-text"
+                    }`}
+                  >
+                    <Icon size={14} strokeWidth={1.75} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* What lands before it is opened, directly above what opens */}
+            <div className="mb-3">
+              <InboxPreview
+                subject={draft.emailSubject}
+                previewText={draft.previewText}
+                campaign={inboxCampaign}
+                senderName={senderName}
+                surface={surface}
+              />
+            </div>
+
+            <div className="transition-opacity duration-300">
+              <LivePreviewFrame
+                html={previewHtml}
+                activeField={activeField}
+                onFieldClick={handleFieldClick}
+              />
+            </div>
           </div>
           {!revealed && (
             <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-24">
@@ -427,20 +491,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
               {/* What the inbox shows before anyone opens it */}
               <Section title="Subject & preview">
-                <InboxLines
+                <InboxFields
                   subject={draft.emailSubject}
                   previewText={draft.previewText}
-                  senderName={EMAIL_SENDERS.find((b) => b.id === draft.brokerIds[0])?.name || "CRE8 Advisors"}
-                  campaign={{
-                    campaign_kind: draft.kind,
-                    email_label: draft.emailLabel,
-                    listing_name: isGroup
-                      ? draft.emailLabel || draft.headingText
-                      : draft.listingName,
-                    heading_text: draft.headingText,
-                    body_text: draft.bodyText,
-                    intro_text: draft.introText,
-                  }}
+                  campaign={inboxCampaign}
                   onSubjectChange={(v) => set("emailSubject", v)}
                   onPreviewChange={(v) => set("previewText", v)}
                 />

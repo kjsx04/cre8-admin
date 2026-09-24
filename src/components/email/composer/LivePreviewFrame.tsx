@@ -125,6 +125,26 @@ export default function LivePreviewFrame({
     applyFocus(activeField);
   }, [activeField, applyFocus]);
 
+  /**
+   * Re-measure when the frame itself changes width.
+   *
+   * The Phone/Desktop switch narrows this container, and the email template
+   * stacks its cards under ~600px — so the document gets considerably taller
+   * without any content change. Nothing else here would notice, and the email
+   * would be cut off at the old height.
+   */
+  useEffect(() => {
+    const el = iframeRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => {
+      syncHeight();
+      // Reflow finishes a frame later for images and stacked tables
+      window.setTimeout(syncHeight, 120);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [syncHeight]);
+
   return (
     <div
       className={`rounded-card border border-[#A3A3A3] shadow-[0_4px_24px_rgba(0,0,0,0.14)] overflow-hidden bg-[#F5F5F5] ${className}`}
