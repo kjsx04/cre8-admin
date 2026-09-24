@@ -3,7 +3,7 @@
 import { Campaign } from "@/lib/email/types";
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, weekKeys, isWeekend, dayParts, PLANNER_DAYS, rangeLabel } from "@/lib/email/schedule-dates";
-import SendCard from "./SendCard";
+import SendLine from "./SendLine";
 import { Badge } from "@/components/ui";
 
 interface WeekPlannerProps {
@@ -28,6 +28,10 @@ interface WeekPlannerProps {
  * muted because the AI never schedules them. Day headers stick to the top of
  * the page's scroll container, and a day's count chip turns amber past the AI's
  * per-day cap so overload is obvious.
+ *
+ * Each send is a SendLine — the same row the month grid draws. The week used to
+ * use bordered cards carrying a photo, a headcount, the cadence and badges, and
+ * next to the month it read as clutter.
  *
  * NOTE: no overflow-hidden on the wrapper — it would break the sticky headers.
  */
@@ -181,13 +185,20 @@ function DayColumn({
         )}
       </div>
 
-      {/* Sends */}
-      <div className="p-2 lg:flex-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
+      {/* Sends — the same line the month grid uses, so the two views match */}
+      <div className="p-1.5 lg:flex-1 space-y-0.5">
         {items.map((it) => (
-          <SendCard key={it.key} item={it} onClick={onSelect} placed={it.campaign.id === placedId} moved={!!movedIds?.has(it.campaign.id)} />
+          <SendLine
+            key={it.key}
+            item={it}
+            onSelect={onSelect}
+            variant="week"
+            placed={it.campaign.id === placedId}
+            moved={!!movedIds?.has(it.campaign.id)}
+          />
         ))}
         {count === 0 && !weekend && (
-          <p className="text-xs text-text-3 text-center pt-6 col-span-full">
+          <p className="text-xs text-text-3 text-center pt-6">
             {isPast ? "Past" : "No sends"}
           </p>
         )}

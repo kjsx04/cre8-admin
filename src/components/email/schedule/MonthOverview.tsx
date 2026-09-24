@@ -3,8 +3,8 @@
 import { Campaign } from "@/lib/email/types";
 import { ScheduleItem } from "@/lib/email/occurrences";
 import { DateKey, monthGridKeys, isWeekend, sameMonth, keyToCivil } from "@/lib/email/schedule-dates";
-import { getTypeColor } from "@/lib/email/utils";
 import { Badge } from "@/components/ui";
+import SendLine from "./SendLine";
 
 interface MonthOverviewProps {
   anchor: DateKey; // any day in the month to show
@@ -102,7 +102,7 @@ export default function MonthOverview({
               {count > 0 && (
                 <div className="mt-1 space-y-0.5">
                   {items.map((it) => (
-                    <SendLine key={it.key} item={it} onSelect={onSelect} />
+                    <SendLine key={it.key} item={it} onSelect={onSelect} variant="month" />
                   ))}
                 </div>
               )}
@@ -124,47 +124,4 @@ function cellBg(weekend: boolean, isToday: boolean, isPast: boolean): string {
   if (isToday) return "bg-accent-soft";
   if (isPast) return "bg-surface-2";       // gone
   return "";                               // open — leave it clean
-}
-
-/** "9:00 AM Marketplace at Blossom Rock" on one line, clipped to the cell */
-function SendLine({ item, onSelect }: { item: ScheduleItem; onSelect: (c: Campaign) => void }) {
-  const { campaign: c, state, time } = item;
-  const color = getTypeColor(c.email_label);
-  const isSent = state === "sent";
-  const isProjected = state === "projected";
-  const isMissed = state === "missed";
-
-  // "9:00 AM" → "9:00a" so the name gets as much of the line as possible
-  const shortTime = time.replace(/\s?([AP])M$/i, (_, ap: string) => ap.toLowerCase());
-
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect(c)}
-      title={`${time} · ${c.listing_name}${isMissed ? " — did not send" : isProjected ? " (projected)" : isSent ? " (sent)" : ""}`}
-      className={`w-full flex items-center gap-1 text-left rounded-[4px] px-1 py-0.5 hover:bg-surface-2 transition-colors ${
-        isSent ? "opacity-50" : ""
-      } ${isMissed ? "text-danger-fg" : ""}`}
-    >
-      {/* Send state first — a send that never went out has to be obvious here too */}
-      {isMissed ? (
-        <span title="Did not send" className="relative inline-flex w-2 h-2 shrink-0">
-          <span className="absolute inset-0 rounded-full border-[1.5px] border-danger" />
-          <span className="absolute left-1/2 top-1/2 w-[1.5px] h-[10px] -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-full bg-danger" />
-        </span>
-      ) : (
-        <span
-          title={isSent ? "Sent" : isProjected ? "Projected" : "Scheduled"}
-          className="w-2 h-2 rounded-full shrink-0"
-          style={
-            isSent
-              ? { backgroundColor: color }
-              : { border: `1.5px solid ${isProjected ? "#9A9AA0" : color}`, backgroundColor: "transparent" }
-          }
-        />
-      )}
-      <span className="text-label tabular-nums text-text-3 shrink-0">{shortTime}</span>
-      <span className="text-label text-text truncate">{c.listing_name}</span>
-    </button>
-  );
 }

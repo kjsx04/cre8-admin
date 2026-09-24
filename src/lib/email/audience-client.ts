@@ -4,7 +4,7 @@
  * Audience sizes — client side.
  *
  * useAudience() loads live Resend segments + counts once per page load and
- * shares the promise, so SendCard can call it 30 times on the planner without
+ * shares the promise, so a planner line can call it 30 times without
  * 30 requests.
  */
 
