@@ -111,10 +111,13 @@ export default function DashboardPage() {
   }, [sizeTableBody, items, loading]);
 
   // ---- New-listing lookups ----
-  // Listings tagged New live in the pinned section, not the main table
+  // Listings tagged New are pinned at the top AND stay in the table below,
+  // marked NEW. They used to be filtered out of the table entirely, which meant
+  // a new listing could not be found by search or any status tab, and the only
+  // way to open it was to guess that its name in the pinned card was clickable.
   const newIds = new Set(checklists.map((c) => c.listing_id));
   const listingsById = new Map(items.map((i) => [i.id, i] as const));
-  const tableItems = items.filter((i) => !newIds.has(i.id));
+  const tableItems = items;
 
   // New Listing cards are broker-scoped: only shown when the signed-in
   // user is checked as a broker on the listing. Non-broker accounts
@@ -544,9 +547,14 @@ export default function DashboardPage() {
                         "2fr 1fr 1.2fr 1.5fr 1fr 0.6fr 0.7fr 0.8fr",
                     }}
                   >
-                    {/* Name (bold) */}
-                    <div className="font-semibold text-[#1a1a1a] overflow-hidden text-ellipsis whitespace-nowrap">
-                      {fd.name || "\u2014"}
+                    {/* Name (bold), with a NEW tag when it's still on the checklist */}
+                    <div className="font-semibold text-[#1a1a1a] overflow-hidden text-ellipsis whitespace-nowrap flex items-center gap-2">
+                      <span className="overflow-hidden text-ellipsis whitespace-nowrap">{fd.name || "\u2014"}</span>
+                      {newIds.has(item.id) && (
+                        <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#EEF6E3] text-[#3F6E13]">
+                          New
+                        </span>
+                      )}
                     </div>
 
                     {/* Listing Type */}

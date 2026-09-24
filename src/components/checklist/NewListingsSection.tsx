@@ -101,6 +101,19 @@ export default function NewListingsSection({
                     <span className="text-xs font-bold text-[#666]">
                       {done}/{total}
                     </span>
+                    {/* Explicit Edit. The listing name is also clickable, but
+                        nothing said so, so the only way into a new listing was
+                        to guess. */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/listings/${cl.listing_id}/edit`);
+                      }}
+                      className="px-2.5 py-1 text-xs font-medium text-[#1a1a1a] bg-white border border-[#E5E5E5] rounded-btn hover:bg-[#F5F5F5] transition-colors"
+                    >
+                      Edit
+                    </button>
                     <span
                       className={`text-[#999] text-[10px] transition-transform ${expanded ? "rotate-180" : ""}`}
                     >
