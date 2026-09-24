@@ -310,16 +310,52 @@ export async function ensureUnionSegment(segmentIds: string[]): Promise<string> 
     if (job.id) await waitForImport(job.id);
   }
 
-  // Anyone who left every source list
-  for (const email of remove) {
-    try {
-      await resendFetch(`/contacts/${encodeURIComponent(email)}/segments/${target.id}`, { method: "DELETE" });
-    } catch (err) {
-      console.error("[union] could not remove", email, err);
-    }
+  // Anyone who left every source list.
+  //
+  // This used to fire the DELETEs and ignore what came back. resendFetch returns
+  // a Response, so a 429 or a 404 was not an error and the loop reported nothing
+  // — the segment only ever grew. On 2026-09-24 it carried 386 addresses that
+  // were in neither source list, including brokers Kevin had deliberately
+  // deleted, and they all got mailed and bounced again.
+  //
+  // Removals now run in parallel batches (386 sequential round trips also risked
+  // the function timing out mid-loop) and the result is checked and counted.
+  const failed = await removeFromSegment(remove, target.id);
+  if (failed.length > 0) {
+    console.error(`[union] ${failed.length} of ${remove.length} removals failed for ${name}`, failed.slice(0, 10));
   }
 
   return target.id;
+}
+
+/** How many segment removals to run at once — enough to be quick, few enough to stay under Resend's rate limit. */
+const UNION_REMOVE_BATCH = 8;
+
+/**
+ * Take addresses out of a segment. Returns the ones that did not come off, so
+ * the caller can say so instead of assuming it worked.
+ */
+async function removeFromSegment(emails: string[], segmentId: string): Promise<string[]> {
+  const failed: string[] = [];
+
+  for (let i = 0; i < emails.length; i += UNION_REMOVE_BATCH) {
+    const batch = emails.slice(i, i + UNION_REMOVE_BATCH);
+    await Promise.all(
+      batch.map(async (email) => {
+        try {
+          const res = await resendFetch(`/contacts/${encodeURIComponent(email)}/segments/${segmentId}`, {
+            method: "DELETE",
+          });
+          // 404 means they were already gone, which is the outcome we wanted
+          if (!res.ok && res.status !== 404) failed.push(email);
+        } catch {
+          failed.push(email);
+        }
+      })
+    );
+  }
+
+  return failed;
 }
 
 /**
