@@ -8,10 +8,12 @@ import {
   Button,
   Card,
   EmptyState,
+  IconButton,
   Input,
   LoadingBlock,
   PageContainer,
   PageHeader,
+  Spinner,
   useToast,
   cn,
   FOCUS_RING,
@@ -19,13 +21,14 @@ import {
 import { copyLogoPng, downloadLogoPng } from "@/lib/logo-actions";
 import {
   LOGO_CATEGORIES,
-  PRIMARY_VARIANT,
-  listVariants,
   logoDownloadUrl,
   logoFileName,
   logoMatchesQuery,
+  selectLogoVariant,
   variantLabel,
   type BrandLogo,
+  type LogoShape,
+  type LogoTone,
 } from "@/lib/logos";
 
 export default function LogosPage() {
@@ -38,6 +41,8 @@ export default function LogosPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
+  const [tone, setTone] = useState<LogoTone>("color");
+  const [shape, setShape] = useState<LogoShape>("full");
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -143,6 +148,27 @@ export default function LogosPage() {
               );
             })}
           </div>
+
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
+            <Segmented
+              label="Logo color"
+              value={tone}
+              options={[
+                { id: "color", label: "Color" },
+                { id: "white", label: "White" },
+              ]}
+              onChange={setTone}
+            />
+            <Segmented
+              label="Full logo or icon"
+              value={shape}
+              options={[
+                { id: "full", label: "Full logo" },
+                { id: "icon", label: "Icon" },
+              ]}
+              onChange={setShape}
+            />
+          </div>
         </div>
       </PageHeader>
 
@@ -175,6 +201,8 @@ export default function LogosPage() {
               <LogoCard
                 key={logo.id}
                 logo={logo}
+                tone={tone}
+                shape={shape}
                 busy={busy}
                 onDownload={onDownload}
                 onCopy={onCopy}
@@ -193,29 +221,66 @@ export default function LogosPage() {
   );
 }
 
+function Segmented<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+}: {
+  label: string;
+  value: T;
+  options: { id: T; label: string }[];
+  onChange: (id: T) => void;
+}) {
+  return (
+    <div className="flex items-center rounded-control border border-border p-0.5" role="group" aria-label={label}>
+      {options.map((item) => {
+        const active = value === item.id;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            aria-pressed={active}
+            onClick={() => onChange(item.id)}
+            className={cn(
+              "h-7 px-2.5 rounded-control text-sm font-medium whitespace-nowrap transition-colors duration-150",
+              active ? "bg-ink text-white" : "text-text-2 hover:text-text",
+              FOCUS_RING
+            )}
+          >
+            {item.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function LogoCard({
   logo,
+  tone,
+  shape,
   busy,
   onDownload,
   onCopy,
 }: {
   logo: BrandLogo;
+  tone: LogoTone;
+  shape: LogoShape;
   busy: string | null;
   onDownload: (logo: BrandLogo, url: string, variant: string) => void;
   onCopy: (logo: BrandLogo, url: string) => void;
 }) {
-  const options = listVariants(logo.variants);
-  const [variant, setVariant] = useState(
-    options.some((option) => option.key === PRIMARY_VARIANT) ? PRIMARY_VARIANT : options[0]?.key ?? PRIMARY_VARIANT
-  );
-  const selected = options.find((option) => option.key === variant) ?? options[0] ?? null;
+  const selected = selectLogoVariant(logo.variants, { tone, shape });
   const url = selected?.url ?? null;
-  const filename = url ? logoFileName(logo.slug, selected.key, url) : null;
+  const filename = url && selected ? logoFileName(logo.slug, selected.key, url) : null;
+  const downloading = busy === `${logo.id}:download`;
+  const copying = busy === `${logo.id}:copy`;
 
   return (
     <Card padding="none" className="overflow-hidden flex flex-col">
       <div className="logo-checker h-28 border-b border-border">
-        {url ? (
+        {url && selected ? (
           // Plain <img>, not next/image: the drag source has to be this full-res PNG URL
           // so Photoshop receives the transparent file instead of a resized preview.
           // eslint-disable-next-line @next/next/no-img-element
@@ -240,56 +305,32 @@ function LogoCard({
           <div className="h-full flex items-center justify-center text-xs text-text-3 px-2 text-center">No image</div>
         )}
       </div>
-      <div className="p-2.5 flex flex-col gap-2 flex-1">
-        <div className="min-w-0">
+      <div className="p-2 flex items-center gap-1">
+        <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-text truncate" title={logo.name}>
             {logo.name}
           </p>
           <p className="text-xs text-text-3 truncate">{logo.category}</p>
         </div>
-        {options.length > 1 && (
-          <div className="flex flex-wrap gap-1" role="group" aria-label={`${logo.name} variants`}>
-            {options.map((option) => {
-              const active = option.key === selected?.key;
-              return (
-                <button
-                  key={option.key}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setVariant(option.key)}
-                  className={cn(
-                    "h-6 px-2 inline-flex items-center rounded-pill text-xs font-medium transition-colors duration-150",
-                    active ? "bg-ink text-white" : "bg-surface-2 text-text-2 hover:text-text",
-                    FOCUS_RING
-                  )}
-                >
-                  {variantLabel(option.key)}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        <div className="flex flex-wrap items-center gap-1 mt-auto">
-          <Button
-            size="sm"
-            variant="secondary"
-            icon={<Download size={14} strokeWidth={1.75} />}
-            disabled={!url}
-            loading={busy === `${logo.id}:download`}
-            onClick={() => url && selected && onDownload(logo, url, selected.key)}
-          >
-            Download
-          </Button>
-          <Button
+        <div className="flex shrink-0 -mr-1">
+          <IconButton
             size="sm"
             variant="ghost"
-            icon={<Copy size={14} strokeWidth={1.75} />}
-            disabled={!url}
-            loading={busy === `${logo.id}:copy`}
+            className="w-7 h-7"
+            label={`Download ${logo.name}`}
+            disabled={!url || downloading}
+            icon={downloading ? <Spinner size="sm" /> : <Download size={14} strokeWidth={1.75} />}
+            onClick={() => url && selected && onDownload(logo, url, selected.key)}
+          />
+          <IconButton
+            size="sm"
+            variant="ghost"
+            className="w-7 h-7"
+            label={`Copy ${logo.name}`}
+            disabled={!url || copying}
+            icon={copying ? <Spinner size="sm" /> : <Copy size={14} strokeWidth={1.75} />}
             onClick={() => url && onCopy(logo, url)}
-          >
-            Copy
-          </Button>
+          />
         </div>
       </div>
     </Card>

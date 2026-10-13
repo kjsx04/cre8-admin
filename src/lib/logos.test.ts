@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/logos.test.ts
  */
 
-import { listVariants, logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, slugifyLogoName, variantLabel } from "./logos";
+import { listVariants, logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, selectLogoVariant, slugifyLogoName, variantLabel } from "./logos";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -41,6 +41,31 @@ assert(
   JSON.stringify(options.map((o) => o.key)) === JSON.stringify(["color", "white", "wordmark", "stacked", "badge"]),
   "variants are ordered and empty urls are dropped"
 );
+
+const sample = {
+  color: "https://example.com/color.png",
+  white: "https://example.com/white.png",
+  icon: "https://example.com/icon.png",
+  "icon-white": "https://example.com/icon-white.png",
+};
+assert(selectLogoVariant(sample, { tone: "color", shape: "full" })?.key === "color", "full logo defaults to color");
+assert(selectLogoVariant(sample, { tone: "white", shape: "full" })?.key === "white", "white toggle uses the white file");
+assert(selectLogoVariant({ color: sample.color }, { tone: "white", shape: "full" })?.key === "color", "missing white falls back to color");
+assert(selectLogoVariant(sample, { tone: "color", shape: "icon" })?.key === "icon", "icon toggle uses the icon file");
+assert(selectLogoVariant(sample, { tone: "white", shape: "icon" })?.key === "icon-white", "white icon uses icon-white");
+assert(
+  selectLogoVariant({ color: sample.color, white: sample.white, icon: sample.icon }, { tone: "white", shape: "icon" })?.key === "icon",
+  "a color icon stands in when icon-white is missing"
+);
+assert(
+  selectLogoVariant({ color: sample.color, white: sample.white }, { tone: "white", shape: "icon" })?.key === "white",
+  "no icon falls back to the full logo"
+);
+assert(
+  selectLogoVariant({ color: sample.color }, { tone: "white", shape: "icon" })?.key === "color",
+  "no icon and no white falls back to color"
+);
+assert(selectLogoVariant({}, { tone: "color", shape: "full" }) === null, "an empty variant map selects nothing");
 
 const url = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/logos/chase-bank.png";
 assert(
