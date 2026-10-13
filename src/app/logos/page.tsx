@@ -19,18 +19,14 @@ import {
 import { copyLogoPng, downloadLogoPng } from "@/lib/logo-actions";
 import {
   LOGO_CATEGORIES,
+  PRIMARY_VARIANT,
+  listVariants,
   logoDownloadUrl,
   logoFileName,
   logoMatchesQuery,
-  variantUrl,
+  variantLabel,
   type BrandLogo,
-  type LogoVariant,
 } from "@/lib/logos";
-
-const VARIANTS: { id: LogoVariant; label: string }[] = [
-  { id: "color", label: "Color" },
-  { id: "white", label: "White" },
-];
 
 export default function LogosPage() {
   const { accounts } = useMsal();
@@ -42,7 +38,6 @@ export default function LogosPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
-  const [variant, setVariant] = useState<LogoVariant>("color");
   const [addOpen, setAddOpen] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
 
@@ -76,12 +71,13 @@ export default function LogosPage() {
     });
   }, [logos, category, query]);
 
-  async function onDownload(logo: BrandLogo, url: string) {
+  async function onDownload(logo: BrandLogo, url: string, variant: string) {
     const key = `${logo.id}:download`;
     setBusy(key);
     try {
-      await downloadLogoPng(url, logo.slug, variant);
-      toast.success("Downloaded", { description: logoFileName(logo.slug, variant) });
+      const filename = logoFileName(logo.slug, variant, url);
+      await downloadLogoPng(url, filename);
+      toast.success("Downloaded", { description: filename });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Download failed");
     } finally {
@@ -147,27 +143,6 @@ export default function LogosPage() {
               );
             })}
           </div>
-
-          <div className="flex items-center rounded-control border border-border p-0.5 sm:ml-auto" role="group" aria-label="Logo color">
-            {VARIANTS.map((item) => {
-              const active = variant === item.id;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setVariant(item.id)}
-                  className={cn(
-                    "h-7 px-3 rounded-control text-sm font-medium transition-colors duration-150",
-                    active ? "bg-ink text-white" : "text-text-2 hover:text-text",
-                    FOCUS_RING
-                  )}
-                >
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
         </div>
       </PageHeader>
 
@@ -195,72 +170,16 @@ export default function LogosPage() {
           <p className="text-xs text-text-3 mb-3">
             {filtered.length === logos.length ? `${logos.length} logos` : `${filtered.length} of ${logos.length}`}
           </p>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            {filtered.map((logo) => {
-              const url = variantUrl(logo, variant);
-              const filename = logoFileName(logo.slug, variant);
-              return (
-                <Card key={logo.id} padding="none" className="overflow-hidden flex flex-col">
-                  <div className="logo-checker h-36 border-b border-border">
-                    {url ? (
-                      // Plain <img>, not next/image: the drag source has to be this full-res PNG URL
-                      // so Photoshop receives the transparent file instead of a resized preview.
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={url}
-                        alt={logo.name}
-                        width={logo.width ?? undefined}
-                        height={logo.height ?? undefined}
-                        draggable
-                        data-logo-slug={logo.slug}
-                        title={`Drag ${logo.name} into Photoshop`}
-                        className="h-full w-full object-contain"
-                        onDragStart={(event) => {
-                          try {
-                            event.dataTransfer.setData("DownloadURL", logoDownloadUrl(url, filename));
-                            event.dataTransfer.effectAllowed = "copy";
-                          } catch {
-                            // Native image drag still carries the PNG URL.
-                          }
-                        }}
-                      />
-                    ) : (
-                      <div className="h-full flex items-center justify-center text-xs text-text-3">No {variant} version</div>
-                    )}
-                  </div>
-                  <div className="p-3 flex flex-col gap-2 flex-1">
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium text-text truncate" title={logo.name}>
-                        {logo.name}
-                      </p>
-                      <p className="text-xs text-text-3 truncate">{logo.category}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-auto">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<Download size={16} strokeWidth={1.75} />}
-                        disabled={!url}
-                        loading={busy === `${logo.id}:download`}
-                        onClick={() => url && onDownload(logo, url)}
-                      >
-                        Download
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={<Copy size={16} strokeWidth={1.75} />}
-                        disabled={!url}
-                        loading={busy === `${logo.id}:copy`}
-                        onClick={() => url && onCopy(logo, url)}
-                      >
-                        Copy
-                      </Button>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3">
+            {filtered.map((logo) => (
+              <LogoCard
+                key={logo.id}
+                logo={logo}
+                busy={busy}
+                onDownload={onDownload}
+                onCopy={onCopy}
+              />
+            ))}
           </div>
         </>
       )}
@@ -271,5 +190,108 @@ export default function LogosPage() {
         onCreated={(logo) => setLogos((prev) => [...prev, logo].sort((a, b) => a.name.localeCompare(b.name)))}
       />
     </PageContainer>
+  );
+}
+
+function LogoCard({
+  logo,
+  busy,
+  onDownload,
+  onCopy,
+}: {
+  logo: BrandLogo;
+  busy: string | null;
+  onDownload: (logo: BrandLogo, url: string, variant: string) => void;
+  onCopy: (logo: BrandLogo, url: string) => void;
+}) {
+  const options = listVariants(logo.variants);
+  const [variant, setVariant] = useState(
+    options.some((option) => option.key === PRIMARY_VARIANT) ? PRIMARY_VARIANT : options[0]?.key ?? PRIMARY_VARIANT
+  );
+  const selected = options.find((option) => option.key === variant) ?? options[0] ?? null;
+  const url = selected?.url ?? null;
+  const filename = url ? logoFileName(logo.slug, selected.key, url) : null;
+
+  return (
+    <Card padding="none" className="overflow-hidden flex flex-col">
+      <div className="logo-checker h-28 border-b border-border">
+        {url ? (
+          // Plain <img>, not next/image: the drag source has to be this full-res PNG URL
+          // so Photoshop receives the transparent file instead of a resized preview.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={url}
+            alt={`${logo.name} ${variantLabel(selected.key)}`}
+            draggable
+            data-logo-slug={logo.slug}
+            data-logo-variant={selected.key}
+            title={`Drag ${logo.name} into Photoshop`}
+            className="h-full w-full object-contain"
+            onDragStart={(event) => {
+              try {
+                event.dataTransfer.setData("DownloadURL", logoDownloadUrl(url, filename!));
+                event.dataTransfer.effectAllowed = "copy";
+              } catch {
+                // Native image drag still carries the PNG URL.
+              }
+            }}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-text-3 px-2 text-center">No image</div>
+        )}
+      </div>
+      <div className="p-2.5 flex flex-col gap-2 flex-1">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-text truncate" title={logo.name}>
+            {logo.name}
+          </p>
+          <p className="text-xs text-text-3 truncate">{logo.category}</p>
+        </div>
+        {options.length > 1 && (
+          <div className="flex flex-wrap gap-1" role="group" aria-label={`${logo.name} variants`}>
+            {options.map((option) => {
+              const active = option.key === selected?.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setVariant(option.key)}
+                  className={cn(
+                    "h-6 px-2 inline-flex items-center rounded-pill text-xs font-medium transition-colors duration-150",
+                    active ? "bg-ink text-white" : "bg-surface-2 text-text-2 hover:text-text",
+                    FOCUS_RING
+                  )}
+                >
+                  {variantLabel(option.key)}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div className="flex flex-wrap items-center gap-1 mt-auto">
+          <Button
+            size="sm"
+            variant="secondary"
+            icon={<Download size={14} strokeWidth={1.75} />}
+            disabled={!url}
+            loading={busy === `${logo.id}:download`}
+            onClick={() => url && selected && onDownload(logo, url, selected.key)}
+          >
+            Download
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            icon={<Copy size={14} strokeWidth={1.75} />}
+            disabled={!url}
+            loading={busy === `${logo.id}:copy`}
+            onClick={() => url && onCopy(logo, url)}
+          >
+            Copy
+          </Button>
+        </div>
+      </div>
+    </Card>
   );
 }

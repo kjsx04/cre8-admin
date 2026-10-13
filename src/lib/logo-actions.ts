@@ -1,7 +1,3 @@
-import { logoFileName, type LogoVariant } from "@/lib/logos";
-
-export { logoFileName };
-
 /** Fetch the full-res PNG. Storage sends Access-Control-Allow-Origin: *. */
 export async function fetchPngBlob(url: string): Promise<Blob> {
   const res = await fetch(url);
@@ -11,14 +7,14 @@ export async function fetchPngBlob(url: string): Promise<Blob> {
   return new Blob([await blob.arrayBuffer()], { type: "image/png" });
 }
 
-/** Fetch the PNG, then save it. Color files download as `<slug>.png`. */
-export async function downloadLogoPng(url: string, slug: string, variant: LogoVariant): Promise<void> {
+/** Fetch the PNG, then save it under the selected variant's file name. */
+export async function downloadLogoPng(url: string, filename: string): Promise<void> {
   const blob = await fetchPngBlob(url);
   const objectUrl = URL.createObjectURL(blob);
   try {
     const a = document.createElement("a");
     a.href = objectUrl;
-    a.download = logoFileName(slug, variant);
+    a.download = filename;
     document.body.appendChild(a);
     a.click();
     a.remove();
