@@ -13,11 +13,13 @@ export const LOGO_CATEGORIES = [
 
 export type LogoCategory = (typeof LOGO_CATEGORIES)[number];
 
-export type LogoVariant = "color" | "white";
+/** Known variant keys, in the order pills should appear. Anything else sorts after these. */
+export const VARIANT_ORDER = ["color", "white", "wordmark", "icon", "icon-white", "stacked"] as const;
+
+export const PRIMARY_VARIANT = "color";
 
 export interface LogoVariants {
-  color?: string;
-  white?: string;
+  [key: string]: string | undefined;
 }
 
 export interface BrandLogo {
@@ -33,19 +35,69 @@ export interface BrandLogo {
   created_at: string;
 }
 
-/** Full-res file name. Color is `<slug>.png`; white matches the `-white` files already in storage. */
-export function logoFileName(slug: string, variant: LogoVariant): string {
-  return variant === "white" ? `${slug}-white.png` : `${slug}.png`;
+const VARIANT_LABELS: Record<string, string> = {
+  color: "Color",
+  white: "White",
+  wordmark: "Wordmark",
+  icon: "Icon",
+  "icon-white": "Icon white",
+  stacked: "Stacked",
+};
+
+export function variantLabel(key: string): string {
+  if (VARIANT_LABELS[key]) return VARIANT_LABELS[key];
+  return key
+    .split("-")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+export interface LogoVariantOption {
+  key: string;
+  url: string;
+}
+
+/** Every non-empty URL in variants, color first, then the other known keys, then the rest. */
+export function listVariants(variants: LogoVariants | null | undefined): LogoVariantOption[] {
+  if (!variants) return [];
+  return Object.entries(variants)
+    .filter((entry): entry is [string, string] => typeof entry[1] === "string" && entry[1].length > 0)
+    .sort((a, b) => {
+      const order = VARIANT_ORDER as readonly string[];
+      const ai = order.indexOf(a[0]);
+      const bi = order.indexOf(b[0]);
+      const ar = ai === -1 ? VARIANT_ORDER.length : ai;
+      const br = bi === -1 ? VARIANT_ORDER.length : bi;
+      if (ar !== br) return ar - br;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([key, url]) => ({ key, url }));
+}
+
+/**
+ * Download name for the selected variant.
+ * Prefer the file name already in the storage URL so extra keys (wordmark, icon, …) save as that PNG.
+ */
+export function logoFileName(slug: string, variant: string, url?: string | null): string {
+  if (url) {
+    const part = url.split("?")[0].split("#")[0].split("/").pop();
+    if (part && /\.png$/i.test(part)) {
+      try {
+        return decodeURIComponent(part);
+      } catch {
+        return part;
+      }
+    }
+  }
+  if (variant === PRIMARY_VARIANT) return `${slug}.png`;
+  const safe = variant.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+  return safe ? `${slug}-${safe}.png` : `${slug}.png`;
 }
 
 /** Chrome hands this to desktop apps (Photoshop, Finder) as a PNG file drop. */
 export function logoDownloadUrl(url: string, filename: string): string {
   return `image/png:${filename}:${url}`;
-}
-
-export function variantUrl(logo: BrandLogo, variant: LogoVariant): string | null {
-  const url = logo.variants?.[variant];
-  return typeof url === "string" && url.length > 0 ? url : null;
 }
 
 export function isLogoCategory(value: string): value is LogoCategory {

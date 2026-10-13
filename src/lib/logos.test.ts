@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/logos.test.ts
  */
 
-import { logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, slugifyLogoName } from "./logos";
+import { listVariants, logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, slugifyLogoName, variantLabel } from "./logos";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -21,6 +21,26 @@ assert(slugifyLogoName("!!!") === "", "a name with no letters has no slug");
 
 assert(logoFileName("chase-bank", "color") === "chase-bank.png", "color file is <slug>.png");
 assert(logoFileName("chase-bank", "white") === "chase-bank-white.png", "white file keeps the -white suffix");
+assert(
+  logoFileName("chase-bank", "wordmark", "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/logos/chase-bank-wordmark.png") === "chase-bank-wordmark.png",
+  "extra variants download as the file named in the URL"
+);
+assert(logoFileName("chase-bank", "icon-white") === "chase-bank-icon-white.png", "a variant without a URL still gets a slug-key name");
+assert(variantLabel("icon-white") === "Icon white", "icon-white has a short pill label");
+assert(variantLabel("horizontal") === "Horizontal", "unknown keys are title-cased");
+
+const options = listVariants({
+  stacked: "https://example.com/stacked.png",
+  white: "https://example.com/white.png",
+  icon: "",
+  wordmark: "https://example.com/wordmark.png",
+  color: "https://example.com/color.png",
+  badge: "https://example.com/badge.png",
+});
+assert(
+  JSON.stringify(options.map((o) => o.key)) === JSON.stringify(["color", "white", "wordmark", "stacked", "badge"]),
+  "variants are ordered and empty urls are dropped"
+);
 
 const url = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/logos/chase-bank.png";
 assert(
