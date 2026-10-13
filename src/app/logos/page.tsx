@@ -20,7 +20,7 @@ import {
 } from "@/components/ui";
 import { copyLogoPng, downloadLogoPng } from "@/lib/logo-actions";
 import {
-  LOGO_CATEGORIES,
+  logoCategories,
   logoDownloadUrl,
   logoFileName,
   logoMatchesQuery,
@@ -68,6 +68,8 @@ export default function LogosPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  const categories = useMemo(() => logoCategories(logos), [logos]);
 
   const filtered = useMemo(() => {
     return logos.filter((logo) => {
@@ -128,27 +130,6 @@ export default function LogosPage() {
             />
           </div>
 
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Category">
-            {["All", ...LOGO_CATEGORIES].map((cat) => {
-              const active = category === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setCategory(cat)}
-                  className={cn(
-                    "h-8 px-3 inline-flex items-center rounded-control text-sm font-medium transition-colors duration-150",
-                    active ? "bg-ink text-white" : "bg-surface border border-border text-text-2 hover:text-text hover:border-border-strong",
-                    FOCUS_RING
-                  )}
-                >
-                  {cat}
-                </button>
-              );
-            })}
-          </div>
-
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
             <Segmented
               label="Logo color"
@@ -168,6 +149,28 @@ export default function LogosPage() {
               ]}
               onChange={setShape}
             />
+          </div>
+        </div>
+        <div className="mt-3 overflow-x-auto" role="group" aria-label="Category">
+          <div className="flex w-max gap-1.5 pb-1">
+            {["All", ...categories].map((cat) => {
+              const active = category === cat;
+              return (
+                <button
+                  key={cat}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={() => setCategory(cat)}
+                  className={cn(
+                    "h-8 px-3 inline-flex shrink-0 items-center rounded-control text-sm font-medium whitespace-nowrap transition-colors duration-150",
+                    active ? "bg-ink text-white" : "bg-surface border border-border text-text-2 hover:text-text hover:border-border-strong",
+                    FOCUS_RING
+                  )}
+                >
+                  {cat}
+                </button>
+              );
+            })}
           </div>
         </div>
       </PageHeader>
