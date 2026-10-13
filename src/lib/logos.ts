@@ -44,6 +44,39 @@ const VARIANT_LABELS: Record<string, string> = {
   stacked: "Stacked",
 };
 
+export type LogoTone = "color" | "white";
+export type LogoShape = "full" | "icon";
+
+function variantUrl(variants: LogoVariants | null | undefined, key: string): string | null {
+  const url = variants?.[key];
+  return typeof url === "string" && url.length > 0 ? url : null;
+}
+
+/**
+ * Which file the page-level Color/White and Full logo/Icon toggles should show.
+ * White falls back to color. Icon falls back to the full logo when that brand has no icon.
+ */
+export function selectLogoVariant(
+  variants: LogoVariants | null | undefined,
+  view: { tone: LogoTone; shape: LogoShape }
+): LogoVariantOption | null {
+  if (view.shape === "icon") {
+    const preferred = view.tone === "white" ? "icon-white" : "icon";
+    const exact = variantUrl(variants, preferred);
+    if (exact) return { key: preferred, url: exact };
+    const otherIcon = variantUrl(variants, view.tone === "white" ? "icon" : "icon-white");
+    if (otherIcon) return { key: view.tone === "white" ? "icon" : "icon-white", url: otherIcon };
+  }
+
+  const fullKey = view.tone === "white" ? "white" : PRIMARY_VARIANT;
+  const full = variantUrl(variants, fullKey);
+  if (full) return { key: fullKey, url: full };
+  const otherFull = variantUrl(variants, view.tone === "white" ? PRIMARY_VARIANT : "white");
+  if (otherFull) return { key: view.tone === "white" ? PRIMARY_VARIANT : "white", url: otherFull };
+
+  return listVariants(variants)[0] ?? null;
+}
+
 export function variantLabel(key: string): string {
   if (VARIANT_LABELS[key]) return VARIANT_LABELS[key];
   return key
