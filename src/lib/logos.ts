@@ -144,7 +144,7 @@ export function logoCategories(logos: { category?: string | null }[]): string[] 
     const category = logo.category?.replace(/\s+/g, " ").trim();
     if (category) seen.add(category);
   }
-  return [...seen].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+  return Array.from(seen).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
 }
 
 /** Case-insensitive match against the brand name and every alias. */
