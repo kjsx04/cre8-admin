@@ -137,6 +137,16 @@ export function isLogoCategory(value: string): value is LogoCategory {
   return (LOGO_CATEGORIES as readonly string[]).includes(value);
 }
 
+/** Unique categories present in the library, A to Z. The page chips come from this, not a fixed list. */
+export function logoCategories(logos: { category?: string | null }[]): string[] {
+  const seen = new Set<string>();
+  for (const logo of logos) {
+    const category = logo.category?.replace(/\s+/g, " ").trim();
+    if (category) seen.add(category);
+  }
+  return [...seen].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+}
+
 /** Case-insensitive match against the brand name and every alias. */
 export function logoMatchesQuery(logo: { name: string; aliases?: string[] | null }, query: string): boolean {
   const needle = query.trim().toLowerCase();

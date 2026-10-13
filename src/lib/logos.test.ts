@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/logos.test.ts
  */
 
-import { listVariants, logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, selectLogoVariant, slugifyLogoName, variantLabel } from "./logos";
+import { listVariants, logoCategories, logoDownloadUrl, logoFileName, logoMatchesQuery, planLogoUpload, selectLogoVariant, slugifyLogoName, variantLabel } from "./logos";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -66,6 +66,18 @@ assert(
   "no icon and no white falls back to color"
 );
 assert(selectLogoVariant({}, { tone: "color", shape: "full" }) === null, "an empty variant map selects nothing");
+
+assert(
+  JSON.stringify(logoCategories([
+    { category: "Hotels" },
+    { category: "  Fast Casual & Snacks " },
+    { category: "Hotels" },
+    { category: "" },
+    { category: "Cities & Downtowns" },
+    { category: null },
+  ])) === JSON.stringify(["Cities & Downtowns", "Fast Casual & Snacks", "Hotels"]),
+  "category chips are the unique names, sorted"
+);
 
 const url = "https://xrgfupoyaexgcrtxmqpp.supabase.co/storage/v1/object/public/logos/chase-bank.png";
 assert(
