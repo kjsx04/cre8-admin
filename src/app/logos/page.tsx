@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
-import { Copy, Download, ImageOff, Plus, Search } from "lucide-react";
+import { Copy, Download, Funnel, ImageOff, Plus, Search } from "lucide-react";
 import AddLogoModal from "@/components/logos/AddLogoModal";
 import {
+  Badge,
   Button,
   Card,
   EmptyState,
@@ -41,6 +42,7 @@ export default function LogosPage() {
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<string>("All");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [tone, setTone] = useState<LogoTone>("color");
   const [shape, setShape] = useState<LogoShape>("full");
   const [addOpen, setAddOpen] = useState(false);
@@ -70,6 +72,7 @@ export default function LogosPage() {
   }, [load]);
 
   const categories = useMemo(() => logoCategories(logos), [logos]);
+  const filterActive = category !== "All";
 
   const filtered = useMemo(() => {
     return logos.filter((logo) => {
@@ -117,17 +120,35 @@ export default function LogosPage() {
         }
       >
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative w-full sm:w-64">
-            <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
-            <Input
-              small
-              type="search"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search name or alias"
-              aria-label="Search logos"
-              className="pl-9"
-            />
+          <div className="flex w-full sm:w-auto items-center gap-2">
+            <div className="relative min-w-0 flex-1 sm:w-64 sm:flex-none">
+              <Search size={16} strokeWidth={1.75} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-text-3" />
+              <Input
+                small
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Search name or alias"
+                aria-label="Search logos"
+                className="pl-9"
+              />
+            </div>
+            <Button
+              variant="secondary"
+              size="sm"
+              icon={<Funnel size={16} strokeWidth={1.75} />}
+              aria-expanded={filtersOpen}
+              aria-controls="logo-category-filters"
+              className={cn(filterActive && "border-ink")}
+              onClick={() => setFiltersOpen((open) => !open)}
+            >
+              Filter
+              {filterActive && !filtersOpen && (
+                <Badge size="sm" title={category} className="max-w-[11rem] overflow-hidden">
+                  <span className="min-w-0 truncate">{category}</span>
+                </Badge>
+              )}
+            </Button>
           </div>
 
           <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
@@ -151,28 +172,30 @@ export default function LogosPage() {
             />
           </div>
         </div>
-        <div className="mt-3 overflow-x-auto" role="group" aria-label="Category">
-          <div className="flex w-max gap-1.5 pb-1">
-            {["All", ...categories].map((cat) => {
-              const active = category === cat;
-              return (
-                <button
-                  key={cat}
-                  type="button"
-                  aria-pressed={active}
-                  onClick={() => setCategory(cat)}
-                  className={cn(
-                    "h-8 px-3 inline-flex shrink-0 items-center rounded-control text-sm font-medium whitespace-nowrap transition-colors duration-150",
-                    active ? "bg-ink text-white" : "bg-surface border border-border text-text-2 hover:text-text hover:border-border-strong",
-                    FOCUS_RING
-                  )}
-                >
-                  {cat}
-                </button>
-              );
-            })}
+        {filtersOpen && (
+          <div id="logo-category-filters" className="mt-3 overflow-x-auto" role="group" aria-label="Category">
+            <div className="flex w-max gap-1.5 pb-1">
+              {["All", ...categories].map((cat) => {
+                const active = category === cat;
+                return (
+                  <button
+                    key={cat}
+                    type="button"
+                    aria-pressed={active}
+                    onClick={() => setCategory(cat)}
+                    className={cn(
+                      "h-8 px-3 inline-flex shrink-0 items-center rounded-control text-sm font-medium whitespace-nowrap transition-colors duration-150",
+                      active ? "bg-ink text-white" : "bg-surface border border-border text-text-2 hover:text-text hover:border-border-strong",
+                      FOCUS_RING
+                    )}
+                  >
+                    {cat}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
+        )}
       </PageHeader>
 
       {loading && <LoadingBlock message="Loading logos" />}
