@@ -55,7 +55,12 @@ export async function PATCH(
   if (body.email_label !== undefined) updates.email_label = body.email_label;
   if (body.email_subject !== undefined) updates.email_subject = body.email_subject || null;
   if (body.preview_text !== undefined) updates.preview_text = body.preview_text || null;
-  if (body.campaign_kind !== undefined) updates.campaign_kind = body.campaign_kind === "group" ? "group" : "single";
+  // Three kinds: a single listing, a group of listings, or a free-form custom email.
+  // Anything else falls back to "single" rather than writing a value we don't render.
+  if (body.campaign_kind !== undefined) {
+    updates.campaign_kind =
+      body.campaign_kind === "group" ? "group" : body.campaign_kind === "custom" ? "custom" : "single";
+  }
   if (body.group_listings !== undefined) {
     updates.group_listings = Array.isArray(body.group_listings) ? body.group_listings : [];
     // Keep the schedule card's thumbnail in step with the first listing
@@ -130,9 +135,10 @@ export async function PATCH(
   // An edit is a refresh — clear any stale-content alert for this campaign
   await supabase.from("email_alerts").delete().eq("campaign_id", params.id).eq("type", "stale");
 
-  // Priority changed → move the listing in the ranked list (Top → #1, Custom → its number, Fit → leave/append)
+  // Priority changed → move the listing in the ranked list (Top → #1, Custom → its number, Fit → leave/append).
+  // Custom emails have no listing, so they never enter the ranked list.
   let rebalance = false;
-  if (body.priority !== undefined) {
+  if (body.priority !== undefined && campaign.campaign_kind !== "custom") {
     try {
       rebalance = await placeForCampaign(campaign);
     } catch (err) {

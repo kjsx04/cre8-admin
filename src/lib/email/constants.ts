@@ -9,10 +9,11 @@
 
 import { EmailSender, EmailSegment, EmailTemplateVars, BrokerCardVars, GroupListing } from "./types";
 import { buildPreviewText } from "./subject";
+import { sanitizeEmailBodyHtml, renderEmailBodyHtml } from "./body-html";
 
 /** Bump when renderEmailHtml chrome/layout changes. Campaigns stay on the old
  *  shell until the user clicks Sync template (sent mail is never rewritten). */
-export const CURRENT_TEMPLATE_VERSION = "2026-09-23-2"; // preheader is real preview text, no longer a repeat of the subject
+export const CURRENT_TEMPLATE_VERSION = "2026-11-02-1"; // custom (free-form) emails: rich-text body, no photo/stats/CTA
 
 /**
  * Email typeface — same stack as the admin UI (globals.css + tailwind.config.ts).
@@ -135,9 +136,13 @@ export function buildTemplateVars(
   // Group emails show exactly what was typed — a blank line stays blank.
   // Single-listing emails keep their defaults ("Just Listed" / the listing name).
   const isGroupData = data.campaign_kind === "group" || (Array.isArray(data.group_listings) && data.group_listings.length > 0);
-  const label = isGroupData ? ((data.email_label as string) || "") : ((data.email_label as string) || "Just Listed");
+  // Custom emails have no listing at all — like groups, they show exactly what
+  // was typed and nothing more. A blank line stays blank.
+  const isCustomData = data.campaign_kind === "custom";
+  const typedOnly = isGroupData || isCustomData;
+  const label = typedOnly ? ((data.email_label as string) || "") : ((data.email_label as string) || "Just Listed");
   const labelColor = TYPE_COLORS[label] || RECURRING_COLOR;
-  const heading = isGroupData
+  const heading = typedOnly
     ? ((data.heading_text as string) || "")
     : ((data.heading_text as string) || (data.listing_name as string) || "Property Listing");
   const brokerId = (data.broker_id as string) || "";
@@ -181,6 +186,10 @@ export function buildTemplateVars(
     brokers,
     groupListings: data.campaign_kind === "group" && Array.isArray(data.group_listings) ? (data.group_listings as GroupListing[]) : [],
     isGroup: isGroupData,
+    isCustom: isCustomData,
+    // Custom emails store rich text (paragraphs, lists, links) in body_text.
+    // Cleaned here so nothing unexpected reaches a send or the live preview.
+    bodyHtml: isCustomData ? sanitizeEmailBodyHtml((data.body_text as string) || "") : "",
   };
 }
 
@@ -241,6 +250,9 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
 
   // Multiple template as soon as the composer says so — not only once cards exist
   const isGroup = vars.isGroup || vars.groupListings.length > 0;
+  // Custom = a free-form email. Same CRE8 chrome (logo, broker card, footer),
+  // but no hero photo, no stats grid and no CTA button — just your words.
+  const isCustom = vars.isCustom;
   // Multiple is black (#000). Single stays the near-black #1A1A1A card.
   // Copy, broker band, and the white logo match the dark chrome.
   const shellBg = isGroup ? "#000000" : "#1A1A1A";
@@ -256,6 +268,12 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
   const partnerDivider = "#444444";
   const cre8LogoUrl = CRE8_LOGO_URL;
   const cre8LogoRatio = CRE8_LOGO_RATIO;
+
+  // Custom body: rich text with the inline styles email clients need.
+  // Falls back to bodyText so an older row without bodyHtml still renders.
+  const customBodyHtml = isCustom
+    ? renderEmailBodyHtml(vars.bodyHtml || vars.bodyText, { font: EMAIL_FONT, color: copyColor })
+    : "";
 
   // CTA text varies by campaign type
   const ctaText = isGroup ? "VIEW ALL LISTINGS" : vars.label === "Just Sold" ? "VIEW PROPERTY DETAILS" : "VIEW FULL LISTING";
@@ -489,7 +507,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           </tr>
 
           <!-- Hero property photo — full bleed, clickable to listing page (single-listing emails only) -->
-          ${vars.photoUrl && !isGroup ? `
+          ${vars.photoUrl && !isGroup && !isCustom ? `
           <tr>
             <td data-field="photo" style="padding:0;line-height:0;font-size:0;">
               ${vars.listingUrl
@@ -523,8 +541,21 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
             </td>
           </tr>` : ""}
 
-          <!-- Body text (optional) — single: under photo; group: under listing cards -->
-          ${vars.bodyText ? `
+          <!-- Body — single: under photo; group: under listing cards;
+               custom: the whole email, rich text with links -->
+          ${isCustom ? (customBodyHtml ? `
+          <tr>
+            <td data-field="body" style="padding:20px 32px 6px 32px;">
+              ${customBodyHtml}
+            </td>
+          </tr>` : `
+          <tr>
+            <td data-field="body" style="padding:20px 32px 6px 32px;">
+              <p style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:#777777;line-height:1.65;">
+                Your message goes here &mdash; type it in the Body box.
+              </p>
+            </td>
+          </tr>`) : vars.bodyText ? `
           <tr>
             <td style="padding:${isGroup ? "8px" : "20px"} 32px 0 32px;">
               <p data-field="body"${isGroup ? ' class="group-copy"' : ""} style="margin:0;font-family:${EMAIL_FONT};font-size:15px;color:${copyColor};line-height:1.65;">
@@ -534,7 +565,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           </tr>` : ""}
 
           <!-- Stats grid — 2-column layout on #111111 cells -->
-          ${statsGridHtml && !isGroup ? `
+          ${statsGridHtml && !isGroup && !isCustom ? `
           <tr>
             <td style="padding:24px 32px 0 32px;">
               <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
@@ -544,7 +575,7 @@ export function renderEmailHtml(vars: EmailTemplateVars): string {
           </tr>` : ""}
 
           <!-- CTA button — dark text on green -->
-          ${(vars.listingUrl || isGroup) ? `
+          ${(vars.listingUrl || isGroup) && !isCustom ? `
           <tr>
             <td data-field="cta" style="padding:24px 32px 20px 32px;text-align:center;line-height:0;font-size:0;">
               <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:0 auto;">

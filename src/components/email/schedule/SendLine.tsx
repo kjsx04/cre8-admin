@@ -46,7 +46,7 @@ export default function SendLine({ item, onSelect, variant = "month", placed, mo
     c.listing_name,
     c.broker_name ? `from ${c.broker_name}` : "",
     isRecurring && frequency ? FREQUENCY_LABELS[frequency] || frequency : "",
-    c.campaign_kind === "group" ? `${(c.group_listings || []).length} listings` : "",
+    c.campaign_kind === "group" ? `${(c.group_listings || []).length} listings` : c.campaign_kind === "custom" ? "custom email" : "",
     c.priority === "high" ? "Top of the list" : c.priority === "custom" && c.priority_rank ? `#${c.priority_rank}` : "",
     isMissed ? "did not send" : isProjected ? "projected" : isSent ? "sent" : "",
   ]

@@ -121,7 +121,12 @@ export default function CampaignDetail({ campaign, onDelete, onPause, onClose }:
             {/* Read top to bottom: what kind of send, how often, when next, when it
                 stops, who gets it, who it comes from. */}
             <Section title="Information">
-              <InfoRow label="Type" value={campaign.campaign_type === "recurring" ? "Recurring" : "One-time"} />
+              <InfoRow
+                label="Type"
+                value={`${campaign.campaign_type === "recurring" ? "Recurring" : "One-time"}${
+                  campaign.campaign_kind === "group" ? " · Multiple" : campaign.campaign_kind === "custom" ? " · Custom" : ""
+                }`}
+              />
               {campaign.campaign_type === "recurring" && (
                 <InfoRow label="Frequency" value={capitalize(campaign.frequency)} />
               )}

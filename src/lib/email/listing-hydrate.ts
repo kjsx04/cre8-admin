@@ -99,9 +99,12 @@ export async function hydrateCampaignListing(campaign: CampaignRow): Promise<Cam
   const listingId = String(campaign.listing_id || "");
   const isGroup = campaign.campaign_kind === "group" || (Array.isArray(campaign.group_listings) && (campaign.group_listings as unknown[]).length > 0);
   const cards = Array.isArray(campaign.group_listings) ? (campaign.group_listings as Record<string, unknown>[]) : [];
+  // "group:" and "custom:" ids are synthetic — there's no listing behind them,
+  // so don't go off to the CMS looking for one.
+  const synthetic = listingId.startsWith("group:") || listingId.startsWith("custom:");
   const ids = isGroup
     ? cards.map((c) => String(c.listing_id || "")).filter(Boolean)
-    : listingId && !listingId.startsWith("group:") ? [listingId] : [];
+    : listingId && !synthetic ? [listingId] : [];
   if (ids.length === 0) return campaign;
 
   try {

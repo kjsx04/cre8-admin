@@ -53,6 +53,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     .single();
   if (error || !campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
 
+  // Custom emails aren't ranked against listings — they book an exact time via
+  // /schedule-at instead, so nothing here applies to them.
+  if (campaign.campaign_kind === "custom") {
+    return NextResponse.json(
+      { error: "Custom emails are scheduled in the composer — open it and pick a date and time." },
+      { status: 400 }
+    );
+  }
+
   const test = isTestMode(body.priority);
 
   // A real placement must leave room for at least one send. Test ignores this.

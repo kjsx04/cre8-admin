@@ -67,8 +67,27 @@ export async function POST(request: NextRequest) {
     body.photo_url = body.photo_url || groupListings[0]?.photo_url || null;
   }
 
+  // Custom emails: no listing at all — just a subject and a body. Same synthetic-id
+  // trick as groups so every downstream feature still has one id to key off.
+  const isCustom = body.campaign_kind === "custom";
+  if (isCustom) {
+    body.listing_id = body.listing_id && String(body.listing_id).startsWith("custom:") ? body.listing_id : `custom:${randomUUID()}`;
+    body.listing_name = body.listing_name || body.email_subject || body.email_label || "Custom email";
+    body.email_label = body.email_label || "";
+    body.photo_url = null;
+    body.listing_page_url = null;
+    body.highlights = [];
+    body.group_listings = [];
+    if (!body.email_subject) {
+      return NextResponse.json({ error: "A custom email needs a subject line" }, { status: 400 });
+    }
+    if (!body.body_text) {
+      return NextResponse.json({ error: "A custom email needs a body" }, { status: 400 });
+    }
+  }
+
   // Validate required fields
-  if (!body.listing_id || !body.listing_name || !body.broker_id || (!body.email_label && !isGroup)) {
+  if (!body.listing_id || !body.listing_name || !body.broker_id || (!body.email_label && !isGroup && !isCustom)) {
     return NextResponse.json(
       { error: "Missing required fields: listing_id, listing_name, broker_id, email_label" },
       { status: 400 }
@@ -93,7 +112,7 @@ export async function POST(request: NextRequest) {
       listing_id: body.listing_id,
       listing_name: body.listing_name,
       campaign_type: body.campaign_type || "one-time",
-      campaign_kind: isGroup ? "group" : "single",
+      campaign_kind: isGroup ? "group" : isCustom ? "custom" : "single",
       group_listings: groupListings,
       email_label: body.email_label,
       email_subject: body.email_subject || null,
@@ -134,9 +153,11 @@ export async function POST(request: NextRequest) {
 
   // Give the listing its spot in the ranked priority list:
   //   Top → #1, Custom → the chosen number, Fit → bottom (only if not ranked yet)
+  // Custom emails aren't a listing, so they stay out of the ranked list entirely —
+  // otherwise every one of them would leave a junk row behind.
   let rebalance = false;
   try {
-    rebalance = await placeForCampaign(campaign);
+    rebalance = isCustom ? false : await placeForCampaign(campaign);
   } catch (err) {
     console.error("[POST campaigns] rank placement failed:", err);
   }

@@ -59,8 +59,14 @@ export default function OffScheduleSection({ waiting, finished, onSelect, onEdit
                       Edit
                     </Button>
                   )}
+                  {/* Custom emails pick their own date and time in the composer —
+                      the placement bar is built around listing priority, which they
+                      don't have — so Schedule reopens the composer for them. */}
                   {onSchedule && (
-                    <Button size="sm" onClick={() => onSchedule(c)}>
+                    <Button
+                      size="sm"
+                      onClick={() => (c.campaign_kind === "custom" && onEdit ? onEdit(c) : onSchedule(c))}
+                    >
                       Schedule
                     </Button>
                   )}

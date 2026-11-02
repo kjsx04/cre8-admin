@@ -2,7 +2,8 @@
  * Rich text cleaner for the Property Overview editor.
  *
  * Anything pasted or typed ends up as this and only this:
- *   <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>
+ *   <p>, <ul>, <ol>, <li>, <strong>, <em>, <br>, <a href>
+ * Links keep only their href, and only when it's http, https, mailto or tel.
  * No fonts, sizes, colors, spans, classes, or inline styles — the site's own
  * CSS decides how it looks, so pasted text always matches the destination.
  *
@@ -17,7 +18,22 @@
 const BULLET_RE = /^\s*(?:[•·\-–—*▪‣◦●o]|•)\s+/;
 const NUMBER_RE = /^\s*\d{1,3}[.)]\s+/;
 
-const INLINE_KEEP = new Set(["STRONG", "EM", "BR"]);
+const INLINE_KEEP = new Set(["STRONG", "EM", "BR", "A"]);
+
+/** Link protocols we allow. Everything else (javascript:, data:, …) loses the link. */
+const SAFE_LINK = /^(https?:\/\/|mailto:|tel:)/i;
+
+/**
+ * The href of a link, cleaned, or "" when we won't trust it.
+ * A bare "cre8advisors.com" gets https:// put in front so it still works.
+ */
+function safeHref(el: HTMLElement): string {
+  const raw = (el.getAttribute("href") || "").replace(/[\u0000-\u001F\u007F\s]/g, "");
+  if (!raw) return "";
+  const url = SAFE_LINK.test(raw) ? raw : /^[\w-]+(\.[\w-]+)+(\/|$)/.test(raw) ? `https://${raw}` : "";
+  if (!url) return "";
+  return url.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
 
 /** Clean an HTML string down to the allowed subset */
 export function sanitizeRichText(html: string): string {
@@ -126,6 +142,14 @@ function collectBlocks(root: HTMLElement): Block[] {
       if (inner.trim()) pending += `<em>${inner}</em>`;
       return;
     }
+    // Links: keep the href when it's safe, otherwise keep just the words
+    if (tag === "A") {
+      const inner = inlineOf(el);
+      if (!inner.trim()) return;
+      const href = safeHref(el);
+      pending += href ? `<a href="${href}">${inner}</a>` : inner;
+      return;
+    }
     // Bold/italic expressed as styles (Google Docs does this)
     const fw = el.style?.fontWeight;
     const fs = el.style?.fontStyle;
@@ -155,7 +179,7 @@ function collectBlocks(root: HTMLElement): Block[] {
       return;
     }
 
-    // Anything else (span, a, font, u, …): keep the content, drop the tag
+    // Anything else (span, font, u, …): keep the content, drop the tag
     Array.from(el.childNodes).forEach((child) => visit(child, listKind));
   };
 
@@ -182,6 +206,14 @@ function inlineOf(el: HTMLElement): string {
     const tag = e.tagName;
     if (tag === "UL" || tag === "OL") return; // handled by the caller
     if (tag === "BR") { out += "<br>"; return; }
+    if (tag === "A") {
+      const href = safeHref(e);
+      const before = out; out = "";
+      Array.from(e.childNodes).forEach(walk);
+      const inner = out;
+      out = before + (href && inner.trim() ? `<a href="${href}">${inner}</a>` : inner);
+      return;
+    }
     if (tag === "STRONG" || tag === "B" || (e.style && (e.style.fontWeight === "bold" || Number(e.style.fontWeight) >= 600))) {
       const before = out; out = "";
       Array.from(e.childNodes).forEach(walk);

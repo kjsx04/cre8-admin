@@ -55,6 +55,10 @@ export function buildSubjectLine(campaign: CampaignLike): string {
   if (campaign.campaign_kind === "group") {
     return plain(campaign.email_label) || plain(campaign.listing_name) || "Featured Listings";
   }
+  // A custom email has no listing, so never build "Just Listed: <something>".
+  if (campaign.campaign_kind === "custom") {
+    return plain(campaign.email_label) || plain(campaign.heading_text) || "A note from CRE8";
+  }
   return `${plain(campaign.email_label) || "Just Listed"}: ${plain(campaign.listing_name) || "Property"}`;
 }
 

@@ -8,8 +8,9 @@
 // Campaign type: one-time send or recurring series
 export type CampaignType = "one-time" | "recurring";
 
-// Single listing email, or a group (digest) of several listings
-export type CampaignKind = "single" | "group";
+// Single listing email, a group (digest) of several listings, or a free-form
+// "custom" email (no listing at all — you just write a subject and a body).
+export type CampaignKind = "single" | "group" | "custom";
 
 // Free-text eyebrow on a group card. Empty string renders nothing.
 // Older campaigns stored preset chips ("Just Listed", "Price Reduced",
@@ -195,6 +196,8 @@ export interface EmailTemplateVars {
   brokers: BrokerCardVars[];   // one card per broker, primary first
   groupListings: GroupListing[]; // the cards of a Multiple email
   isGroup: boolean;              // Multiple template (chosen in the composer), even before cards are added
+  isCustom: boolean;             // Custom template — free-form email, no listing, no photo, no CTA
+  bodyHtml: string;              // Custom only — the rich-text body as clean HTML (bodyText stays plain)
 }
 
 // One broker contact card in the email

@@ -33,10 +33,14 @@ export default function ScheduledActions({ campaign, onChanged }: ScheduledActio
   const [busy, setBusy] = useState<Action | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
-  const onCalendar = campaign.status === "scheduled" || campaign.status === "active";
+  // Custom emails have no listing: the AI reschedule (which weighs listing
+  // priority and spacing) and Refresh listing both have nothing to act on.
+  // Change the time in the Send box below instead and hit Schedule again.
+  const isCustom = campaign.campaign_kind === "custom";
+  const onCalendar = (campaign.status === "scheduled" || campaign.status === "active") && !isCustom;
   const templateCurrent = usesCurrentTemplate(campaign);
   const showSync = canSyncTemplate(campaign.status);
-  const showRefresh = canRefreshListing(campaign.status);
+  const showRefresh = canRefreshListing(campaign.status) && !isCustom;
 
   // A draft has no pending send to rewrite, so none of this applies
   if (!onCalendar && !showSync && !showRefresh) return null;

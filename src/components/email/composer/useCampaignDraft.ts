@@ -16,6 +16,7 @@ import { BROKERS, BROKER_CONTACTS, brokerIdForEmail, ListingItem } from "@/lib/a
 import { buildAutoHighlights, splitHighlight, joinHighlight } from "@/lib/email/utils";
 import { parseAudienceTokens, serializeAudienceTokens } from "@/lib/email/audience-tokens";
 import { endDateProblem } from "@/lib/email/validate-schedule";
+import { hasBodyHtmlContent } from "@/lib/email/body-html";
 
 export interface HighlightRow {
   id: number;
@@ -24,7 +25,7 @@ export interface HighlightRow {
 }
 
 export interface CampaignDraft {
-  kind: CampaignKind | "";      // "single" listing email or a "group" of several ("" = not chosen yet)
+  kind: CampaignKind | "";      // "single" listing, "group" of several, or "custom" free-form ("" = not chosen yet)
   groupListings: GroupListing[]; // cards for group emails, in order
   listingId: string;
   listingName: string;
@@ -50,9 +51,11 @@ export interface CampaignDraft {
   frequency: CampaignFrequency; // only used when campaignType === "recurring"
   endDate: string;              // "YYYY-MM-DD" or ""
   pinned: boolean;              // exempt from freshness decay
+  sendDate: string;             // custom emails only: "YYYY-MM-DD" picked in the composer
+  sendTime: string;             // custom emails only: "HH:MM" (24h, Phoenix time)
 }
 
-export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo" | "audience" | "endDate";
+export type MissingField = "type" | "listing" | "group" | "broker" | "partnerLogo" | "audience" | "endDate" | "subject" | "body";
 
 // Stable ids for highlight rows (module-level counter is fine — ids only need to be unique per session)
 let nextRowId = 1;
@@ -184,13 +187,15 @@ function emptyDraft(userEmail: string): CampaignDraft {
     frequency: "weekly",
     endDate: "",
     pinned: false,
+    sendDate: "",
+    sendTime: "",
   };
 }
 
 /** Preload a draft from an existing campaign (edit mode) */
 function fromCampaign(c: Campaign): CampaignDraft {
   return {
-    kind: c.campaign_kind === "group" ? "group" : "single",
+    kind: c.campaign_kind === "group" ? "group" : c.campaign_kind === "custom" ? "custom" : "single",
     groupListings: c.campaign_kind === "group" ? c.group_listings || [] : [],
     listingId: c.listing_id || "",
     listingName: c.listing_name || "",
@@ -220,7 +225,27 @@ function fromCampaign(c: Campaign): CampaignDraft {
     frequency: c.frequency && c.frequency !== "one-time" ? c.frequency : "weekly",
     endDate: c.end_date ? c.end_date.slice(0, 10) : "",
     pinned: !!c.pinned,
+    // Already scheduled? Show that slot in the date/time boxes.
+    sendDate: c.scheduled_date ? phoenixParts(c.scheduled_date).date : "",
+    sendTime: c.scheduled_date ? phoenixParts(c.scheduled_date).time : "",
   };
+}
+
+/**
+ * Split a stored ISO timestamp into the "YYYY-MM-DD" and "HH:MM" the date/time
+ * inputs want, read in Phoenix time (which never shifts for daylight saving).
+ */
+function phoenixParts(iso: string): { date: string; time: string } {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return { date: "", time: "" };
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Phoenix",
+    year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value || "";
+  const hour = get("hour") === "24" ? "00" : get("hour");
+  return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${hour}:${get("minute")}` };
 }
 
 export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign | null; userEmail: string }) {
@@ -325,30 +350,38 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     const sender = EMAIL_SENDERS.find((s) => s.id === primaryId);
     const isRecurring = draft.campaignType === "recurring";
     const isGroup = draft.kind === "group";
+    const isCustom = draft.kind === "custom";
+    // Groups and custom emails both carry a synthetic listing id, minted by the
+    // API on create, so everything downstream still keys off a single id.
+    const syntheticId = (prefix: string) => (draft.listingId.startsWith(prefix) ? draft.listingId : "");
     return {
-      // Groups carry a synthetic listing id (assigned by the API on create) and use the heading as the name
-      listing_id: isGroup ? (draft.listingId.startsWith("group:") ? draft.listingId : "") : draft.listingId,
-      // Group: the internal name (schedule cards, subject) = big heading, else the eyebrow, else a generic name
-      listing_name: isGroup ? (draft.emailLabel.trim() || draft.headingText.trim() || "Group email") : draft.listingName,
+      listing_id: isGroup ? syntheticId("group:") : isCustom ? syntheticId("custom:") : draft.listingId,
+      // The internal name (schedule cards, lists) — big heading, else subject, else a generic name
+      listing_name: isGroup
+        ? draft.emailLabel.trim() || draft.headingText.trim() || "Group email"
+        : isCustom
+          ? draft.emailSubject.trim() || draft.emailLabel.trim() || "Custom email"
+          : draft.listingName,
       campaign_kind: draft.kind || "single",
       group_listings: isGroup ? draft.groupListings : [],
       campaign_type: draft.campaignType,
-      // Blank label → the email's default, exactly what the placeholder shows
-      email_label: isGroup ? draft.emailLabel.trim() : (draft.emailLabel.trim() || "Just Listed"),
+      // Blank label → the email's default, exactly what the placeholder shows.
+      // Group and custom show exactly what was typed, blank included.
+      email_label: isGroup || isCustom ? draft.emailLabel.trim() : (draft.emailLabel.trim() || "Just Listed"),
       email_subject: draft.emailSubject.trim() || undefined,
       preview_text: draft.previewText.trim() || undefined,
       heading_text: draft.headingText || undefined,
       intro_text: isGroup ? draft.introText || undefined : undefined,
       body_text: draft.bodyText || undefined,
-      photo_url: isGroup ? draft.groupListings[0]?.photo_url || undefined : draft.photoUrl || undefined,
+      photo_url: isCustom ? undefined : isGroup ? draft.groupListings[0]?.photo_url || undefined : draft.photoUrl || undefined,
       partner_logo_url: draft.partnerLogoUrl && !draft.partnerLogoUrl.startsWith("data:") ? draft.partnerLogoUrl : undefined,
       partner_logo_width: draft.partnerLogoWidth || undefined,
       partner_logo_height: draft.partnerLogoHeight || undefined,
       // Rows without a value are incomplete — drop them
-      highlights: draft.highlights
-        .filter((r) => r.value.trim())
-        .map((r) => joinHighlight(r.title, r.value)),
-      listing_page_url: draft.listingPageUrl || undefined,
+      highlights: isCustom
+        ? []
+        : draft.highlights.filter((r) => r.value.trim()).map((r) => joinHighlight(r.title, r.value)),
+      listing_page_url: isCustom ? undefined : draft.listingPageUrl || undefined,
       broker_id: primaryId,
       broker_name: sender?.name || BROKERS[primaryId] || "",
       broker_email: sender?.email || BROKER_CONTACTS[primaryId]?.email || "",
@@ -378,6 +411,10 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     if (!draft.kind) m.push("type");
     else if (draft.kind === "group") {
       if (draft.groupListings.length < 2) m.push("group");
+    } else if (draft.kind === "custom") {
+      // No listing to lean on — the subject and the body are the whole email
+      if (!draft.emailSubject.trim()) m.push("subject");
+      if (!hasBodyHtmlContent(draft.bodyText)) m.push("body");
     } else if (!draft.listingId) m.push("listing");
     if (draft.brokerIds.length === 0) m.push("broker");
     if (draft.segmentIds.length === 0 && draft.extraEmails.length === 0) m.push("audience");
@@ -386,14 +423,18 @@ export function useCampaignDraft({ campaign, userEmail }: { campaign?: Campaign 
     // by the nightly cron before it ever sends
     if (draft.campaignType === "recurring" && endDateProblem(draft.endDate)) m.push("endDate");
     return m;
-  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl, draft.campaignType, draft.endDate]);
+  }, [draft.kind, draft.groupListings.length, draft.listingId, draft.emailSubject, draft.bodyText, draft.brokerIds, draft.segmentIds, draft.extraEmails, draft.partnerLogoUrl, draft.campaignType, draft.endDate]);
 
   const isValid = missing.length === 0;
   // Save campaign only needs a listing (or group) and a broker — audience waits for Schedule.
   const canSave =
     !!draft.kind &&
     draft.brokerIds.length > 0 &&
-    (draft.kind === "group" ? draft.groupListings.length >= 2 : !!draft.listingId);
+    (draft.kind === "group"
+      ? draft.groupListings.length >= 2
+      : draft.kind === "custom"
+        ? !!draft.emailSubject.trim()
+        : !!draft.listingId);
   const dirty = JSON.stringify(draft) !== initialJsonRef.current;
 
   return {

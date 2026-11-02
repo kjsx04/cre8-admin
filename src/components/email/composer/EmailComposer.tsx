@@ -18,7 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
-import { Campaign } from "@/lib/email/types";
+import { Campaign, CampaignKind } from "@/lib/email/types";
 import { ListingItem } from "@/lib/admin-constants";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { listingStaysLive, overlayGroupCard, overlayListingOnCampaign } from "@/lib/email/listing-hydrate";
@@ -41,6 +41,7 @@ import BrokerPicker from "./BrokerPicker";
 import AudiencePicker from "./AudiencePicker";
 import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
+import RichTextEditor from "@/components/RichTextEditor";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
 import { COMPOSER_FIELD, ChoiceButton } from "./composer-ui";
@@ -62,6 +63,8 @@ const MISSING_COPY: Record<MissingField, string> = {
   partnerLogo: "the partner logo (click Apply)",
   audience: "an audience",
   endDate: "a valid end date",
+  subject: "a subject line",
+  body: "something in the body",
 };
 
 /** "Add a listing, a broker and a label" */
@@ -114,9 +117,9 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
       input.partner_logo_width = draft.partnerLogoWidth;
       input.partner_logo_height = draft.partnerLogoHeight;
     }
-    // Before a listing is picked, show the template defaults so the shape reads
-    // Group emails show exactly what's typed (blank stays blank), so no defaults there
-    if (draft.kind !== "group" && !draft.listingId) {
+    // Before a listing is picked, show the template defaults so the shape reads.
+    // Group and custom emails show exactly what's typed (blank stays blank).
+    if (draft.kind !== "group" && draft.kind !== "custom" && !draft.listingId) {
       input.heading_text = draft.headingText || "Property Name";
     }
     return wrapPreviewHtml(renderEmailHtml(buildTemplateVars(input)));
@@ -208,6 +211,37 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   };
 
   /**
+   * Schedule a custom email at the exact date and time typed in the composer.
+   * Custom emails have no listing, so the calendar's priority and spacing rules
+   * don't apply — this saves the draft, then books the slot straight away.
+   */
+  const handleScheduleAt = async () => {
+    if (!isValid || saving) return;
+    if (!draft.sendDate || !draft.sendTime) {
+      setSaveError("Pick a date and a time.");
+      return;
+    }
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const saved = await saveCampaignDraft(withAudienceNames(formData), userEmail, campaign?.id);
+      const res = await fetch(`/api/email/campaigns/${saved.id}/schedule-at`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        body: JSON.stringify({ send_date: draft.sendDate, send_time: draft.sendTime }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || "Couldn't schedule the email");
+      submittedRef.current = true;
+      forgetStored();
+      router.push("/marketing/email");
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Couldn't schedule the email");
+      setSaving(false);
+    }
+  };
+
+  /**
    * Schedule — saves the draft, then hands off to the calendar.
    * No AI runs here any more: frequency, priority and the slot are chosen on the
    * schedule page, where you can watch the placement happen.
@@ -283,6 +317,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
   const submitting = false; // scheduling no longer happens here — it lives on the calendar
   const isGroup = draft.kind === "group";
+  // Custom = a free-form email with no listing behind it. Subject + body + audience,
+  // then send now or pick an exact date and time right here.
+  const isCustom = draft.kind === "custom";
+  const needsSendTime = isCustom && (!draft.sendDate || !draft.sendTime);
   // Everything after "Type" shows as soon as the type is chosen (edit mode: always)
   const revealed = isEdit || draft.kind !== "";
 
@@ -331,7 +369,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
         <div className="flex items-center gap-2 shrink-0">
           <TestSendControl
             campaign={formData}
-            disabled={isGroup ? draft.groupListings.length < 2 : !draft.listingId}
+            disabled={isGroup ? draft.groupListings.length < 2 : isCustom ? !canSave : !draft.listingId}
           />
           <Button
             size="sm"
@@ -440,7 +478,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           {!revealed && (
             <div className="pointer-events-none absolute inset-0 flex items-start justify-center pt-24">
               <span className="px-4 py-2 rounded-card bg-white/90 border border-border-light text-sm text-muted-gray shadow-sm">
-                Choose a listing to begin
+                Choose an email type to begin
               </span>
             </div>
           )}
@@ -461,7 +499,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           {/* 1 — what kind of email. Everything else appears once this is chosen. */}
           <Section title="Type" note={isEdit ? "can't change after creating" : undefined}>
             {isEdit ? (
-              <p className="text-sm text-charcoal">{isGroup ? "Multiple" : "Single"}</p>
+              <p className="text-sm text-charcoal">{isGroup ? "Multiple" : isCustom ? "Custom" : "Single"}</p>
             ) : (
               <TypeChoice value={draft.kind} onChange={(v) => set("kind", v)} />
             )}
@@ -469,6 +507,8 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
           {revealed && (
             <div className="space-y-8 composer-reveal">
+              {/* Custom emails have no listing at all — straight to the writing. */}
+              {!isCustom && (
               <Section title={isGroup ? "Listings" : "Listing"}>
                 {isGroup ? (
                   <GroupListingsPicker
@@ -488,6 +528,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   />
                 )}
               </Section>
+              )}
 
               {/* What the inbox shows before anyone opens it */}
               <Section title="Subject & preview">
@@ -501,7 +542,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
 
               {/* Same order as the email, top to bottom */}
-              <Section title="Heading" note={isGroup ? "all optional" : undefined}>
+              <Section title="Heading" note={isGroup || isCustom ? "all optional" : undefined}>
                 <div className="space-y-2.5">
                   {/* Placeholders are exactly what the email shows when the field is left blank.
                       Small green top line = listing name (override below); big white line = the heading typed here. */}
@@ -510,14 +551,14 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     {...fieldProps("heading")}
                     value={draft.headingText}
                     onChange={(e) => set("headingText", e.target.value)}
-                    placeholder={isGroup ? "TYPE OR LOCATION — e.g. LAND · WEST VALLEY" : (draft.listingName || "Property Name").toUpperCase()}
+                    placeholder={isGroup ? "TYPE OR LOCATION — e.g. LAND · WEST VALLEY" : isCustom ? "SMALL TOP LINE — e.g. MARKET UPDATE" : (draft.listingName || "Property Name").toUpperCase()}
                     className={`${INPUT} text-xs uppercase tracking-wide`}
                   />
                   <input
                     {...fieldProps("label")}
                     value={draft.emailLabel}
                     onChange={(e) => set("emailLabel", e.target.value)}
-                    placeholder={isGroup ? "Heading — e.g. West Valley Land & Retail" : "Just Listed"}
+                    placeholder={isGroup ? "Heading — e.g. West Valley Land & Retail" : isCustom ? "Heading — the big line at the top" : "Just Listed"}
                     className={INPUT}
                   />
                 </div>
@@ -545,7 +586,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                 />
               </Section>
 
-              {!isGroup && (
+              {!isGroup && !isCustom && (
               <Section title="Photo">
                 <PhotoPicker
                   gallery={selectedListing?.fieldData.gallery || []}
@@ -589,9 +630,9 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section title="Body">
+              <Section title="Body" note={isCustom ? "the whole email" : undefined}>
                 <div className="space-y-2.5">
-                  {!isGroup && (
+                  {!isGroup && !isCustom && (
                   <BodyAiControl
                     listingIds={draft.listingId ? [draft.listingId] : []}
                     kind="single"
@@ -608,6 +649,25 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     canUndo={bodyUndo != null}
                   />
                   )}
+                  {/* Custom emails get the full editor — paragraphs, bold, lists, links.
+                      Listing emails stay plain text: their template escapes the body. */}
+                  {isCustom ? (
+                    <div
+                      {...fieldProps("body")}
+                      /* Point the preview's click-to-focus at the editable area itself,
+                         not this wrapper — a plain div can't take a caret. */
+                      ref={(el) => fieldProps("body").ref((el?.querySelector("[contenteditable]") as HTMLElement | null) ?? null)}
+                    >
+                      <RichTextEditor
+                        value={draft.bodyText}
+                        onChange={(html) => {
+                          setBodyUndo(null);
+                          set("bodyText", html);
+                        }}
+                        placeholder="Write your email…"
+                      />
+                    </div>
+                  ) : (
                   <textarea
                     {...fieldProps("body")}
                     value={draft.bodyText}
@@ -619,10 +679,11 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                     rows={4}
                     className={`${INPUT} resize-y`}
                   />
+                  )}
                 </div>
               </Section>
 
-              {!isGroup && (
+              {!isGroup && !isCustom && (
               <Section title="Details">
                 <DetailsEditor
                   rows={draft.highlights}
@@ -637,7 +698,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
 
               )}
 
-              {!isGroup && (
+              {!isGroup && !isCustom && (
               <Section title="Listing link">
                 <input
                   {...fieldProps("cta")}
@@ -683,6 +744,33 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
             </div>
           )}
 
+          {/* Custom emails pick their own date and time — there's no listing, so the
+              calendar's priority and spacing rules have nothing to work with. */}
+          {revealed && isCustom && (
+            <div className="pt-8 border-t border-black/[0.05]">
+              <Section title="Send" note="Phoenix time">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="date"
+                    value={draft.sendDate}
+                    min={todayInPhoenix()}
+                    onChange={(e) => set("sendDate", e.target.value)}
+                    className={`${INPUT} flex-1`}
+                  />
+                  <input
+                    type="time"
+                    value={draft.sendTime}
+                    onChange={(e) => set("sendTime", e.target.value)}
+                    className={`${INPUT} w-32`}
+                  />
+                </div>
+                <p className="text-[11px] text-muted-gray mt-1.5">
+                  Leave these blank and use Send now to go out straight away.
+                </p>
+              </Section>
+            </div>
+          )}
+
           {/* Save parks it below the calendar. Schedule hands off to the calendar,
               where frequency and priority are chosen. Send now skips both. */}
           <div className="pt-8 border-t border-black/[0.05] space-y-2">
@@ -708,15 +796,24 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Button>
               <Button
                 size="sm"
-                onClick={handleScheduleHandoff}
-                disabled={!isValid || submitting || sendingNow}
+                onClick={isCustom ? handleScheduleAt : handleScheduleHandoff}
+                disabled={!isValid || submitting || sendingNow || needsSendTime}
                 loading={saving}
-                title="Put it on the calendar — you pick frequency and priority there"
+                title={
+                  isCustom
+                    ? "Book it for the date and time above"
+                    : "Put it on the calendar — you pick frequency and priority there"
+                }
               >
                 Schedule
               </Button>
             </div>
             {hint && <p className="text-xs text-text-3 text-right">{hint}</p>}
+            {!hint && needsSendTime && (
+              <p className="text-xs text-text-3 text-right">Pick a date and a time to schedule, or use Send now.</p>
+            )}
+            {/* The header shows this too, but truncated — a scheduling problem needs the whole sentence */}
+            {isCustom && saveError && <p className="text-xs text-red-500 text-right">{saveError}</p>}
           </div>
         </div>
       </div>
@@ -728,7 +825,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
           <div className="relative bg-white rounded-card shadow-lg w-full max-w-md p-6">
             <h3 className="text-lg font-medium text-charcoal">Send now?</h3>
             <p className="text-sm text-charcoal mt-2">
-              <span className="font-medium">{isGroup ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
+              <span className="font-medium">{isGroup || isCustom ? formData.listing_name : `${formData.email_label}: ${formData.listing_name}`}</span> goes to{" "}
               <span className="font-medium">
                 {selectedAudienceName}
                 {selectedAudience ? ` (${formatCount(selectedAudience.subscribed)} people)` : ""}
@@ -763,6 +860,16 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   );
 }
 
+/** Today in Phoenix as "YYYY-MM-DD", so the date box can't offer a day that's gone */
+function todayInPhoenix(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Phoenix",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 /** Calm label — no numbered chrome */
 function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
   return (
@@ -776,18 +883,19 @@ function Section({ title, note, children }: { title: string; note?: string; chil
   );
 }
 
-/** First choice on a new campaign: one listing, or a group of several */
-function TypeChoice({ value, onChange }: { value: "single" | "group" | ""; onChange: (v: "single" | "group") => void }) {
-  const opts: { id: "single" | "group"; label: string }[] = [
-    { id: "single", label: "Single" },
-    { id: "group", label: "Multiple" },
+/** First choice on a new campaign: one listing, a group of several, or a free-form email */
+function TypeChoice({ value, onChange }: { value: CampaignKind | ""; onChange: (v: CampaignKind) => void }) {
+  const opts: { id: CampaignKind; label: string; hint: string }[] = [
+    { id: "single", label: "Single", hint: "One listing" },
+    { id: "group", label: "Multiple", hint: "Several listings in one email" },
+    { id: "custom", label: "Custom", hint: "Write a normal email — no listing" },
   ];
   return (
     <div className="flex flex-wrap gap-1.5">
       {opts.map((o) => {
         const on = value === o.id;
         return (
-          <ChoiceButton key={o.id} selected={on} onClick={() => onChange(o.id)}>
+          <ChoiceButton key={o.id} selected={on} onClick={() => onChange(o.id)} title={o.hint}>
             {o.label}
           </ChoiceButton>
         );
