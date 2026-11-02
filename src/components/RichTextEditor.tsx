@@ -1,7 +1,13 @@
 "use client";
 
-import { useRef, useEffect, useCallback, useState } from "react";
+import { useRef, useEffect, useCallback, useState, forwardRef, useImperativeHandle } from "react";
 import { sanitizeRichText, plainTextToRichText } from "@/lib/rich-text";
+
+/** What a parent can ask the editor to do from outside (the + Insert menu). */
+export interface RichTextEditorHandle {
+  /** Drop plain text in at the caret, or at the end if the editor was never focused */
+  insertText: (text: string) => void;
+}
 
 /** Is the caret sitting inside a link right now? Drives the Link button's highlight. */
 function caretInLink(): boolean {
@@ -50,11 +56,11 @@ interface RichTextEditorProps {
    - Enter makes a new paragraph, not a <div>.
    - The saved HTML is always the clean version.
    ============================================================ */
-export default function RichTextEditor({
+const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(function RichTextEditor({
   value,
   onChange,
   placeholder = "Enter property overview...",
-}: RichTextEditorProps) {
+}, handleRef) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
   const [active, setActive] = useState({ bold: false, italic: false, ul: false, ol: false, link: false });
@@ -65,6 +71,11 @@ export default function RichTextEditor({
   const [linkOpen, setLinkOpen] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
   const savedRange = useRef<Range | null>(null);
+
+  // Where the caret last was inside this editor. Clicking a toolbar button or
+  // the + menu moves focus out and the browser drops the selection, so we keep
+  // our own copy and put it back before inserting anything.
+  const caretRange = useRef<Range | null>(null);
 
   // Store onChange in ref so it's always current
   const onChangeRef = useRef(onChange);
@@ -99,8 +110,55 @@ export default function RichTextEditor({
     onChangeRef.current(isEmpty ? "" : sanitizeRichText(raw));
   }, []);
 
+  /** Remember the caret, but only while it's actually inside this editor */
+  const rememberCaret = useCallback(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.commonAncestorContainer)) return;
+    caretRange.current = range.cloneRange();
+  }, []);
+
+  /**
+   * Insert plain text where the caret was.
+   *
+   * The + menu lives outside the editor, so by the time this runs the
+   * selection is gone — we restore the remembered Range first. With nothing
+   * remembered (the editor was never focused) the text goes on the end.
+   */
+  const insertText = useCallback(
+    (text: string) => {
+      const el = editorRef.current;
+      if (!el || !text) return;
+      el.focus();
+      const sel = window.getSelection();
+      const saved = caretRange.current;
+      if (saved && el.contains(saved.commonAncestorContainer)) {
+        sel?.removeAllRanges();
+        sel?.addRange(saved);
+      } else {
+        // Never focused — put the caret at the very end
+        const end = document.createRange();
+        end.selectNodeContents(el);
+        end.collapse(false);
+        sel?.removeAllRanges();
+        sel?.addRange(end);
+      }
+      // insertText keeps it as plain text, so braces stay braces
+      document.execCommand("insertText", false, text);
+      rememberCaret();
+      emit();
+    },
+    [emit, rememberCaret]
+  );
+
+  useImperativeHandle(handleRef, () => ({ insertText }), [insertText]);
+
   /** Toolbar state follows the caret */
   const refreshState = useCallback(() => {
+    rememberCaret();
     try {
       setActive({
         bold: document.queryCommandState("bold"),
@@ -112,7 +170,7 @@ export default function RichTextEditor({
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [rememberCaret]);
 
   useEffect(() => {
     document.addEventListener("selectionchange", refreshState);
@@ -281,4 +339,6 @@ export default function RichTextEditor({
       </div>
     </div>
   );
-}
+});
+
+export default RichTextEditor;

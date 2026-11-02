@@ -17,6 +17,8 @@
  */
 
 /** Past this, most desktop clients stop showing the subject. */
+import { previewMergeTags } from "./merge-tags";
+
 export const SUBJECT_COMFORTABLE = 60;
 /** Roughly where a phone lock screen cuts a subject off. */
 export const SUBJECT_PHONE = 35;
@@ -34,9 +36,17 @@ type CampaignLike = {
   intro_text?: string | null;
 };
 
-/** Collapse whitespace and strip any HTML that came from the rich-text body. */
+/**
+ * Collapse whitespace and strip any HTML that came from the rich-text body.
+ *
+ * Merge tags are resolved to their fallbacks here, which means the subject and
+ * the inbox preview line are never personalized. That's deliberate: both get
+ * cut to length, and half a tag ("Hi {{{contact.first_na…") in an inbox is
+ * worse than "Hi there". Personalization lives in the body, where there's no
+ * truncation and Resend does the substitution per recipient.
+ */
 function plain(text: string | null | undefined): string {
-  return (text || "")
+  return previewMergeTags(text || "")
     .replace(/<[^>]*>/g, " ")
     .replace(/&nbsp;/g, " ")
     .replace(/&amp;/g, "&")

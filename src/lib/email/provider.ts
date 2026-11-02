@@ -28,6 +28,7 @@
 
 import { buildTemplateVars, renderEmailHtml } from "./constants";
 import { hydrateCampaignListing, listingStaysLive } from "./listing-hydrate";
+import { hasMergeTags, resolveMergeTags, type MergeContact } from "./merge-tags";
 import { EMAIL_RE, parseAudienceTokens, splitProviderIds } from "./audience-tokens";
 import {
   contactMatchesQuery,
@@ -575,12 +576,30 @@ async function sendToRecipient(
   const payload = opts.test && listingStaysLive(campaign.status)
     ? await hydrateCampaignListing(campaign)
     : campaign;
-  const html = renderCampaignHtml(payload).replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
+  let html = renderCampaignHtml(payload).replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
+  let subject = buildSubject(payload);
+
+  // Merge tags ({{{contact.first_name|there}}}) are a BROADCAST feature. This is
+  // the transactional endpoint, so Resend substitutes nothing — left alone, the
+  // reader would see the raw braces. Fill them in from the contact's own Resend
+  // record, falling back to each tag's own fallback when there's no record or
+  // no value. A lookup failure must never block the send.
+  if (hasMergeTags(html) || hasMergeTags(subject)) {
+    let contact: MergeContact | null = null;
+    try {
+      contact = await lookupContactByEmail(recipientEmail);
+    } catch (err) {
+      console.warn("[sendToRecipient] contact lookup failed, using tag fallbacks:", err);
+    }
+    html = resolveMergeTags(html, contact);
+    subject = resolveMergeTags(subject, contact);
+  }
+
   const body: Record<string, unknown> = {
     from: buildFrom(payload),
     to: [recipientEmail],
     reply_to: ((payload.broker_email as string) || "").toLowerCase() || undefined,
-    subject: opts.test ? `[TEST] ${buildSubject(payload)}` : buildSubject(payload),
+    subject: opts.test ? `[TEST] ${subject}` : subject,
     html,
   };
   if (scheduledAt) body.scheduled_at = scheduledAt;

@@ -41,7 +41,8 @@ import BrokerPicker from "./BrokerPicker";
 import AudiencePicker from "./AudiencePicker";
 import BodyAiControl from "./BodyAiControl";
 import DetailsEditor from "./DetailsEditor";
-import RichTextEditor from "@/components/RichTextEditor";
+import RichTextEditor, { type RichTextEditorHandle } from "@/components/RichTextEditor";
+import { MERGE_TAGS } from "@/lib/email/merge-tags";
 import { useCampaignDraft, MissingField } from "./useCampaignDraft";
 import { FieldBinding, FieldProps } from "./fieldProps";
 import { COMPOSER_FIELD, ChoiceButton } from "./composer-ui";
@@ -323,6 +324,40 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
   const needsSendTime = isCustom && (!draft.sendDate || !draft.sendTime);
   // Everything after "Type" shows as soon as the type is chosen (edit mode: always)
   const revealed = isEdit || draft.kind !== "";
+
+  // The two kinds of Body input, so the + menu can insert into whichever is showing
+  const bodyEditorRef = useRef<RichTextEditorHandle>(null);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  /**
+   * Drop a merge tag in where the caret is.
+   * The rich editor keeps its own caret; for the plain textarea we splice the
+   * string ourselves and put the caret back after the inserted text.
+   */
+  const insertIntoBody = useCallback(
+    (token: string) => {
+      if (draft.kind === "custom") {
+        bodyEditorRef.current?.insertText(token);
+        return;
+      }
+      const el = bodyTextareaRef.current;
+      const current = draft.bodyText;
+      if (!el) {
+        set("bodyText", current + token);
+        return;
+      }
+      const start = el.selectionStart ?? current.length;
+      const end = el.selectionEnd ?? start;
+      set("bodyText", current.slice(0, start) + token + current.slice(end));
+      // After React re-renders, put the caret just past what we inserted
+      requestAnimationFrame(() => {
+        el.focus();
+        const at = start + token.length;
+        el.setSelectionRange(at, at);
+      });
+    },
+    [draft.kind, draft.bodyText, set]
+  );
 
   const senderName = EMAIL_SENDERS.find((b) => b.id === draft.brokerIds[0])?.name || "CRE8 Advisors";
 
@@ -630,7 +665,11 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
               </Section>
               )}
 
-              <Section title="Body" note={isCustom ? "the whole email" : undefined}>
+              <Section
+                title="Body"
+                note={isCustom ? "the whole email" : undefined}
+                action={<MergeTagMenu onInsert={insertIntoBody} />}
+              >
                 <div className="space-y-2.5">
                   {!isGroup && !isCustom && (
                   <BodyAiControl
@@ -659,6 +698,7 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                       ref={(el) => fieldProps("body").ref((el?.querySelector("[contenteditable]") as HTMLElement | null) ?? null)}
                     >
                       <RichTextEditor
+                        ref={bodyEditorRef}
                         value={draft.bodyText}
                         onChange={(html) => {
                           setBodyUndo(null);
@@ -670,6 +710,10 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   ) : (
                   <textarea
                     {...fieldProps("body")}
+                    ref={(el) => {
+                      bodyTextareaRef.current = el;
+                      fieldProps("body").ref(el);
+                    }}
                     value={draft.bodyText}
                     onChange={(e) => {
                       setBodyUndo(null);
@@ -870,16 +914,90 @@ function todayInPhoenix(): string {
   }).format(new Date());
 }
 
-/** Calm label — no numbered chrome */
-function Section({ title, note, children }: { title: string; note?: string; children: React.ReactNode }) {
+/** Calm label — no numbered chrome. `action` sits right-aligned on the label row. */
+function Section({
+  title,
+  note,
+  action,
+  children,
+}: {
+  title: string;
+  note?: string;
+  action?: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <section>
       <div className="flex items-baseline gap-2 mb-2.5">
         <h2 className="text-[12px] font-medium text-medium-gray">{title}</h2>
         {note && <span className="text-[11px] text-muted-gray">{note}</span>}
+        {action && <div className="ml-auto self-center">{action}</div>}
       </div>
       {children}
     </section>
+  );
+}
+
+/**
+ * The + next to Body: drops a merge tag in at the caret.
+ *
+ * Resend fills these in per recipient when the broadcast goes out, so the
+ * preview shows each tag's fallback rather than a made-up name. A test send to
+ * yourself is what shows the real thing.
+ */
+function MergeTagMenu({ onInsert }: { onInsert: (token: string) => void }) {
+  const [open, setOpen] = useState(false);
+
+  // Click anywhere else to close
+  useEffect(() => {
+    if (!open) return;
+    const close = () => setOpen(false);
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  }, [open]);
+
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        /* preventDefault keeps the caret in the body where it was */
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => setOpen((o) => !o)}
+        className={`w-6 h-6 rounded-btn border flex items-center justify-center text-[15px] leading-none transition-colors ${
+          open
+            ? "border-green bg-[#F0F9E5] text-charcoal"
+            : "border-border-light text-medium-gray hover:bg-subtle-gray hover:text-charcoal"
+        }`}
+        title="Insert a contact's name or email"
+        aria-label="Insert a contact detail"
+      >
+        +
+      </button>
+
+      {open && (
+        <div className="absolute right-0 top-7 z-20 w-60 rounded-card border border-border-light bg-white shadow-lg py-1">
+          <p className="px-3 py-1.5 text-[10px] uppercase tracking-wide text-muted-gray">Insert</p>
+          {MERGE_TAGS.map((tag) => (
+            <button
+              key={tag.token}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onInsert(tag.token);
+                setOpen(false);
+              }}
+              className="w-full text-left px-3 py-2 hover:bg-subtle-gray"
+            >
+              <span className="block text-sm text-charcoal">{tag.label}</span>
+              <span className="block text-[11px] text-muted-gray">{tag.hint}</span>
+            </button>
+          ))}
+          <p className="px-3 pt-2 pb-1.5 mt-1 border-t border-border-light text-[11px] text-muted-gray leading-snug">
+            Each person sees their own. The preview shows what someone with nothing on file gets.
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 

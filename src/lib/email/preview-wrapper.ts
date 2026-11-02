@@ -15,6 +15,8 @@
  */
 
 /** Regions of the email that can be clicked / highlighted in the composer */
+import { previewMergeTags } from "./merge-tags";
+
 export type PreviewField =
   | "label"
   | "heading"
@@ -59,10 +61,12 @@ const PREVIEW_STYLE = `
 /**
  * Wrap rendered email HTML for the composer preview.
  * - Replaces the Resend unsubscribe merge tag so the link renders but goes nowhere
+ * - Fills in contact merge tags with their fallbacks, so the preview never
+ *   shows raw {{{contact.first_name|there}}} braces
  * - Injects the preview-only stylesheet before </head>
  */
 export function wrapPreviewHtml(html: string): string {
-  const withUnsub = html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
+  const withUnsub = previewMergeTags(html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#"));
   if (withUnsub.includes("</head>")) {
     return withUnsub.replace("</head>", `${PREVIEW_STYLE}\n</head>`);
   }

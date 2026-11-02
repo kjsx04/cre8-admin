@@ -57,6 +57,66 @@ bare email address.
 `RichTextEditor` is shared with the listing form, so property overviews can
 take links now too.
 
+## Personalization (merge tags)
+
+The **+** button on the right of the **Body** label inserts a merge tag at the
+caret. Three are offered:
+
+| Menu item | Inserts | Missing value |
+|---|---|---|
+| First name | `{{{contact.first_name|there}}}` | reads "there" |
+| Last name | `{{{contact.last_name}}}` | reads as nothing |
+| Email address | `{{{contact.email}}}` | n/a — always present |
+
+Syntax is from the current [Broadcasts editor
+docs](https://resend.com/docs/dashboard/broadcasts/editor) and the Broadcast API
+reference, both of which use the `contact.*` form. (An older Resend blog post
+shows `{{{FIRST_NAME}}}` next to the retired `audience_id`; we use `segment_id`,
+the current naming, so we follow the current docs.)
+
+Coverage as of November 2026: **5,046 of 5,176** mirrored contacts have a first
+name, so ~130 people hit the fallback. A handful are stored all-caps (`MARK`)
+or as real initials (`BJ`, `TJ`); Resend substitutes verbatim and there's no
+safe automatic fix, since title-casing `BJ` would give `Bj`.
+
+### The catch, and what `merge-tags.ts` is for
+
+**Merge tags only work on broadcasts.** Two paths send through the transactional
+`POST /emails` endpoint, where Resend substitutes nothing:
+
+- a **test send**
+- a **hand-typed extra recipient** on a campaign (a real person)
+
+Left alone, those readers would see the literal
+`{{{contact.first_name|there}}}`. So `sendToRecipient` in `provider.ts` resolves
+the tags itself: it looks the address up with `lookupContactByEmail` and fills
+in the real values, falling back to each tag's own fallback when there's no
+record. A failed lookup never blocks the send. The lookup only happens when the
+copy actually contains a tag.
+
+A useful side effect: a **test send to yourself shows your own real first name**,
+which is the honest way to confirm personalization before a real send.
+
+### Where tags are deliberately NOT personalized
+
+The **subject** and the **inbox preview line** resolve to fallbacks, in
+`plain()` in `subject.ts`. Both get cut to length, and half a tag
+(`Hi {{{contact.first_na…`) in someone's inbox is worse than `Hi there`. Resend
+also doesn't document variable support in the subject field. Personalization
+lives in the body, where nothing is truncated.
+
+The **previews** (composer pane and `/api/email/preview`) show each name tag's
+fallback — a real rendering, and the case most likely to look wrong. The email
+tag previews as `their@email.com`, an obvious placeholder, because previewing it
+blank would look broken when every contact in fact has one.
+
+The **unsubscribe** tag `{{{RESEND_UNSUBSCRIBE_URL}}}` is left for Resend
+throughout; `TAG_RE` matches only `contact.*` so the two never collide.
+
+The + button appears for all three campaign types. Single and group bodies are
+plain text run through `escapeHtml`, which doesn't touch braces, so tags work
+there too.
+
 ## No listing, but still one id
 
 A custom email has no listing, but almost everything downstream (schedules,
@@ -115,10 +175,14 @@ works.
 | `src/lib/email/types.ts` | `CampaignKind` gained `"custom"`; `EmailTemplateVars` gained `isCustom` + `bodyHtml` |
 | `src/lib/email/constants.ts` | `buildTemplateVars` + `renderEmailHtml` custom branches; template version bumped |
 | `src/lib/email/body-html.ts` | **new** — sanitize + inline-style the rich-text body |
+| `src/lib/email/merge-tags.ts` | **new** — the tag list, plus resolving them off the broadcast path |
+| `src/lib/email/provider.ts` | resolves tags on the transactional path |
+| `src/lib/email/preview-wrapper.ts` | resolves tags for the composer preview |
+| `src/app/api/email/preview/route.ts` | resolves tags for the preview endpoint |
 | `src/lib/email/subject.ts` | custom subject fallback |
 | `src/lib/email/listing-hydrate.ts` | skips `custom:` ids |
 | `src/lib/rich-text.ts` | keeps `<a href>` |
-| `src/components/RichTextEditor.tsx` | Link / Unlink toolbar button + inline link bar |
+| `src/components/RichTextEditor.tsx` | Link / Unlink button, inline link bar, and an `insertText` handle for the + menu |
 | `src/components/email/composer/useCampaignDraft.ts` | `sendDate` / `sendTime`; custom payload + validation |
 | `src/components/email/composer/EmailComposer.tsx` | Custom type, section gating, rich-text body, Send section |
 | `src/components/email/composer/ScheduledActions.tsx` | hides listing-only actions |
@@ -128,5 +192,8 @@ works.
 | `src/app/api/email/campaigns/[id]/place/route.ts` | refuses custom |
 | `src/components/email/schedule/OffScheduleSection.tsx` | Schedule reopens the composer for custom |
 
-Tests: `npx tsx src/lib/email/body-html.test.ts` and
-`npx tsx src/lib/email/custom-email.test.ts`.
+Tests: `npx tsx src/lib/email/body-html.test.ts`,
+`npx tsx src/lib/email/merge-tags.test.ts` and
+`npx tsx src/lib/email/custom-email.test.ts` (the last one covers the merge-tag
+flow end to end: the tag survives into the broadcast HTML, and reaches a reader
+raw nowhere else).

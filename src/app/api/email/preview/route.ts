@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { hydrateCampaignListing, listingStaysLive } from "@/lib/email/listing-hydrate";
+import { previewMergeTags } from "@/lib/email/merge-tags";
 
 // POST /api/email/preview — render email HTML for the preview modal.
 // Drafts overlay live CMS listing fields. Scheduled+ uses the frozen snapshot.
@@ -14,6 +15,8 @@ export async function POST(request: NextRequest) {
 
     // Replace the Resend unsubscribe merge tag with "#" for preview so the link renders but doesn't break
     html = html.replace(/\{\{\{RESEND_UNSUBSCRIBE_URL\}\}\}/g, "#");
+    // Contact merge tags show their fallback — raw braces would look broken
+    html = previewMergeTags(html);
 
     return NextResponse.json({ html });
   } catch (error) {
