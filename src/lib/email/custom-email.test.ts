@@ -125,28 +125,32 @@ const tagged = {
   ...custom,
   email_subject: "October market update",
   body_text:
-    "<p>Hi {{{contact.first_name|there}}},</p>" +
+    "<p>Hi {{{contact.first_name}}},</p>" +
     "<p>Reach me if {{{contact.email}}} is wrong.</p>",
 };
 const taggedHtml = renderEmailHtml(buildTemplateVars(tagged));
 
-assert(taggedHtml.includes("{{{contact.first_name|there}}}"), "the broadcast HTML keeps the first-name tag for Resend");
+assert(taggedHtml.includes("{{{contact.first_name}}}"), "the broadcast HTML keeps the first-name tag for Resend");
 assert(taggedHtml.includes("{{{contact.email}}}"), "the broadcast HTML keeps the email tag for Resend");
 assert(taggedHtml.includes("{{{RESEND_UNSUBSCRIBE_URL}}}"), "the unsubscribe tag is still left to Resend");
 
 assert(!buildSubjectLine(tagged).includes("{{{"), "the subject never carries a raw tag");
-assert(buildPreviewText(tagged).startsWith("Hi there,"), "the inbox preview line resolves, so it can't be cut mid-tag");
+assert(buildPreviewText(tagged).startsWith("Hi,"), "the inbox preview line resolves, so it can't be cut mid-tag");
 assert(!buildPreviewText(tagged).includes("{{{"), "the inbox preview line never carries a raw tag");
 
 assert(!wrapPreviewHtml(taggedHtml).includes("{{{contact."), "the composer preview resolves the tags");
-assert(wrapPreviewHtml(taggedHtml).includes("Hi there,"), "the composer preview shows the fallback");
+assert(wrapPreviewHtml(taggedHtml).includes("Hi,"), "the composer preview drops the name, no filler word");
 
 const toBradley = resolveMergeTags(taggedHtml, { first_name: "Bradley", email: "b@x.com" });
 assert(toBradley.includes("Hi Bradley,"), "a test send / hand-typed recipient gets their own name");
 assert(!toBradley.includes("{{{contact."), "no raw braces survive the transactional path");
 assert(
-  resolveMergeTags(taggedHtml, { first_name: "", email: "b@x.com" }).includes("Hi there,"),
-  "a contact with no first name gets the fallback, not \"Hi ,\""
+  resolveMergeTags(taggedHtml, { first_name: "", email: "b@x.com" }).includes("Hi,"),
+  'a contact with no first name reads "Hi," — name dropped, no filler, no stray space'
+);
+assert(
+  !resolveMergeTags(taggedHtml, { first_name: "", email: "b@x.com" }).includes("Hi ,"),
+  "and never \"Hi ,\" with a space before the comma"
 );
 
 console.log(failed === 0 ? "\nall custom-email tests passed" : `\n${failed} custom-email test(s) failed`);

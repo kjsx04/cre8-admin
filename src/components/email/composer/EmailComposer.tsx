@@ -993,7 +993,8 @@ function MergeTagMenu({ onInsert }: { onInsert: (token: string) => void }) {
             </button>
           ))}
           <p className="px-3 pt-2 pb-1.5 mt-1 border-t border-border-light text-[11px] text-muted-gray leading-snug">
-            Each person sees their own. The preview shows what someone with nothing on file gets.
+            Each person sees their own. Anyone without one has it left out, so write it
+            so the line still reads without a name.
           </p>
         </div>
       )}

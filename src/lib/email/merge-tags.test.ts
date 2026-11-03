@@ -8,7 +8,6 @@
 
 import {
   MERGE_TAGS,
-  FIRST_NAME_FALLBACK,
   hasMergeTags,
   resolveMergeTags,
   previewMergeTags,
@@ -28,8 +27,11 @@ function assert(cond: unknown, msg: string) {
 const FIRST = MERGE_TAGS[0].token;
 
 // ── The tokens are the syntax Resend documents ──
-assert(FIRST === "{{{contact.first_name|there}}}", "the first-name token matches the Broadcasts editor docs");
-assert(MERGE_TAGS[2].token === "{{{contact.email}}}", "a token with no fallback has no pipe");
+assert(FIRST === "{{{contact.first_name}}}", "the first-name token matches the Broadcasts editor docs");
+assert(
+  MERGE_TAGS.every((t) => !t.token.includes("|")),
+  "no tag carries a fallback word — a missing value is dropped, not replaced"
+);
 assert(
   MERGE_TAGS.every((t) => /^\{\{\{contact\.[a-z_]+(\|[^}]*)?\}\}\}$/.test(t.token)),
   "every token is triple-braced contact.<key>"
@@ -49,20 +51,32 @@ assert(
   "a known first name is substituted"
 );
 assert(
-  resolveMergeTags(`Hi ${FIRST},`, { first_name: null }) === `Hi ${FIRST_NAME_FALLBACK},`,
-  "a missing first name uses the tag's fallback"
+  resolveMergeTags(`Hi ${FIRST},`, { first_name: null }) === "Hi,",
+  'a missing first name is dropped with its space — "Hi," not "Hi ,"'
 );
 assert(
-  resolveMergeTags(`Hi ${FIRST},`, { first_name: "   " }) === `Hi ${FIRST_NAME_FALLBACK},`,
+  resolveMergeTags(`Hi ${FIRST},`, { first_name: "   " }) === "Hi,",
   "whitespace counts as missing"
 );
 assert(
-  resolveMergeTags(`Hi ${FIRST},`, null) === `Hi ${FIRST_NAME_FALLBACK},`,
-  "no contact at all still resolves to the fallback"
+  resolveMergeTags(`Hi ${FIRST},`, null) === "Hi,",
+  "no contact at all also drops the name cleanly"
+);
+assert(
+  resolveMergeTags(`<p>Hi ${FIRST},</p>`, { first_name: null }) === "<p>Hi,</p>",
+  "the same holds inside a paragraph tag"
+);
+assert(
+  resolveMergeTags(`Hi ${FIRST} {{{contact.last_name}}},`, { first_name: "Ada", last_name: null }) === "Hi Ada,",
+  "a present first name and a missing last name leave no double space"
+);
+assert(
+  resolveMergeTags(`Hi ${FIRST},`, { first_name: "Kevin" }) === "Hi Kevin,",
+  "a present name keeps the space in front of it"
 );
 assert(
   resolveMergeTags("{{{contact.last_name}}}", { last_name: null }) === "",
-  "a missing value with no fallback leaves nothing, never raw braces"
+  "a missing value leaves nothing, never raw braces"
 );
 assert(
   resolveMergeTags("{{{contact.email}}}", { email: "pat@x.com" }) === "pat@x.com",
@@ -87,7 +101,7 @@ assert(
 // ── An unknown property is still cleared, not leaked ──
 assert(
   resolveMergeTags("{{{contact.company|a company}}}", { first_name: "Jo" }) === "a company",
-  "an unmapped property falls back rather than leaking braces"
+  "a hand-typed fallback is still honoured if someone writes one"
 );
 assert(
   !resolveMergeTags("{{{contact.nonsense}}}", null).includes("{"),
@@ -95,7 +109,7 @@ assert(
 );
 
 // ── Preview ──
-assert(previewMergeTags(`Hi ${FIRST},`) === `Hi ${FIRST_NAME_FALLBACK},`, "the preview shows a name's fallback");
+assert(previewMergeTags(`Hi ${FIRST},`) === "Hi,", "the preview drops the name the same way a real send does");
 assert(!previewMergeTags(`Hi ${FIRST},`).includes("{{{"), "the preview never shows raw braces");
 assert(
   previewMergeTags("{{{contact.email}}}") === SAMPLE_EMAIL,

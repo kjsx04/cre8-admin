@@ -30,23 +30,17 @@ export interface MergeTag {
   hint: string;
 }
 
-/** What someone with no first name on file sees. 130 of ~5,180 contacts. */
-export const FIRST_NAME_FALLBACK = "there";
-
 /**
  * The tags on the + menu, in order.
  *
- * First name carries a fallback so a contact without one reads "Hi there,"
- * rather than "Hi ,". Last name and email have none: a missing last name
- * should leave nothing behind, and every contact has an email.
+ * None of them carry a |fallback word. A contact with no first name on file
+ * (about 130 of ~5,180) has the name dropped rather than replaced with
+ * something like "there" — "Hi," reads better than "Hi there," from someone
+ * who should know your name.
  */
 export const MERGE_TAGS: MergeTag[] = [
-  {
-    label: "First name",
-    token: `{{{contact.first_name|${FIRST_NAME_FALLBACK}}}}`,
-    hint: `No name on file → "${FIRST_NAME_FALLBACK}"`,
-  },
-  { label: "Last name", token: "{{{contact.last_name}}}", hint: "Blank when there isn't one" },
+  { label: "First name", token: "{{{contact.first_name}}}", hint: "Left out when there isn't one" },
+  { label: "Last name", token: "{{{contact.last_name}}}", hint: "Left out when there isn't one" },
   { label: "Email address", token: "{{{contact.email}}}", hint: "Always present" },
 ];
 
@@ -57,12 +51,25 @@ export const MERGE_TAGS: MergeTag[] = [
  * Deliberately narrow: only `contact.<key>`, so the unsubscribe tag
  * ({{{RESEND_UNSUBSCRIBE_URL}}}) is left for Resend to handle.
  */
-const TAG_RE = /\{\{\{contact\.([a-z_]+)(?:\|([^}]*))?\}\}\}/gi;
+const TAG_RE = /(\s*)\{\{\{contact\.([a-z_]+)(?:\|([^}]*))?\}\}\}/gi;
 
 /** Does this copy contain any contact merge tag? */
 export function hasMergeTags(text: string): boolean {
   return new RegExp(TAG_RE.source, "i").test(text || "");
 }
+
+/**
+ * The space before a tag belongs to the tag.
+ *
+ * "Hi {{{contact.first_name}}}," has to read "Hi," and not "Hi ," when there's
+ * no name, so an empty value takes the whitespace in front of it with it. The
+ * regex captures that whitespace for exactly this reason.
+ *
+ * NOTE: this only applies where WE do the substituting — test sends, hand-typed
+ * recipients, and the previews. On a real broadcast Resend substitutes on its
+ * own servers and leaves the space behind, so those contacts read "Hi ,".
+ * Nothing we can do about that from here; see docs/custom-emails.md.
+ */
 
 /** The contact fields a merge tag can read. */
 export interface MergeContact {
@@ -80,7 +87,7 @@ export interface MergeContact {
  */
 export function resolveMergeTags(text: string, contact: MergeContact | null): string {
   if (!text) return text;
-  return text.replace(TAG_RE, (_full, prop: string, fallback: string | undefined) => {
+  return text.replace(TAG_RE, (_full, space: string, prop: string, fallback: string | undefined) => {
     const key = prop.toLowerCase();
     const value =
       key === "first_name"
@@ -91,8 +98,14 @@ export function resolveMergeTags(text: string, contact: MergeContact | null): st
             ? contact?.email
             : null;
     const clean = (value || "").trim();
-    if (clean) return clean;
-    return (fallback ?? "").trim();
+    if (clean) return `${space}${clean}`;
+
+    const fb = (fallback ?? "").trim();
+    if (fb) return `${space}${fb}`;
+
+    // Nothing to show: the name goes, and so does the space in front of it,
+    // so "Hi {{{contact.first_name}}}," reads "Hi," and not "Hi ,".
+    return "";
   });
 }
 

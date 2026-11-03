@@ -64,9 +64,13 @@ caret. Three are offered:
 
 | Menu item | Inserts | Missing value |
 |---|---|---|
-| First name | `{{{contact.first_name|there}}}` | reads "there" |
-| Last name | `{{{contact.last_name}}}` | reads as nothing |
+| First name | `{{{contact.first_name}}}` | dropped |
+| Last name | `{{{contact.last_name}}}` | dropped |
 | Email address | `{{{contact.email}}}` | n/a — always present |
+
+No tag carries a `|fallback` word. A contact with no name on file has the name
+**dropped**, not swapped for something like "there" — `Hi,` reads better than
+`Hi there,` from someone who ought to know your name.
 
 Syntax is from the current [Broadcasts editor
 docs](https://resend.com/docs/dashboard/broadcasts/editor) and the Broadcast API
@@ -75,9 +79,26 @@ shows `{{{FIRST_NAME}}}` next to the retired `audience_id`; we use `segment_id`,
 the current naming, so we follow the current docs.)
 
 Coverage as of November 2026: **5,046 of 5,176** mirrored contacts have a first
-name, so ~130 people hit the fallback. A handful are stored all-caps (`MARK`)
-or as real initials (`BJ`, `TJ`); Resend substitutes verbatim and there's no
-safe automatic fix, since title-casing `BJ` would give `Bj`.
+name. The 130 without one break down as Sellers 68, Buyers 61, Brokers 2 (127
+of them still subscribed) — mostly role addresses like `management@…` and
+`av@…`. A handful of names are stored all-caps (`MARK`) or as real initials
+(`BJ`, `TJ`); Resend substitutes verbatim and there's no safe automatic fix,
+since title-casing `BJ` would give `Bj`.
+
+### The stray space on a real broadcast
+
+Where **we** do the substituting, an empty value takes the space in front of it
+with it, so `Hi {{{contact.first_name}}},` reads `Hi,`. That is why `TAG_RE`
+captures the leading whitespace.
+
+On a **real broadcast** Resend substitutes on its own servers and leaves that
+space behind, so a contact with no name reads `Hi ,`. We cannot reach it from
+here. It affects 127 subscribed contacts out of ~5,180 (2.5%), and the only real
+fix is filling in those first names — a fallback word is the alternative, which
+is what this deliberately avoids.
+
+So the previews and a test send show `Hi,` while the broadcast shows `Hi ,` for
+those few. Worth knowing before reading too much into a preview.
 
 ### The catch, and what `merge-tags.ts` is for
 
