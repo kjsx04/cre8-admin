@@ -32,14 +32,20 @@ import { verifyIdToken } from "@/lib/verify-id-token";
  *
  * - The Resend webhook is called by Resend, not by a signed-in person. It does
  *   full Svix signature verification and fails closed in production.
- * - The cron route is called by Vercel Cron with a CRON_SECRET bearer token,
- *   and also fails closed if the secret is unset.
+ * - The cron routes (email + listings mirror) are called by Vercel Cron with a
+ *   CRON_SECRET bearer token, and also fail closed if the secret is unset.
  *
- * Both are stricter than a user check would be, so wrapping them in one would
+ * All of them are stricter than a user check would be, so wrapping them in one would
  * only break them. Adding anything to this list reopens it to the internet —
  * the route must do its own verification first.
  */
-const SELF_AUTHENTICATED = ["/api/email/webhook/resend", "/api/email/cron"];
+const SELF_AUTHENTICATED = [
+  "/api/email/webhook/resend",
+  "/api/email/cron",
+  // Hourly Webflow → Supabase listings copy. Same CRON_SECRET check as the
+  // email cron, fails closed, and only reads Webflow / writes Supabase.
+  "/api/listings/mirror",
+];
 
 function unauthorized(reason: string) {
   // The reason is deliberately coarse. A caller that fails auth doesn't need to

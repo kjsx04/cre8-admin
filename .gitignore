@@ -40,3 +40,6 @@ next-env.d.ts
 
 # Supabase CLI cache
 supabase/.temp/
+
+# Local data snapshots taken before migrations
+supabase/backups/
