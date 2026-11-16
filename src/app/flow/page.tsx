@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import DealCard from "@/components/flow/DealCard";
@@ -110,9 +111,7 @@ export default function FlowPage() {
   const fetchDeals = useCallback(async () => {
     if (!userEmail) return;
     try {
-      const res = await fetch("/api/flow/deals", {
-        headers: { "x-user-email": userEmail },
-      });
+      const res = await apiFetch("/api/flow/deals");
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Failed to load deals");
@@ -174,7 +173,7 @@ export default function FlowPage() {
 
       // Save the SharePoint folder URL on the deal (if we got one)
       if (folderUrl) {
-        await fetch(`/api/flow/deals/${dealId}`, {
+        await apiFetch(`/api/flow/deals/${dealId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ sharepoint_folder_url: folderUrl }),
@@ -207,7 +206,7 @@ export default function FlowPage() {
         if (result.action === "advance") {
           // Silent auto-advance — fire PATCH and collect notice
           try {
-            await fetch(`/api/flow/deals/${deal.id}`, {
+            await apiFetch(`/api/flow/deals/${deal.id}`, {
               method: "PATCH",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ status: result.newStatus }),
@@ -266,11 +265,10 @@ export default function FlowPage() {
   const handleCreate = async (data: DealFormData, dealDates?: DealDate[], pendingFile?: File) => {
     setSaving(true);
     try {
-      const res = await fetch("/api/flow/deals", {
+      const res = await apiFetch("/api/flow/deals", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-user-email": userEmail,
         },
         body: JSON.stringify({
           ...data,
@@ -302,7 +300,7 @@ export default function FlowPage() {
   // Permanently delete a deal
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/flow/deals/${id}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/flow/deals/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("Failed to delete deal");
       setSelectedDeal(null);
       await fetchDeals();
@@ -318,7 +316,7 @@ export default function FlowPage() {
       if (dealDates !== undefined) {
         payload.deal_dates = dealDates;
       }
-      const res = await fetch(`/api/flow/deals/${id}`, {
+      const res = await apiFetch(`/api/flow/deals/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -376,7 +374,7 @@ export default function FlowPage() {
 
     // Simple stage move — persist directly
     try {
-      const res = await fetch(`/api/flow/deals/${deal.id}`, {
+      const res = await apiFetch(`/api/flow/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ lease_stage: targetStage }),
@@ -403,7 +401,7 @@ export default function FlowPage() {
       if (dealDates !== undefined) {
         payload.deal_dates = dealDates;
       }
-      const res = await fetch(`/api/flow/deals/${dropEditDeal.id}`, {
+      const res = await apiFetch(`/api/flow/deals/${dropEditDeal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -454,7 +452,7 @@ export default function FlowPage() {
     const deal = extensionPrompt.deal;
     setExtensionPrompt(null);
     try {
-      await fetch(`/api/flow/deals/${deal.id}`, {
+      await apiFetch(`/api/flow/deals/${deal.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "closing" }),

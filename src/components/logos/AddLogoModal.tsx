@@ -1,7 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { FormEvent, useEffect, useState } from "react";
-import { useMsal } from "@azure/msal-react";
 import { Button, Field, Input, Modal, Select, useToast } from "@/components/ui";
 import { LOGO_CATEGORIES, type BrandLogo } from "@/lib/logos";
 
@@ -16,8 +16,6 @@ interface AddLogoModalProps {
  * The browser never receives a key that can write to storage.
  */
 export default function AddLogoModal({ open, onClose, onCreated }: AddLogoModalProps) {
-  const { accounts } = useMsal();
-  const userEmail = accounts[0]?.username || "";
   const toast = useToast();
 
   const [name, setName] = useState("");
@@ -66,9 +64,8 @@ export default function AddLogoModal({ open, onClose, onCreated }: AddLogoModalP
       body.set("category", category);
       body.set("aliases", aliases);
       body.set("file", file);
-      const res = await fetch("/api/logos", {
+      const res = await apiFetch("/api/logos", {
         method: "POST",
-        headers: { "x-user-email": userEmail },
         body,
       });
       const data = await res.json().catch(() => ({}));

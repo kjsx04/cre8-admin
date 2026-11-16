@@ -1,14 +1,10 @@
 "use client";
 
 import "./globals.css";
-import { PublicClientApplication } from "@azure/msal-browser";
 import { MsalProvider } from "@azure/msal-react";
-import { msalConfig } from "@/lib/msal-config";
+import { msalInstance } from "@/lib/msal-instance";
 import { useEffect, useState } from "react";
 import Spinner from "@/components/ui/Spinner";
-
-// Create MSAL instance once
-const msalInstance = new PublicClientApplication(msalConfig);
 
 export default function RootLayout({
   children,

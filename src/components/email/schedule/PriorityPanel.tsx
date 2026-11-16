@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Campaign } from "@/lib/email/types";
 import { getTypeColor, formatScheduleDate } from "@/lib/email/utils";
@@ -52,7 +53,7 @@ export default function PriorityPanel({ campaigns, userEmail, onClose, onApplied
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/email/priorities", { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch("/api/email/priorities");
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || "Couldn't load priorities");
         const list: RankRow[] = data.listings || [];
@@ -189,9 +190,9 @@ export default function PriorityPanel({ campaigns, userEmail, onClose, onApplied
     setError(null);
     setNote(null);
     try {
-      const res = await fetch("/api/email/priorities", {
+      const res = await apiFetch("/api/email/priorities", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({
           order: rows.map((r) => ({ listing_id: r.listing_id, listing_name: r.listing_name })),
           optimize: true,

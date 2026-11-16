@@ -86,8 +86,7 @@ export async function POST(request: NextRequest) {
       announcement = newCampaign;
       // AI slot → save → push to Resend
       try {
-        const baseUrl = new URL(request.url).origin;
-        const { campaign: scheduled } = await scheduleCampaign(baseUrl, newCampaign);
+        const { campaign: scheduled } = await scheduleCampaign(newCampaign);
         if (scheduled) announcement = scheduled;
       } catch (err) {
         console.error("[MarkSold] AI scheduling for announcement failed:", err);

@@ -165,15 +165,14 @@ export async function POST(request: NextRequest) {
   // If auto_schedule is true, get an AI slot + push to Resend
   if (body.auto_schedule) {
     try {
-      const baseUrl = new URL(request.url).origin;
-      const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
+      const { campaign: scheduled, sync } = await scheduleCampaign(campaign);
 
       // Top / Custom changed the ranking → let the AI move the other sends around it
       if (scheduled && rebalance) {
         try {
           const thisWeek = currentWeekStart();
-          await optimizeWeek(baseUrl, thisWeek);
-          await optimizeWeek(baseUrl, addDays(thisWeek, 7));
+          await optimizeWeek(thisWeek);
+          await optimizeWeek(addDays(thisWeek, 7));
         } catch (err) {
           console.error("[POST campaigns] rebalance after placement failed:", err);
         }

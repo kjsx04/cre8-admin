@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { Deal, DealFormData, DealType, DealDate, CRE8Listing, ExtractedDealData, AdditionalSplit, BrokerDefaults, Broker, LeaseStage } from "@/lib/flow/types";
 import {
@@ -406,7 +407,7 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
   useEffect(() => {
     let cancelled = false;
     setListingsLoading(true);
-    fetch("/api/flow/listings")
+    apiFetch("/api/flow/listings")
       .then((res) => res.json())
       .then((data) => {
         if (!cancelled && Array.isArray(data)) {
@@ -683,11 +684,10 @@ export default function DealForm({ deal, onSave, onCancel, saving, mapboxToken, 
     if (!userEmail) return;
     setDefaultsSaving(true);
     try {
-      const res = await fetch("/api/flow/broker/defaults", {
+      const res = await apiFetch("/api/flow/broker/defaults", {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",
-          "x-user-email": userEmail,
         },
         body: JSON.stringify({
           commission_rate: (parseFloat(form.commission_rate) || 3) / 100,

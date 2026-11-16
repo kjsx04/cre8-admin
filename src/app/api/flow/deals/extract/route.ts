@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import Anthropic from "@anthropic-ai/sdk";
 
 // System prompt — extracts deal data including dynamic date milestones + document type detection
@@ -48,6 +49,8 @@ Rules:
 
 // POST /api/flow/deals/extract — parse a PDF or DOCX file and extract deal fields via Claude
 export async function POST(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });

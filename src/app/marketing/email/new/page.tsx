@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { ListingItem } from "@/lib/admin-constants";
 import EmailComposer from "@/components/email/composer/EmailComposer";
@@ -15,7 +16,7 @@ export default function NewCampaignPage() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/listings");
+        const res = await apiFetch("/api/listings");
         if (res.ok) {
           const data = await res.json();
           setListings(data.items || []);

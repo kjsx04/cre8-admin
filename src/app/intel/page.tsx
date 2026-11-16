@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect, useCallback } from "react";
 import AppShell from "@/components/AppShell";
 
@@ -91,7 +92,7 @@ export default function IntelPage() {
     const counts: Record<string, number> = {};
     for (const tab of TABS) {
       try {
-        const res = await fetch(`/api/intel?status=${tab.status}&limit=200`);
+        const res = await apiFetch(`/api/intel?status=${tab.status}&limit=200`);
         const data = await res.json();
         counts[tab.status] = Array.isArray(data) ? data.length : 0;
       } catch {
@@ -106,7 +107,7 @@ export default function IntelPage() {
     setLoading(true);
     try {
       const status = TABS[activeTab].status;
-      const res = await fetch(`/api/intel?status=${status}`);
+      const res = await apiFetch(`/api/intel?status=${status}`);
       const data = await res.json();
       setBriefs(Array.isArray(data) ? data : []);
     } catch {
@@ -125,7 +126,7 @@ export default function IntelPage() {
   const handleApprove = async (id: string) => {
     setSaving(id);
     try {
-      await fetch("/api/intel", {
+      await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status: "live" }),
@@ -141,7 +142,7 @@ export default function IntelPage() {
   const handleDelete = async (id: string) => {
     setSaving(id);
     try {
-      await fetch("/api/intel", {
+      await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status: "deleted" }),
@@ -157,7 +158,7 @@ export default function IntelPage() {
   const handleRestore = async (id: string) => {
     setSaving(id);
     try {
-      await fetch("/api/intel", {
+      await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status: "pending" }),
@@ -173,7 +174,7 @@ export default function IntelPage() {
   const handleUnpublish = async (id: string) => {
     setSaving(id);
     try {
-      await fetch("/api/intel", {
+      await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, status: "pending", published_at: null }),
@@ -201,7 +202,7 @@ export default function IntelPage() {
   const saveEdits = async (id: string) => {
     setSaving(id);
     try {
-      const res = await fetch("/api/intel", {
+      const res = await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, ...editForm }),
@@ -218,7 +219,7 @@ export default function IntelPage() {
   const saveAndApprove = async (id: string) => {
     setSaving(id);
     try {
-      await fetch("/api/intel", {
+      await apiFetch("/api/intel", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -241,7 +242,7 @@ export default function IntelPage() {
     if (!pasteText.trim()) return;
     setProcessing(id);
     try {
-      const res = await fetch("/api/intel/process", {
+      const res = await apiFetch("/api/intel/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, text: pasteText }),
@@ -263,7 +264,7 @@ export default function IntelPage() {
     if (!manualText.trim()) return;
     setManualSubmitting(true);
     try {
-      const res = await fetch("/api/intel/process", {
+      const res = await apiFetch("/api/intel/process", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

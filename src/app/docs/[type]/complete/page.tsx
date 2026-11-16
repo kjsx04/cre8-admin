@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -894,7 +895,7 @@ export default function CompletePage() {
     if (!docType) return;
 
     try {
-      const res = await fetch("/api/docs/generate", {
+      const res = await apiFetch("/api/docs/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1091,7 +1092,7 @@ export default function CompletePage() {
         }
       }
 
-      const res = await fetch("/api/docs/generate", {
+      const res = await apiFetch("/api/docs/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

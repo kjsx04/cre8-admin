@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 /**
  * Actions on a campaign that is already on the calendar.
  *
@@ -12,7 +13,6 @@
  */
 
 import { useState } from "react";
-import { useMsal } from "@azure/msal-react";
 import { Campaign } from "@/lib/email/types";
 import { usesCurrentTemplate, canSyncTemplate, canRefreshListing } from "@/lib/email/template-version";
 import { formatScheduleDate } from "@/lib/email/utils";
@@ -28,8 +28,6 @@ interface ScheduledActionsProps {
 type Action = "template" | "listing" | "reschedule";
 
 export default function ScheduledActions({ campaign, onChanged }: ScheduledActionsProps) {
-  const { accounts } = useMsal();
-  const userEmail = accounts[0]?.username || "";
   const [busy, setBusy] = useState<Action | null>(null);
   const [note, setNote] = useState<string | null>(null);
 
@@ -49,9 +47,9 @@ export default function ScheduledActions({ campaign, onChanged }: ScheduledActio
     setBusy(action);
     setNote(null);
     try {
-      const res = await fetch(`/api/email/campaigns/${campaign.id}/${path}`, {
+      const res = await apiFetch(`/api/email/campaigns/${campaign.id}/${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `${path} failed`);

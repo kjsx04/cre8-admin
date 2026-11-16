@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import AppShell from "@/components/AppShell";
@@ -27,8 +28,8 @@ export default function EditListingPage() {
       try {
         // Fetch listing + all listings in parallel
         const [itemRes, allRes] = await Promise.all([
-          fetch(`/api/listings/${id}`),
-          fetch("/api/listings"),
+          apiFetch(`/api/listings/${id}`),
+          apiFetch("/api/listings"),
         ]);
 
         if (!itemRes.ok) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useMemo, useState } from "react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
@@ -28,7 +29,7 @@ export default function EmailPreview({ campaign, onClose }: EmailPreviewProps) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/email/preview", {
+        const res = await apiFetch("/api/email/preview", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(campaign),

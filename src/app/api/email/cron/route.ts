@@ -50,7 +50,6 @@ export async function GET(request: NextRequest) {
     }
 
     const results: { id: string; action: string }[] = [];
-    const baseUrl = new URL(request.url).origin;
 
     for (const campaign of campaigns || []) {
       try {
@@ -125,9 +124,7 @@ export async function GET(request: NextRequest) {
           .eq("id", campaign.id);
 
         // ── AI slot near the target → save → push to Resend ──
-        const { campaign: scheduled, sync } = await scheduleCampaign(
-          baseUrl,
-          { ...campaign, provider_send_id: null },
+        const { campaign: scheduled, sync } = await scheduleCampaign({ ...campaign, provider_send_id: null },
           target
         );
 
@@ -226,8 +223,8 @@ export async function GET(request: NextRequest) {
     const rebalance: unknown[] = [];
     try {
       const thisWeek = currentWeekStart();
-      rebalance.push(await optimizeWeek(baseUrl, thisWeek));
-      rebalance.push(await optimizeWeek(baseUrl, addDaysKey(thisWeek, 7)));
+      rebalance.push(await optimizeWeek(thisWeek));
+      rebalance.push(await optimizeWeek(addDaysKey(thisWeek, 7)));
     } catch (err) {
       console.error("[Cron] rebalance failed:", err);
       rebalance.push({ error: err instanceof Error ? err.message : "rebalance failed" });

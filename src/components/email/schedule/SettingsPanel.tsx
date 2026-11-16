@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
 
@@ -30,7 +31,7 @@ export default function SettingsPanel({ userEmail, onClose, onSaved }: SettingsP
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch("/api/email/settings", { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch("/api/email/settings");
         if (res.ok) setS(await res.json());
       } finally {
         setLoading(false);
@@ -42,9 +43,9 @@ export default function SettingsPanel({ userEmail, onClose, onSaved }: SettingsP
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch("/api/email/settings", {
+      const res = await apiFetch("/api/email/settings", {
         method: "PUT",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify(s),
       });
       const data = await res.json().catch(() => ({}));

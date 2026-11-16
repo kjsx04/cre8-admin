@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { buildTemplateVars, renderEmailHtml } from "@/lib/email/constants";
 import { hydrateCampaignListing, listingStaysLive } from "@/lib/email/listing-hydrate";
 import { previewMergeTags } from "@/lib/email/merge-tags";
@@ -6,6 +7,8 @@ import { previewMergeTags } from "@/lib/email/merge-tags";
 // POST /api/email/preview — render email HTML for the preview modal.
 // Drafts overlay live CMS listing fields. Scheduled+ uses the frozen snapshot.
 export async function POST(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
   try {
     const body = await request.json();
 

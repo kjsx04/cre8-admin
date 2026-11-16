@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -425,7 +426,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     if (!isEditMode || !item?.id) return;
     (async () => {
       try {
-        const res = await fetch(`/api/listings/checklists/${item.id}`);
+        const res = await apiFetch(`/api/listings/checklists/${item.id}`);
         if (!res.ok) return;
         const data = await res.json();
         if (data.checklist) {
@@ -459,11 +460,10 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
       }
     ): Promise<ListingChecklist | null> => {
       try {
-        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+        const res = await apiFetch(`/api/listings/checklists/${listingId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": userEmail,
           },
           body: JSON.stringify(patch),
         });
@@ -513,11 +513,10 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     async (listingId: string, isNewFlag: boolean) => {
       const current = checklistRef.current;
       try {
-        const res = await fetch("/api/listings/checklists", {
+        const res = await apiFetch("/api/listings/checklists", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": userEmail,
           },
           body: JSON.stringify({
             listing_id: listingId,
@@ -755,7 +754,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     try {
       if (!draftId) {
         // First save — POST to create
-        const res = await fetch("/api/listings/create", {
+        const res = await apiFetch("/api/listings/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fieldData: payload }),
@@ -785,7 +784,7 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         }
       } else {
         // Subsequent save — PATCH
-        const res = await fetch(`/api/listings/${draftId}`, {
+        const res = await apiFetch(`/api/listings/${draftId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ fieldData: payload }),
@@ -898,11 +897,10 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     try {
       // Stop any active email campaigns for this listing
       try {
-        await fetch("/api/email/mark-sold", {
+        await apiFetch("/api/email/mark-sold", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": userEmail,
           },
           body: JSON.stringify({ listing_id: draftId }),
         });
@@ -912,16 +910,15 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
 
       // Remove the checklist row (if any)
       try {
-        await fetch(`/api/listings/checklists/${draftId}`, {
+        await apiFetch(`/api/listings/checklists/${draftId}`, {
           method: "DELETE",
-          headers: { "x-user-email": userEmail },
         });
       } catch {
         // Non-critical — continue with delete
       }
 
       // Delete from Webflow CMS
-      const res = await fetch(`/api/listings/${draftId}`, { method: "DELETE" });
+      const res = await apiFetch(`/api/listings/${draftId}`, { method: "DELETE" });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(`Delete failed: ${res.status} — ${text}`);

@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 /**
  * Audience — multi-select live Resend segments + optional extra contact emails.
  */
@@ -104,8 +105,7 @@ export default function AudiencePicker({
       setSearching(true);
       setSearchError(null);
       try {
-        const res = await fetch(`/api/email/contacts?q=${encodeURIComponent(q)}`, {
-          headers: { "x-user-email": userEmail },
+        const res = await apiFetch(`/api/email/contacts?q=${encodeURIComponent(q)}`, {
         });
         const body = await res.json().catch(() => ({}));
         if (!alive) return;

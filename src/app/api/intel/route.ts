@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
 
 /**
@@ -13,6 +14,8 @@ import { supabase } from "@/lib/flow/supabase";
 
 /* GET /api/intel?status=pending&category=data-center */
 export async function GET(req: NextRequest) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
   const category = searchParams.get("category");
@@ -36,13 +39,65 @@ export async function GET(req: NextRequest) {
   return NextResponse.json(data);
 }
 
+/**
+ * Columns a caller is allowed to set.
+ *
+ * This route used to do `const { id, ...updates } = body` and hand `updates`
+ * straight to `.update()`, so any column on the row was writable — `slug`,
+ * `relevance_score`, `original_text`, `was_edited`, `published_at`. Combined
+ * with the fact that this endpoint had no auth at all, that was a public write
+ * to the one table whose contents are published.
+ *
+ * `was_edited` is deliberately NOT here: the server derives it below, and it
+ * decides which briefs become few-shot style examples for the AI.
+ */
+const EDITABLE_FIELDS = [
+  "title",
+  "summary",
+  "impact",
+  "category",
+  "tags",
+  "status",
+  "published_at",
+] as const;
+
+/** Enum values the database will accept — reject early with a clear message. */
+const VALID_STATUS = ["pending", "live", "deleted", "needs_text"];
+const VALID_CATEGORY = ["data-center", "retail", "land", "market", "infrastructure"];
+
 /* PATCH /api/intel — update a brief (approve, edit, soft-delete) */
 export async function PATCH(req: NextRequest) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
   const body = await req.json();
-  const { id, ...updates } = body;
+  const { id } = body;
 
   if (!id) {
     return NextResponse.json({ error: "id required" }, { status: 400 });
+  }
+
+  // Copy across only the fields a caller may set, rather than spreading the
+  // whole body.
+  const updates: Record<string, unknown> = {};
+  for (const field of EDITABLE_FIELDS) {
+    if (body[field] !== undefined) updates[field] = body[field];
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return NextResponse.json({ error: "No editable fields in request" }, { status: 400 });
+  }
+
+  if (updates.status !== undefined && !VALID_STATUS.includes(updates.status as string)) {
+    return NextResponse.json(
+      { error: `status must be one of: ${VALID_STATUS.join(", ")}` },
+      { status: 400 }
+    );
+  }
+  if (updates.category !== undefined && !VALID_CATEGORY.includes(updates.category as string)) {
+    return NextResponse.json(
+      { error: `category must be one of: ${VALID_CATEGORY.join(", ")}` },
+      { status: 400 }
+    );
   }
 
   /* If approving (status → live), set published_at */

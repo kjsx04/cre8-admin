@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { Campaign, CampaignFormData } from "@/lib/email/types";
@@ -63,11 +64,10 @@ export default function TestSendControl({ campaign, disabled = false }: TestSend
     setError(null);
     setSent(false);
     try {
-      const res = await fetch("/api/email/send-test", {
+      const res = await apiFetch("/api/email/send-test", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-user-email": userEmail || emails[0],
         },
         body: JSON.stringify({ campaign, recipientEmails: emails }),
       });

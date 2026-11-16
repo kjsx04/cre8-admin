@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -51,7 +52,7 @@ export default function CampaignDetail({ campaign, onDelete, onPause, onClose }:
     if (!userEmail) return;
     (async () => {
       try {
-        const res = await fetch(`/api/email/campaigns/${campaign.id}/stats`, { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch(`/api/email/campaigns/${campaign.id}/stats`);
         if (res.ok) setStats(await res.json());
       } catch {
         /* quiet */

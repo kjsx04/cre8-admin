@@ -17,8 +17,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const baseUrl = new URL(request.url).origin;
-    const result = await optimizeWeek(baseUrl, weekStart);
+    const result = await optimizeWeek(weekStart);
     return NextResponse.json(result);
   } catch (err) {
     console.error("[optimize-week] failed:", err);

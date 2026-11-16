@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -49,7 +50,7 @@ function Analyze() {
         const qs = new URLSearchParams();
         if (scope) qs.set("campaign", scope);
         if (force) qs.set("refresh", "1");
-        const res = await fetch(`/api/email/analytics?${qs}`, { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch(`/api/email/analytics?${qs}`);
         const body = await res.json();
         if (!res.ok) throw new Error(body.error || "Failed to load analytics");
         setData(body.data as AnalyticsSummary);

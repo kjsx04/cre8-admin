@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import OpenAI from "openai";
 import { supabase } from "@/lib/flow/supabase";
 
@@ -77,6 +78,8 @@ async function getFewShotExamples(): Promise<string> {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
   try {
     const body = await req.json();
     const { id, headline, text, source_name, source_url, source_date } = body;

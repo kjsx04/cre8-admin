@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -82,7 +83,7 @@ function EmailSchedule() {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      const res = await fetch("/api/email/campaigns");
+      const res = await apiFetch("/api/email/campaigns");
       if (!res.ok) throw new Error("Failed to load campaigns");
       const data = await res.json();
       setCampaigns(data.campaigns || []);
@@ -102,7 +103,7 @@ function EmailSchedule() {
     if (!userEmail) return;
     (async () => {
       try {
-        const res = await fetch("/api/email/settings", { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch("/api/email/settings");
         if (res.ok) setSettings(await res.json());
       } catch {
         /* defaults stay */
@@ -196,9 +197,9 @@ function EmailSchedule() {
       setPlacing(true);
       setPlaceError(null);
       try {
-        const res = await fetch(`/api/email/campaigns/${placeId}/place`, {
+        const res = await apiFetch(`/api/email/campaigns/${placeId}/place`, {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+          headers: { "Content-Type": "application/json"},
           body: JSON.stringify(body),
         });
         const data = await res.json().catch(() => ({}));
@@ -230,9 +231,9 @@ function EmailSchedule() {
     if (!placeId || !placeResult) return;
     setPlacing(true);
     try {
-      const res = await fetch(`/api/email/campaigns/${placeId}/place/undo`, {
+      const res = await apiFetch(`/api/email/campaigns/${placeId}/place/undo`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ undo_token: placeResult.undoToken }),
       });
       const data = await res.json().catch(() => ({}));
@@ -249,7 +250,7 @@ function EmailSchedule() {
   // How high Custom can go — listings already on the schedule, plus this one
   useEffect(() => {
     if (!placeId || !userEmail) return;
-    fetch("/api/email/priorities", { headers: { "x-user-email": userEmail } })
+    apiFetch("/api/email/priorities")
       .then((r) => (r.ok ? r.json() : { listings: [] }))
       .then((d) => setRankMax(Math.max(1, (d.listings || []).length + 1)))
       .catch(() => {});
@@ -262,9 +263,8 @@ function EmailSchedule() {
   // ── Handlers (unchanged) ──
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`/api/email/campaigns/${id}`, {
+      const res = await apiFetch(`/api/email/campaigns/${id}`, {
         method: "DELETE",
-        headers: { "x-user-email": userEmail },
       });
       if (!res.ok) throw new Error("Failed to delete campaign");
       setSelectedCampaign(null);
@@ -276,9 +276,8 @@ function EmailSchedule() {
 
   const handlePause = async (id: string) => {
     try {
-      const res = await fetch(`/api/email/campaigns/${id}/pause`, {
+      const res = await apiFetch(`/api/email/campaigns/${id}/pause`, {
         method: "POST",
-        headers: { "x-user-email": userEmail },
       });
       if (!res.ok) throw new Error("Failed to pause campaign");
       await fetchCampaigns();
@@ -296,9 +295,8 @@ function EmailSchedule() {
     setSyncingAll(true);
     setSyncAllNote(null);
     try {
-      const res = await fetch("/api/email/campaigns/sync-templates", {
+      const res = await apiFetch("/api/email/campaigns/sync-templates", {
         method: "POST",
-        headers: { "x-user-email": userEmail },
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to sync templates");
@@ -333,9 +331,9 @@ function EmailSchedule() {
       // Monday inside each displayed Sun–Sat row rather than the Sunday itself.
       let n = 0;
       for (let offset = 1; offset < PLANNER_DAYS; offset += 7) {
-        const res = await fetch("/api/email/campaigns/optimize-week", {
+        const res = await apiFetch("/api/email/campaigns/optimize-week", {
           method: "POST",
-          headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+          headers: { "Content-Type": "application/json"},
           body: JSON.stringify({ week_start: addDays(weekStart, offset) }),
         });
         const data = await res.json().catch(() => ({}));

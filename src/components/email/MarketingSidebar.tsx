@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -28,7 +29,7 @@ export default function MarketingSidebar() {
     let cancelled = false;
     const load = async () => {
       try {
-        const res = await fetch("/api/email/alerts", { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch("/api/email/alerts");
         if (res.ok && !cancelled) setAlertCount(((await res.json()).alerts || []).length);
       } catch {
         /* quiet */

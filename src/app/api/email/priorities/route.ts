@@ -65,9 +65,8 @@ export async function PUT(request: NextRequest) {
 
     let rebalance: unknown[] = [];
     if (body.optimize) {
-      const baseUrl = new URL(request.url).origin;
       const thisWeek = currentWeekStart();
-      rebalance = [await optimizeWeek(baseUrl, thisWeek), await optimizeWeek(baseUrl, addDays(thisWeek, 7))];
+      rebalance = [await optimizeWeek(thisWeek), await optimizeWeek(addDays(thisWeek, 7))];
     }
 
     return NextResponse.json({ ranks, rebalance });

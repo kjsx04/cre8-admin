@@ -107,7 +107,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       await placeForCampaign(prepared).catch((err) => {
         console.error("[place] rank placement failed:", err);
       });
-      const result = await scheduleCampaign(new URL(request.url).origin, prepared);
+      const result = await scheduleCampaign(prepared);
       if (!result.campaign) throw new Error("The AI couldn't find a slot. Try again or use Test.");
       placed = result.campaign;
     }

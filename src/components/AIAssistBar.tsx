@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useRef } from "react";
 
 interface AIAssistBarProps {
@@ -62,7 +63,7 @@ export default function AIAssistBar({
     startStatusCycle();
 
     try {
-      const res = await fetch("/api/docs/extract", {
+      const res = await apiFetch("/api/docs/extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

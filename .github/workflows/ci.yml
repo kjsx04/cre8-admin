@@ -1,0 +1,49 @@
+# Continuous integration for cre8-admin.
+#
+# Why this exists: before this workflow, `next build` on Vercel was the only
+# thing that ever typechecked this repo, and the 22 test files in src/ had
+# never been executed by anything. A broken type or a broken helper reached
+# production before anyone saw it.
+#
+# This runs on every push and pull request. It does NOT run `next build` —
+# the Vercel deployment already does that, and running it here would just
+# double the build minutes.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json pins, which is what
+      # we want in CI (npm install could silently resolve a newer version).
+      - name: Install dependencies
+        run: npm ci
+
+      # Typecheck first: if the types are wrong, the test results don't mean
+      # much, and this is the fastest of the three checks.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      # Lint last because it is the only one of the three that is advisory
+      # rather than a correctness signal.
+      - name: Lint
+        run: npm run lint

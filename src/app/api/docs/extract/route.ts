@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import Anthropic from "@anthropic-ai/sdk";
 import { getVariableMap } from "@/lib/constants";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
@@ -8,6 +9,8 @@ const anthropic = new Anthropic({
 });
 
 export async function POST(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
   try {
     const body = await request.json();
     const { docType, rawInput, cmsContext } = body;
