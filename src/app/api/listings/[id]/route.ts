@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { workerWriteHeaders } from "@/lib/worker-auth";
+import { requireUser } from "@/lib/email/auth";
 import { API_BASE } from "@/lib/admin-constants";
 import { syncCampaignsForListing } from "@/lib/email/listing-sync";
 
@@ -9,9 +11,12 @@ import { syncCampaignsForListing } from "@/lib/email/listing-sync";
  * The Worker doesn't support single-item GET, so we fetch all and filter.
  */
 export async function GET(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
+
   try {
     const res = await fetch(`${API_BASE}/listings`, {
       headers: { "Content-Type": "application/json" },
@@ -56,12 +61,14 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
   try {
     const body = await req.json();
 
     const res = await fetch(`${API_BASE}/listings/${params.id}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...workerWriteHeaders() },
       body: JSON.stringify(body),
     });
 
@@ -102,13 +109,18 @@ export async function PATCH(
  * Deletes a listing from the Webflow CMS via the Cloudflare Worker proxy.
  */
 export async function DELETE(
-  _req: NextRequest,
+  req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // This removes the item from the live Webflow CMS. It was reachable
+  // unauthenticated until the middleware landed.
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
+
   try {
     const res = await fetch(`${API_BASE}/listings/${params.id}`, {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...workerWriteHeaders() },
     });
 
     if (!res.ok) {

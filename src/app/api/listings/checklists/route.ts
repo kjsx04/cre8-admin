@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
 import { CHECKLIST_KEYS, EMPTY_ITEMS } from "@/lib/checklist/constants";
 
@@ -50,13 +51,8 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    const email = request.headers.get("x-user-email");
-    if (!email) {
-      return NextResponse.json(
-        { error: "Missing x-user-email header" },
-        { status: 401 }
-      );
-    }
+    const auth = requireUser(request);
+    if (auth.response) return auth.response;
 
     const body = await request.json();
     const listingId = String(body.listing_id || "").trim();

@@ -1,7 +1,11 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 
 // GET /api/flow/listings — proxy to Cloudflare Worker to fetch CRE8 listings from Webflow CMS
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
   try {
     const res = await fetch("https://cre8-api-proxy.kjsx04.workers.dev/listings", {
       headers: { Accept: "application/json" },

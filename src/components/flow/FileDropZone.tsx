@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useRef, useCallback } from "react";
 import { ExtractedDealData } from "@/lib/flow/types";
 
@@ -57,7 +58,7 @@ export default function FileDropZone({ onExtracted, onFileReady, compact }: File
         );
 
         // Send to extract API (flow-scoped route)
-        const res = await fetch("/api/flow/deals/extract", {
+        const res = await apiFetch("/api/flow/deals/extract", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ filename: file.name, data: base64 }),

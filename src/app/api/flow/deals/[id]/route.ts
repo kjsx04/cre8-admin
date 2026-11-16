@@ -1,11 +1,69 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
+import { escapeLikePattern } from "@/lib/sql-escape";
+
+/**
+ * Authorization for a single deal.
+ *
+ * Being signed in is not enough here. These handlers take a deal id straight
+ * from the URL, so without this check any authenticated person could read
+ * another broker's commission splits, edit their deal, or DELETE it outright.
+ *
+ * Membership is already the model the list endpoint uses — GET /api/flow/deals
+ * filters on `deal_members!inner` by broker_id — so this just applies the same
+ * rule to the by-id routes. All 31 existing deals have members, so nothing that
+ * was previously visible becomes unreachable.
+ *
+ * Returns null when the caller may proceed, or the response to return.
+ *
+ * `ilike` with an escaped pattern, not `eq`: broker emails are stored with
+ * inconsistent capitalisation (`Andy@CRE8Advisors.com` beside
+ * `Chad@cre8advisors.com`), so the match has to be case-insensitive.
+ */
+async function requireDealMember(
+  dealId: string,
+  email: string
+): Promise<NextResponse | null> {
+  const { data: broker } = await supabase
+    .from("brokers")
+    .select("id")
+    .ilike("email", escapeLikePattern(email))
+    .maybeSingle();
+
+  if (!broker) {
+    return NextResponse.json(
+      { error: "Not a broker on this account" },
+      { status: 403 }
+    );
+  }
+
+  const { data: membership } = await supabase
+    .from("deal_members")
+    .select("deal_id")
+    .eq("deal_id", dealId)
+    .eq("broker_id", broker.id)
+    .maybeSingle();
+
+  if (!membership) {
+    // 404 rather than 403: a broker who isn't on a deal shouldn't be able to
+    // learn that the deal exists.
+    return NextResponse.json({ error: "Deal not found" }, { status: 404 });
+  }
+
+  return null;
+}
 
 // GET /api/flow/deals/[id] — fetch a single deal with deal_dates + deal_members (with broker names)
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
+  const denied = await requireDealMember(params.id, auth.email);
+  if (denied) return denied;
   const { data: deal, error } = await supabase
     .from("deals")
     .select("*, deal_dates(*), lease_payments(*)")
@@ -48,6 +106,11 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
+  const denied = await requireDealMember(params.id, auth.email);
+  if (denied) return denied;
   const body = await request.json();
 
   // Build update object — only include fields that are present in the body
@@ -247,6 +310,11 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
+  const denied = await requireDealMember(params.id, auth.email);
+  if (denied) return denied;
   const { error } = await supabase
     .from("deals")
     .delete()

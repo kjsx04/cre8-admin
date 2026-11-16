@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -60,8 +61,8 @@ export default function DashboardPage() {
     setError(null);
     try {
       const [listRes, clRes] = await Promise.all([
-        fetch("/api/listings"),
-        fetch("/api/listings/checklists?new=true"),
+        apiFetch("/api/listings"),
+        apiFetch("/api/listings/checklists?new=true"),
       ]);
       if (!listRes.ok) throw new Error(`API ${listRes.status}`);
       const data = await listRes.json();
@@ -147,11 +148,10 @@ export default function DashboardPage() {
       );
 
       try {
-        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+        const res = await apiFetch(`/api/listings/checklists/${listingId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
           },
           body: JSON.stringify({ items: { [key]: value } }),
         });
@@ -186,11 +186,10 @@ export default function DashboardPage() {
       setChecklists((cur) => cur.filter((c) => c.listing_id !== listingId));
 
       try {
-        const res = await fetch(`/api/listings/checklists/${listingId}`, {
+        const res = await apiFetch(`/api/listings/checklists/${listingId}`, {
           method: "PATCH",
           headers: {
             "Content-Type": "application/json",
-            "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
           },
           body: JSON.stringify({ is_new: false }),
         });

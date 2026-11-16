@@ -29,8 +29,7 @@ export async function POST(
 
   // Re-trigger AI scheduling to pick the next optimal slot + push to Resend
   try {
-    const baseUrl = new URL(request.url).origin;
-    const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
+    const { campaign: scheduled, sync } = await scheduleCampaign(campaign);
 
     if (scheduled) {
       return NextResponse.json({

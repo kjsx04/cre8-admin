@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
 import { CHECKLIST_KEYS } from "@/lib/checklist/constants";
 
@@ -49,13 +50,8 @@ export async function PATCH(
   { params }: { params: { listingId: string } }
 ) {
   try {
-    const email = request.headers.get("x-user-email");
-    if (!email) {
-      return NextResponse.json(
-        { error: "Missing x-user-email header" },
-        { status: 401 }
-      );
-    }
+    const auth = requireUser(request);
+    if (auth.response) return auth.response;
 
     const body = await request.json();
 
@@ -151,13 +147,8 @@ export async function DELETE(
   { params }: { params: { listingId: string } }
 ) {
   try {
-    const email = request.headers.get("x-user-email");
-    if (!email) {
-      return NextResponse.json(
-        { error: "Missing x-user-email header" },
-        { status: 401 }
-      );
-    }
+    const auth = requireUser(request);
+    if (auth.response) return auth.response;
 
     const { error } = await supabase
       .from("listing_checklists")

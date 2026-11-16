@@ -39,8 +39,7 @@ export async function POST(
   }
 
   try {
-    const baseUrl = new URL(request.url).origin;
-    const { campaign: scheduled, sync } = await scheduleCampaign(baseUrl, campaign);
+    const { campaign: scheduled, sync } = await scheduleCampaign(campaign);
     if (!scheduled) {
       return NextResponse.json({ error: "The scheduler didn't return a slot" }, { status: 502 });
     }

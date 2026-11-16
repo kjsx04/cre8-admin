@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
+import { escapeLikePattern } from "@/lib/sql-escape";
 
 // GET /api/flow/broker/defaults — fetch broker's default commission settings
 export async function GET(request: NextRequest) {
-  const email = request.headers.get("x-user-email");
-  if (!email) {
-    return NextResponse.json({ error: "Missing x-user-email header" }, { status: 401 });
-  }
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  const email = auth.email;
 
   // Look up broker by email
   const { data: broker, error } = await supabase
     .from("brokers")
     .select("default_commission_rate, default_broker_split, default_additional_splits")
-    .ilike("email", email)
+    .ilike("email", escapeLikePattern(email))
     .single();
 
   if (error || !broker) {
@@ -28,10 +29,9 @@ export async function GET(request: NextRequest) {
 
 // PATCH /api/flow/broker/defaults — update broker's default commission settings
 export async function PATCH(request: NextRequest) {
-  const email = request.headers.get("x-user-email");
-  if (!email) {
-    return NextResponse.json({ error: "Missing x-user-email header" }, { status: 401 });
-  }
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  const email = auth.email;
 
   const body = await request.json();
 
@@ -50,7 +50,7 @@ export async function PATCH(request: NextRequest) {
   const { data: broker, error } = await supabase
     .from("brokers")
     .update(updates)
-    .ilike("email", email)
+    .ilike("email", escapeLikePattern(email))
     .select("default_commission_rate, default_broker_split, default_additional_splits")
     .single();
 

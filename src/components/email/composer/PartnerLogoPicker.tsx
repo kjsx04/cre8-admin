@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useRef, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { FieldProps } from "./fieldProps";
@@ -85,8 +86,7 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
     setError(null);
     setFetching(true);
     try {
-      const res = await fetch(`/api/email/assets/fetch?url=${encodeURIComponent(url)}`, {
-        headers: { "x-user-email": userEmail },
+      const res = await apiFetch(`/api/email/assets/fetch?url=${encodeURIComponent(url)}`, {
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -154,9 +154,8 @@ export default function PartnerLogoPicker({ url, onPreview, onApply, onRemove, f
       if (blob.size > 2 * 1024 * 1024) throw new Error("Processed logo is over 2 MB — try a smaller image");
       const form = new FormData();
       form.append("file", blob, "logo.png");
-      const res = await fetch("/api/email/assets", {
+      const res = await apiFetch("/api/email/assets", {
         method: "POST",
-        headers: { "x-user-email": userEmail },
         body: form,
       });
       const data = await res.json().catch(() => ({}));

@@ -1,18 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import { supabase } from "@/lib/flow/supabase";
+import { escapeLikePattern } from "@/lib/sql-escape";
 
 // GET /api/flow/deals — fetch all deals for a broker (by email), with deal_dates + deal_members joined + broker defaults
 export async function GET(request: NextRequest) {
-  const email = request.headers.get("x-user-email");
-  if (!email) {
-    return NextResponse.json({ error: "Missing x-user-email header" }, { status: 401 });
-  }
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  const email = auth.email;
 
   // Look up broker by email (include defaults)
   const { data: broker, error: brokerErr } = await supabase
     .from("brokers")
     .select("id, default_commission_rate, default_broker_split, default_additional_splits")
-    .ilike("email", email)
+    .ilike("email", escapeLikePattern(email))
     .single();
 
   if (brokerErr || !broker) {
@@ -90,16 +91,15 @@ export async function GET(request: NextRequest) {
 
 // POST /api/flow/deals — create a new deal with deal_dates
 export async function POST(request: NextRequest) {
-  const email = request.headers.get("x-user-email");
-  if (!email) {
-    return NextResponse.json({ error: "Missing x-user-email header" }, { status: 401 });
-  }
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  const email = auth.email;
 
   // Look up broker by email
   const { data: broker, error: brokerErr } = await supabase
     .from("brokers")
     .select("id")
-    .ilike("email", email)
+    .ilike("email", escapeLikePattern(email))
     .single();
 
   if (brokerErr || !broker) {

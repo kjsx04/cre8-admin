@@ -9,6 +9,7 @@
  */
 
 import { Campaign, CampaignFormData } from "./types";
+import { apiFetch } from "@/lib/api-fetch";
 
 async function postCampaign(
   data: CampaignFormData,
@@ -18,12 +19,10 @@ async function postCampaign(
 ): Promise<Campaign> {
   const url = editId ? `/api/email/campaigns/${editId}` : "/api/email/campaigns";
 
-  const res = await fetch(url, {
+  // apiFetch attaches the signed-in user's ID token; the server reads identity
+  // from the verified token, so `userEmail` is no longer sent as a header.
+  const res = await apiFetch(url, {
     method: editId ? "PATCH" : "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-user-email": userEmail,
-    },
     body: JSON.stringify({ ...data, auto_schedule: autoSchedule }),
   });
 

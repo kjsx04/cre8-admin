@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 /**
  * Audience sizes — client side.
  *
@@ -24,9 +25,9 @@ let sharedFor = ""; // the user email the shared promise was made with
 async function fetchAudience(userEmail: string, refresh = false): Promise<AudienceLoad> {
   // v=4 busts browsers that cached Brokers=0 next to live Buyers/Sellers
   const qs = refresh ? "?refresh=1&v=4" : "?v=4";
-  const res = await fetch(`/api/email/audience${qs}`, {
+  const res = await apiFetch(`/api/email/audience${qs}`, {
     cache: "no-store",
-    headers: { "x-user-email": userEmail, "Cache-Control": "no-cache", Pragma: "no-cache" },
+    headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
   });
   if (!res.ok) throw new Error(`audience ${res.status}`);
   const body = (await res.json()) as { data?: AudienceCount[]; overlaps?: AudienceOverlap[] };

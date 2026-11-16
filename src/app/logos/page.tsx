@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMsal } from "@azure/msal-react";
 import { Copy, Download, Funnel, ImageOff, Plus, Search } from "lucide-react";
@@ -53,8 +54,7 @@ export default function LogosPage() {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/logos", {
-        headers: { "x-user-email": userEmail },
+      const res = await apiFetch("/api/logos", {
         cache: "no-store",
       });
       const data = await res.json().catch(() => null);

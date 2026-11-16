@@ -1,0 +1,67 @@
+# Continuous integration for cre8-admin.
+#
+# Why this exists: before this workflow, `next build` on Vercel was the only
+# thing that ever typechecked this repo, and the 22 test files in src/ had
+# never been executed by anything. A broken type or a broken helper reached
+# production before anyone saw it.
+#
+# This runs on every push and pull request. It does NOT run `next build` —
+# the Vercel deployment already does that, and running it here would just
+# double the build minutes.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # `npm ci` installs exactly what package-lock.json pins, which is what
+      # we want in CI (npm install could silently resolve a newer version).
+      - name: Install dependencies
+        run: npm ci
+
+      # next-env.d.ts carries the type augmentations Next.js adds — the `next`
+      # key on fetch's RequestInit (for revalidate) and styled-jsx's `jsx`
+      # attribute on <style>. Next generates it on `next dev` / `next build`
+      # and it is gitignored, so a clean checkout does not have it and
+      # `tsc --noEmit` fails on code that typechecks fine locally.
+      #
+      # Writing it here rather than running `next build` first: the content is
+      # fixed and the build is Vercel's job, not CI's.
+      - name: Generate Next.js type references
+        run: |
+          cat > next-env.d.ts <<'EOF'
+          /// <reference types="next" />
+          /// <reference types="next/image-types/global" />
+
+          // NOTE: This file should not be edited
+          // see https://nextjs.org/docs/app/building-your-application/configuring/typescript for more information.
+          EOF
+
+      # Typecheck first: if the types are wrong, the test results don't mean
+      # much, and this is the fastest of the three checks.
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Tests
+        run: npm test
+
+      # Lint last because it is the only one of the three that is advisory
+      # rather than a correctness signal.
+      - name: Lint
+        run: npm run lint

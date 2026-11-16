@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { requireUser } from "@/lib/email/auth";
 import Docxtemplater from "docxtemplater";
 import PizZip from "pizzip";
 import fs from "fs";
@@ -47,6 +48,8 @@ function cleanSplitTokens(xml: string): string {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
   try {
     const body = await request.json();
     const { docType, variables, clauses } = body;

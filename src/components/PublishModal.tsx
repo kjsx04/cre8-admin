@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useMsal } from "@azure/msal-react";
 import SparkMD5 from "spark-md5";
@@ -85,7 +86,7 @@ async function uploadAsset(
 ): Promise<{ id: string; hostedUrl: string }> {
   const hash = await md5Hash(blob);
 
-  const metaRes = await fetch("/api/assets/upload", {
+  const metaRes = await apiFetch("/api/assets/upload", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fileName, fileHash: hash, parentFolder: folderId }),
@@ -221,7 +222,7 @@ export default function PublishModal({
 
       if (hasNewFiles) {
         updateStep(0, "active");
-        const folderRes = await fetch("/api/assets/folder", {
+        const folderRes = await apiFetch("/api/assets/folder", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ name: slug }),
@@ -356,9 +357,11 @@ export default function PublishModal({
       if (urls.sitePlan) fullFieldData["site-plan-2"] = urls.sitePlan;
 
       let cmsItemId = itemId;
+      // Webflow's response — used below to confirm it kept every image we sent
+      let savedItem: { fieldData?: Record<string, unknown> } | null = null;
 
       if (itemId) {
-        const res = await fetch(`/api/listings/${itemId}`, {
+        const res = await apiFetch(`/api/listings/${itemId}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -368,8 +371,9 @@ export default function PublishModal({
           }),
         });
         if (!res.ok) throw new Error(`CMS update failed: ${res.status}`);
+        savedItem = await res.json().catch(() => null);
       } else {
-        const res = await fetch("/api/listings/create", {
+        const res = await apiFetch("/api/listings/create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -381,9 +385,37 @@ export default function PublishModal({
         if (!res.ok) throw new Error(`CMS create failed: ${res.status}`);
         const data = await res.json();
         cmsItemId = data.id;
+        savedItem = data;
       }
 
-      updateStep(6, "done");
+      /* ---- Confirm Webflow actually kept the images ----
+         Webflow silently drops CMS images it won't accept (anything over
+         4MB, or an asset it can't resolve) — it returns 200 with the image
+         simply missing. That's how a listing can report "published" while
+         still showing the old package. Compare what came back with what we
+         sent and flag the difference instead of letting it pass quietly. */
+      const savedGallery = Array.isArray(savedItem?.fieldData?.gallery)
+        ? (savedItem!.fieldData!.gallery as unknown[])
+        : [];
+      const savedFloorplan = savedItem?.fieldData?.floorplan;
+      const sentGallery = urls.gallery.length;
+      const droppedGallery = sentGallery - savedGallery.length;
+      const droppedMarketing = Boolean(urls.marketing) && !savedFloorplan;
+
+      if (savedItem && (droppedGallery > 0 || droppedMarketing)) {
+        const parts: string[] = [];
+        if (droppedGallery > 0) parts.push(`${droppedGallery} of ${sentGallery} images`);
+        if (droppedMarketing) parts.push("the marketing image");
+        updateStep(6, "warn", `Webflow rejected ${parts.join(" and ")} — likely over 4MB`);
+        console.warn(
+          "[PublishModal] Webflow dropped images. Sent:",
+          urls.gallery,
+          "Kept:",
+          savedGallery
+        );
+      } else {
+        updateStep(6, "done");
+      }
 
       if (abortRef.current || !cmsItemId) {
         // Skip remaining steps so they don't stay "waiting"
@@ -395,7 +427,7 @@ export default function PublishModal({
 
       /* ---- STEP 7: Publish ---- */
       updateStep(7, "active");
-      const pubRes = await fetch("/api/listings/publish", {
+      const pubRes = await apiFetch("/api/listings/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemIds: [cmsItemId] }),
@@ -419,11 +451,10 @@ export default function PublishModal({
               CMS item itself before a checklist row ever existed. ---- */
       if (checklistIsNew) {
         try {
-          await fetch("/api/listings/checklists", {
+          await apiFetch("/api/listings/checklists", {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              "x-user-email": accounts[0]?.username || "admin@cre8advisors.com",
             },
             body: JSON.stringify({
               listing_id: cmsItemId,
@@ -523,13 +554,11 @@ export default function PublishModal({
           updateStep(9, "active", "Stopping campaigns");
 
           // Stop active email campaigns for this listing
-          const userEmail = accounts[0]?.username || "admin@cre8advisors.com";
           try {
-            await fetch("/api/email/mark-sold", {
+            await apiFetch("/api/email/mark-sold", {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "x-user-email": userEmail,
               },
               body: JSON.stringify({ listing_id: cmsItemId }),
             });

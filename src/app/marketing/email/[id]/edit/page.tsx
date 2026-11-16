@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -31,8 +32,8 @@ export default function EditCampaignPage() {
     (async () => {
       try {
         const [campRes, listRes] = await Promise.all([
-          fetch(`/api/email/campaigns/${id}`),
-          fetch("/api/listings").catch(() => null),
+          apiFetch(`/api/email/campaigns/${id}`),
+          apiFetch("/api/listings").catch(() => null),
         ]);
 
         if (!campRes.ok) {

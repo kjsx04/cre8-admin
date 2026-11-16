@@ -149,8 +149,7 @@ export async function PATCH(
   try {
     if (campaign.status === "draft" && body.auto_schedule) {
       // Never scheduled yet — treat this like a create
-      const baseUrl = new URL(request.url).origin;
-      const result = await scheduleCampaign(baseUrl, campaign);
+      const result = await scheduleCampaign(campaign);
       if (result.campaign) campaign = result.campaign;
       providerSync = result.sync;
     } else if (campaign.status === "scheduled" || campaign.status === "active") {
@@ -168,10 +167,9 @@ export async function PATCH(
     // Top / Custom re-ranked the list → AI rebalances this week + next around the new order
     if (rebalance && (campaign.status === "scheduled" || campaign.status === "active")) {
       try {
-        const baseUrl = new URL(request.url).origin;
         const thisWeek = currentWeekStart();
-        await optimizeWeek(baseUrl, thisWeek);
-        await optimizeWeek(baseUrl, addDays(thisWeek, 7));
+        await optimizeWeek(thisWeek);
+        await optimizeWeek(addDays(thisWeek, 7));
       } catch (err) {
         console.error("[PATCH campaign] rebalance after placement failed:", err);
       }

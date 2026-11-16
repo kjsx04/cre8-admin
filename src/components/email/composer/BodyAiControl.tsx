@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { BodyLength } from "@/lib/email/listing-context";
 
@@ -12,7 +13,6 @@ const OPTIONS: { id: BodyLength; label: string }[] = [
 interface BodyAiControlProps {
   listingIds: string[];
   kind: "single" | "group";
-  userEmail: string;
   disabled?: boolean;
   onInsert: (text: string) => void;
   onUndo: () => void;
@@ -22,7 +22,6 @@ interface BodyAiControlProps {
 export default function BodyAiControl({
   listingIds,
   kind,
-  userEmail,
   disabled,
   onInsert,
   onUndo,
@@ -45,9 +44,9 @@ export default function BodyAiControl({
     setError(null);
     setOpen(false);
     try {
-      const res = await fetch("/api/email/body-draft", {
+      const res = await apiFetch("/api/email/body-draft", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ listingIds, length, kind }),
       });
       const body = await res.json().catch(() => ({}));

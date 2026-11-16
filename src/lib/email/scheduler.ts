@@ -19,6 +19,7 @@ import { EmailSettings, describeWindows, isAnnouncement, toMinutes } from "./set
 import { observedSendTimes } from "./stats";
 import { keyRangeToInstants, addDays, startOfWeekMonday, todayKey, PHOENIX_TZ } from "./schedule-dates";
 import { getRankMap } from "./priorities";
+import { pickSlot, optimizeSlots } from "./ai-scheduler";
 
 /** "2026-09-09 09:00 (Wed) MST" — the AI reasons in Phoenix time, so never hand it UTC */
 export function phoenixLabel(d: Date): string {
@@ -93,15 +94,18 @@ export type AiSlot = {
 };
 
 /**
- * Ask /api/email/schedule for the best send slot for this campaign.
- * Passes every other scheduled/active campaign so the AI can see the calendar.
+ * Ask the AI for the best send slot for this campaign.
+ * Passes every other scheduled/active campaign so it can see the calendar.
  *
- * @param baseUrl   Origin of the current request (e.g. https://admin.cre8advisors.com)
+ * This used to POST to /api/email/schedule over HTTP from inside a route
+ * handler — a serverless function calling itself. It now calls pickSlot()
+ * directly: one less invocation, and no publicly reachable endpoint that
+ * spends Anthropic tokens.
+ *
  * @param campaign  The campaign row being scheduled
  * @param targetDate  Optional ISO date the slot should land near (recurring next occurrence)
  */
 export async function requestAiSlot(
-  baseUrl: string,
   campaign: CampaignLike,
   targetDate?: string | null
 ): Promise<AiSlot | null> {
@@ -111,16 +115,17 @@ export async function requestAiSlot(
   const settings = await getSettings();
   const observed = await observedSendTimes();
 
-  const res = await fetch(`${baseUrl}/api/email/schedule`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      campaign_id: campaign.id,
-      email_label: campaign.email_label,
-      campaign_type: campaign.campaign_type,
-      listing_name: campaign.listing_name,
-      frequency: campaign.frequency,
-      priority: campaign.priority || "normal",
+  try {
+    const data = await pickSlot({
+      campaign_id: campaign.id as string,
+      email_label: campaign.email_label as string,
+      campaign_type: campaign.campaign_type as string,
+      listing_name: campaign.listing_name as string,
+      frequency: campaign.frequency as string | null,
+      // CampaignLike is Record<string, unknown>, so these need narrowing now
+      // that pickSlot() is typed (the old code passed them through
+      // JSON.stringify, which accepted anything).
+      priority: (campaign.priority as string) || "normal",
       // "fit" = take the best free slot, move nothing. "top"/"custom" = may shift lower-ranked sends.
       placement: campaign.priority === "high" ? "top" : campaign.priority === "custom" ? "custom" : "fit",
       rank: ranks.get(campaign.listing_id as string) ?? null,
@@ -129,22 +134,19 @@ export async function requestAiSlot(
       target_date: targetDate ? phoenixLabel(new Date(targetDate)) : null,
       rules: rulesText(settings) + (observed ? `\n${observed}` : ""),
       existing_campaigns: existing || [],
-    }),
-  });
+    });
 
-  if (!res.ok) {
-    console.error("[Scheduler] AI slot request failed:", res.status, await res.text());
+    return {
+      scheduledDate: slotToIso(data.new_campaign_slot.date, data.new_campaign_slot.time),
+      reasoning: data.new_campaign_slot.reasoning || "",
+      calendarChanges: data.calendar_changes,
+    };
+  } catch (err) {
+    // Returning null is the existing contract: the caller falls back to a
+    // rule-based slot rather than failing the whole request.
+    console.error("[Scheduler] AI slot request failed:", err);
     return null;
   }
-
-  const data = await res.json();
-  if (!data?.new_campaign_slot?.date || !data?.new_campaign_slot?.time) return null;
-
-  return {
-    scheduledDate: slotToIso(data.new_campaign_slot.date, data.new_campaign_slot.time),
-    reasoning: data.new_campaign_slot.reasoning || "",
-    calendarChanges: Array.isArray(data.calendar_changes) ? data.calendar_changes : [],
-  };
 }
 
 /**
@@ -299,11 +301,10 @@ export async function applyCalendarChanges(changes: CalendarChange[]): Promise<v
  * Returns the refreshed campaign row (or null if scheduling failed).
  */
 export async function scheduleCampaign(
-  baseUrl: string,
   campaign: CampaignLike,
   targetDate?: string | null
 ): Promise<{ campaign: CampaignLike | null; sync: Awaited<ReturnType<typeof syncCampaignToProvider>> | null }> {
-  const slot = await requestAiSlot(baseUrl, campaign, targetDate);
+  const slot = await requestAiSlot(campaign, targetDate);
   if (!slot) return { campaign: null, sync: null };
 
   // Never create a broadcast the cron would cancel the next morning
@@ -350,7 +351,6 @@ export function computeNextSendDate(currentDate: string, frequency: string | nul
  * Used by the planner's "Re-optimize week" button and by the nightly cron.
  */
 export async function optimizeWeek(
-  baseUrl: string,
   weekStartKey: string
 ): Promise<{ week_start: string; considered: number; moved: { id: string; from: string; to: string; reason: string }[]; errors: string[] }> {
   const monday = startOfWeekMonday(weekStartKey);
@@ -404,16 +404,13 @@ export async function optimizeWeek(
       rules: rulesText(settings) + (observed ? `\n${observed}` : ""),
       notes,
     };
-    const res = await fetch(`${baseUrl}/api/email/schedule/optimize`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      result.errors.push(`optimizer ${res.status}: ${await res.text()}`);
+    let moves: { id: string; new_date: string; new_time: string; reason: string }[];
+    try {
+      ({ moves } = await optimizeSlots(body));
+    } catch (err) {
+      result.errors.push(`optimizer: ${err instanceof Error ? err.message : String(err)}`);
       break;
     }
-    const { moves } = (await res.json()) as { moves: { id: string; new_date: string; new_time: string; reason: string }[] };
 
     for (const mv of moves || []) {
       if (!movableIds.has(mv.id)) continue; // AI tried to move something fixed — ignore

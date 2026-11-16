@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import ListingForm from "@/components/ListingForm";
@@ -17,7 +18,7 @@ export default function NewListingPage() {
   useEffect(() => {
     async function load() {
       try {
-        const res = await fetch("/api/listings");
+        const res = await apiFetch("/api/listings");
         const data = await res.json();
         setAllItems(data.items || []);
       } catch {

@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { workerWriteHeaders } from "@/lib/worker-auth";
+import { requireUser } from "@/lib/email/auth";
 import { API_BASE } from "@/lib/admin-constants";
 
 /**
@@ -13,6 +15,8 @@ import { API_BASE } from "@/lib/admin-constants";
  * the client-side warning is bypassed.
  */
 export async function POST(req: NextRequest) {
+  const auth = requireUser(req);
+  if (auth.response) return auth.response;
   try {
     const body = await req.json();
     const newSlug = (body.fieldData?.slug || "").trim().toLowerCase();
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
 
     const res = await fetch(`${API_BASE}/listings`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...workerWriteHeaders() },
       body: JSON.stringify(payload),
     });
 

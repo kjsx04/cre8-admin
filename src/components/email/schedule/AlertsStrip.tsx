@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -26,7 +27,7 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
     if (!userEmail) return;
     (async () => {
       try {
-        const res = await fetch("/api/email/alerts", { headers: { "x-user-email": userEmail } });
+        const res = await apiFetch("/api/email/alerts");
         if (res.ok) setAlerts((await res.json()).alerts || []);
       } catch {
         /* quiet */
@@ -39,9 +40,9 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
   const dismiss = async (id: string) => {
     setAlerts((a) => a.filter((x) => x.id !== id));
     try {
-      await fetch("/api/email/alerts", {
+      await apiFetch("/api/email/alerts", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ id, action: "dismiss" }),
       });
     } catch {

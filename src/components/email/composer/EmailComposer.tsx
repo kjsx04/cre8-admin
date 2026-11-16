@@ -1,5 +1,6 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-fetch";
 /**
  * EmailComposer — full-page campaign builder.
  *
@@ -226,9 +227,9 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     setSaveError(null);
     try {
       const saved = await saveCampaignDraft(withAudienceNames(formData), userEmail, campaign?.id);
-      const res = await fetch(`/api/email/campaigns/${saved.id}/schedule-at`, {
+      const res = await apiFetch(`/api/email/campaigns/${saved.id}/schedule-at`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
+        headers: { "Content-Type": "application/json"},
         body: JSON.stringify({ send_date: draft.sendDate, send_time: draft.sendTime }),
       });
       const out = await res.json().catch(() => ({}));
@@ -272,17 +273,15 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
     setSendNowError(null);
     try {
       // 1. Save the campaign as-is (no auto_schedule)
-      const saveRes = await fetch(campaign?.id ? `/api/email/campaigns/${campaign.id}` : "/api/email/campaigns", {
+      const saveRes = await apiFetch(campaign?.id ? `/api/email/campaigns/${campaign.id}` : "/api/email/campaigns", {
         method: campaign?.id ? "PATCH" : "POST",
-        headers: { "Content-Type": "application/json", "x-user-email": userEmail },
         body: JSON.stringify({ ...withAudienceNames(formData), auto_schedule: false }),
       });
       const saved = await saveRes.json().catch(() => ({}));
       if (!saveRes.ok) throw new Error(saved.error || "Couldn't save the campaign");
       // 2. Fire it
-      const sendRes = await fetch(`/api/email/campaigns/${saved.id}/send-now`, {
+      const sendRes = await apiFetch(`/api/email/campaigns/${saved.id}/send-now`, {
         method: "POST",
-        headers: { "x-user-email": userEmail },
       });
       const sent = await sendRes.json().catch(() => ({}));
       if (!sendRes.ok) throw new Error(sent.error || "Send failed");
@@ -638,7 +637,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   <BodyAiControl
                     listingIds={draft.groupListings.map((c) => c.listing_id)}
                     kind="group"
-                    userEmail={userEmail}
                     onInsert={(text) => {
                       setIntroUndo(draft.introText);
                       set("introText", text);
@@ -675,7 +673,6 @@ export default function EmailComposer({ mode, campaign, listings, listingsLoadin
                   <BodyAiControl
                     listingIds={draft.listingId ? [draft.listingId] : []}
                     kind="single"
-                    userEmail={userEmail}
                     onInsert={(text) => {
                       setBodyUndo(draft.bodyText);
                       set("bodyText", text);

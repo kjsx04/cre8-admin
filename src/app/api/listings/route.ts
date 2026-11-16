@@ -1,13 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { API_BASE } from "@/lib/admin-constants";
+import { requireUser } from "@/lib/email/auth";
 
 /**
  * GET /api/listings
  *
  * Proxies to the Cloudflare Worker to fetch all listings from Webflow CMS.
  * Filters out archived items before returning.
+ *
+ * This returned ~250 KB of live listing data to anyone on the internet until
+ * the middleware landed.
  */
-export async function GET() {
+export async function GET(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+
   try {
     const res = await fetch(`${API_BASE}/listings`, {
       headers: { "Content-Type": "application/json" },
