@@ -38,6 +38,68 @@ interface PackageUploaderProps {
 
 const MAX_PDF_SIZE = 10 * 1024 * 1024; // 10MB
 
+/* ------------------------------------------------------------
+   Webflow's CMS image fields reject anything over 4MB. The catch
+   is that it fails SILENTLY — the upload succeeds, but Webflow
+   drops that image from the gallery/marketing field, so the
+   listing keeps showing the previous package with no error.
+   Large-format brochure pages (wide Illustrator artboards) render
+   to 5-6MB JPGs at the old fixed 2x scale, which is exactly how
+   that happens. So every page we render is capped on BOTH
+   dimensions and file size before it ever leaves the browser.
+   ------------------------------------------------------------ */
+const MAX_IMAGE_SIZE = 3.5 * 1024 * 1024; // stay comfortably under Webflow's 4MB
+const TARGET_LONG_EDGE = 2400; // px — plenty for the full-screen lightbox
+const JPEG_QUALITIES = [0.85, 0.75, 0.65, 0.55, 0.45]; // tried in order until it fits
+
+/** Canvas → JPEG blob at a given quality */
+function canvasToJpeg(canvas: HTMLCanvasElement, quality: number): Promise<Blob> {
+  return new Promise((resolve) =>
+    canvas.toBlob((b) => resolve(b!), "image/jpeg", quality)
+  );
+}
+
+/**
+ * Renders one PDF page to a JPEG that Webflow will actually accept.
+ *
+ * 1. Picks a scale so the long edge lands near TARGET_LONG_EDGE
+ *    (never upscales past 2x — small pages behave exactly as before).
+ * 2. Encodes at decreasing quality until the file is under MAX_IMAGE_SIZE.
+ * 3. If even the lowest quality is too big, re-renders at 70% of the
+ *    dimensions and tries again (repeats up to 3 times).
+ */
+async function renderPageToJpeg(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  page: any
+): Promise<Blob> {
+  // Natural page size in PDF points (scale 1)
+  const base = page.getViewport({ scale: 1 });
+  const longEdge = Math.max(base.width, base.height);
+  let scale = Math.min(2, TARGET_LONG_EDGE / longEdge);
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    const ctx = canvas.getContext("2d")!;
+    await page.render({ canvasContext: ctx, viewport }).promise;
+
+    let blob: Blob | null = null;
+    for (const q of JPEG_QUALITIES) {
+      blob = await canvasToJpeg(canvas, q);
+      if (blob.size <= MAX_IMAGE_SIZE) return blob;
+    }
+
+    // Still too big at the lowest quality — shrink and try the whole thing again
+    scale *= 0.7;
+    if (attempt === 3 && blob) return blob; // give up gracefully rather than hang
+  }
+
+  // Unreachable in practice, but keeps TypeScript happy
+  return canvasToJpeg(document.createElement("canvas"), 0.5);
+}
+
 /* ============================================================
    COMPONENT
    ============================================================ */
@@ -88,17 +150,10 @@ export default function PackageUploader({
         for (let p = 1; p <= pdf.numPages; p++) {
           setProgress(`Converting page ${p} of ${pdf.numPages}...`);
           const page = await pdf.getPage(p);
-          const viewport = page.getViewport({ scale: 2 });
-          const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext("2d")!;
-          await page.render({ canvasContext: ctx, viewport }).promise;
 
-          // Convert canvas to blob
-          const blob = await new Promise<Blob>((resolve) =>
-            canvas.toBlob((b) => resolve(b!), "image/jpeg", 0.85)
-          );
+          // Render + compress so the result is always under Webflow's 4MB
+          // image limit (see MAX_IMAGE_SIZE note above)
+          const blob = await renderPageToJpeg(page);
 
           images.push({
             url: URL.createObjectURL(blob),
