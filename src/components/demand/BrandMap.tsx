@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Eye, EyeOff, Plus } from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Copy, Eye, EyeOff, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
 import { circlePolygon } from "@/lib/demand/geo";
+import { SHOW_ALL_TOOLTIP, showAllAllowed } from "@/lib/demand/board";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
+import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
 
 export type BaseMap = "light" | "dark" | "satellite";
 
@@ -37,9 +39,15 @@ interface Focus {
   parcel: { type: string; coordinates: unknown } | null;
 }
 
+interface LastPin {
+  id: string;
+  tenantId: string;
+  store: Store;
+}
+
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
-const MARKER_MILES = 0.04;
+const FADE_MS = 320;
 
 export default function BrandMap({
   listings,
@@ -49,6 +57,7 @@ export default function BrandMap({
   onQuery,
   base,
   fits,
+  brandEpoch,
 }: {
   listings: ListingOption[];
   listingId: string;
@@ -57,6 +66,7 @@ export default function BrandMap({
   onQuery: (value: string) => void;
   base: BaseMap;
   fits: { id: string; bucket: "optimal" | "possible" | "excluded"; score: number }[];
+  brandEpoch: number;
 }) {
   const toast = useToast();
   const [brands, setBrands] = useState<Brand[]>([]);
@@ -64,19 +74,24 @@ export default function BrandMap({
   const [addingId, setAddingId] = useState<string | null>(null);
   const [status, setStatus] = useState<LocationStatus>("open");
   const [stores, setStores] = useState<Record<string, Store[]>>({});
-  const [lastId, setLastId] = useState<string | null>(null);
+  const [lastPin, setLastPin] = useState<LastPin | null>(null);
   const [showAll, setShowAll] = useState(false);
-  const [cleared, setCleared] = useState(false);
   const [focus, setFocus] = useState<Focus | null>(null);
+  const [fitRequest, setFitRequest] = useState(0);
+  const [selection, setSelection] = useState<{ id: string; x: number; y: number } | null>(null);
+  const storesRef = useRef(stores);
+  const addingRef = useRef(addingId);
+  storesRef.current = stores;
+  addingRef.current = addingId;
 
   useEffect(() => {
     let cancelled = false;
-    const load = apiFetch("/api/demand/brands").then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "Could not load");
-      return body;
-    });
-    load
+    apiFetch("/api/demand/brands")
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error || "Could not load");
+        return body;
+      })
       .then((body) => {
         if (!cancelled) setBrands(body as Brand[]);
       })
@@ -84,7 +99,7 @@ export default function BrandMap({
     return () => {
       cancelled = true;
     };
-  }, [toast]);
+  }, [toast, brandEpoch]);
 
   useEffect(() => {
     if (!listingId) {
@@ -92,27 +107,48 @@ export default function BrandMap({
       return;
     }
     let cancelled = false;
-    const load = apiFetch(`/api/demand/focus?listingId=${listingId}`).then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "Could not load");
-      return body;
-    });
-    load.then((body) => {
-      if (!cancelled) setFocus(body as Focus);
-    }).catch(() => {
-      if (!cancelled) setFocus(null);
-    });
+    setFocus(null);
+    apiFetch(`/api/demand/focus?listingId=${listingId}`)
+      .then(async (res) => {
+        const body = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(body?.error || "Could not load");
+        return body;
+      })
+      .then((body) => {
+        if (cancelled) return;
+        setFocus(body as Focus);
+        if (!addingRef.current) setFitRequest((value) => value + 1);
+      })
+      .catch(() => {
+        if (!cancelled) setFocus(null);
+      });
     return () => {
       cancelled = true;
     };
   }, [listingId]);
 
   useEffect(() => {
-    setShowAll(false);
-    setActive([]);
-    setCleared(false);
+    addingRef.current = null;
     setAddingId(null);
+    setActive([]);
+    setShowAll(false);
+    setSelection(null);
+    setLastPin(null);
   }, [listingId]);
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (addingRef.current) {
+        addingRef.current = null;
+        setAddingId(null);
+        return;
+      }
+      setSelection(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const q = query.trim().toLowerCase();
   const fitById = new Map(fits.map((fit) => [fit.id, fit]));
@@ -137,60 +173,65 @@ export default function BrandMap({
 
   const shown = active.flatMap((id) => stores[id] || []);
   const spacing = new Map(brands.map((brand) => [brand.id, brand.spacingMiles]));
+  const colors = new Map(brands.map((brand) => [brand.id, brandColor(brand.brandName)]));
+  const boardIds = listingId ? fits.map((fit) => fit.id) : filtered.map((brand) => brand.id);
+  const showing = active.length > 0;
+  const showBlocked = !showing && !showAllAllowed(boardIds.length);
+  const selected = selection ? shown.find((store) => store.id === selection.id) || null : null;
 
-  async function loadStores(ids: string[]) {
-    const missing = ids.filter((id) => !stores[id]);
-    if (!missing.length) return;
-    const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      toast.error(body?.error || "Could not load");
-      return;
+  async function reveal(ids: string[], fit: boolean) {
+    const missing = ids.filter((id) => !storesRef.current[id]);
+    setActive((current) => Array.from(new Set([...current, ...ids])));
+    if (missing.length) {
+      const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(body?.error || "Could not load");
+        return;
+      }
+      const grouped: Record<string, Store[]> = {};
+      for (const id of missing) grouped[id] = [];
+      for (const store of body as Store[]) {
+        const row = { ...store, status: locationStatus(store.status) };
+        (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
+      }
+      setStores((current) => ({ ...current, ...grouped }));
     }
-    const grouped: Record<string, Store[]> = {};
-    for (const id of missing) grouped[id] = [];
-    for (const store of body as Store[]) {
-      const row = { ...store, status: locationStatus(store.status) };
-      (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
-    }
-    setStores((current) => ({ ...current, ...grouped }));
+    if (fit && !addingRef.current) setFitRequest((value) => value + 1);
   }
 
   async function toggle(id: string) {
-    setCleared(false);
-    if (addingId && addingId !== id) setAddingId(null);
     if (active.includes(id)) {
       setActive((current) => current.filter((item) => item !== id));
+      if (!addingRef.current) setFitRequest((value) => value + 1);
       return;
     }
-    setActive((current) => [...current, id]);
-    await loadStores([id]);
+    await reveal([id], true);
+  }
+
+  function selectForAdd(id: string) {
+    const entering = addingRef.current == null;
+    addingRef.current = id;
+    if (entering) setStatus("open");
+    setAddingId(id);
+    setSelection(null);
+    if (!active.includes(id)) void reveal([id], false);
   }
 
   function clearBoard() {
-    setActive([]);
+    addingRef.current = null;
     setAddingId(null);
-    setCleared(true);
-  }
-
-  async function showBoard() {
-    const ids = listingId ? fits.map((fit) => fit.id) : filtered.map((brand) => brand.id);
-    setCleared(false);
-    setActive(ids);
-    await loadStores(ids);
-  }
-
-  function toggleAdd(id: string) {
-    setStatus("open");
-    setAddingId((current) => (current === id ? null : id));
-    if (!active.includes(id)) toggle(id);
+    setActive([]);
+    setSelection(null);
+    setFitRequest((value) => value + 1);
   }
 
   async function place(lat: number, lng: number) {
-    if (!addingId) return;
+    const tenantId = addingRef.current;
+    if (!tenantId) return;
     const res = await apiFetch("/api/demand/locations", {
       method: "POST",
-      body: JSON.stringify({ tenantId: addingId, lat, lng, status }),
+      body: JSON.stringify({ tenantId, lat, lng, status }),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
@@ -198,37 +239,123 @@ export default function BrandMap({
       return;
     }
     const store = { ...(body as Store), status: locationStatus((body as Store).status) };
-    setStores((current) => ({ ...current, [addingId]: [...(current[addingId] || []), store] }));
-    setLastId(store.id);
+    setStores((current) => ({ ...current, [tenantId]: [...(current[tenantId] || []), store] }));
+    setLastPin({ id: store.id, tenantId, store });
   }
 
   async function undo() {
-    if (!lastId || !addingId) return;
-    const id = lastId;
-    setLastId(null);
-    setStores((current) => ({ ...current, [addingId]: (current[addingId] || []).filter((store) => store.id !== id) }));
-    await apiFetch(`/api/demand/locations/${id}`, { method: "DELETE" });
+    const pin = lastPin;
+    if (!pin) return;
+    setLastPin(null);
+    setStores((current) => ({
+      ...current,
+      [pin.tenantId]: (current[pin.tenantId] || []).filter((store) => store.id !== pin.id),
+    }));
+    const res = await apiFetch(`/api/demand/locations/${pin.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setStores((current) => ({
+        ...current,
+        [pin.tenantId]: [...(current[pin.tenantId] || []).filter((store) => store.id !== pin.id), pin.store],
+      }));
+      setLastPin(pin);
+      toast.error(body?.error || "Could not remove the pin");
+    }
+  }
+
+  async function setPinStatus(store: Store, next: LocationStatus) {
+    const previous = store.status;
+    patchStore(store.tenantId, store.id, { status: next });
+    const res = await apiFetch(`/api/demand/locations/${store.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ status: next }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      patchStore(store.tenantId, store.id, { status: previous });
+      toast.error(body?.error || "Could not save");
+    }
+  }
+
+  function patchStore(tenantId: string, id: string, patch: Partial<Store>) {
+    setStores((current) => ({
+      ...current,
+      [tenantId]: (current[tenantId] || []).map((store) => (store.id === id ? { ...store, ...patch } : store)),
+    }));
+  }
+
+  async function deletePin(store: Store) {
+    setSelection(null);
+    setStores((current) => ({
+      ...current,
+      [store.tenantId]: (current[store.tenantId] || []).filter((item) => item.id !== store.id),
+    }));
+    const res = await apiFetch(`/api/demand/locations/${store.id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setStores((current) => ({
+        ...current,
+        [store.tenantId]: [...(current[store.tenantId] || []).filter((item) => item.id !== store.id), store],
+      }));
+      toast.error(body?.error || "Could not delete");
+    }
   }
 
   return (
     <div className="absolute inset-0">
-      {MAPBOX_TOKEN ? (
-        <MapCanvas base={base} stores={shown} spacing={spacing} focus={focus} adding={!!addingId} onPlace={place} />
-      ) : (
-        <CanvasMap stores={shown} spacing={spacing} focus={focus} adding={!!addingId} onPlace={place} />
+      <MapCanvas
+        base={base}
+        stores={shown}
+        spacing={spacing}
+        colors={colors}
+        focus={focus}
+        adding={!!addingId}
+        fitRequest={fitRequest}
+        onPlace={place}
+        onSelect={(store, x, y) => setSelection(store ? { id: store.id, x, y } : null)}
+      />
+      {selected && selection && (
+        <PinCard
+          store={selected}
+          color={colors.get(selected.tenantId) || brandColor(selected.tenantId)}
+          x={selection.x}
+          y={selection.y}
+          onStatus={(next) => setPinStatus(selected, next)}
+          onDelete={() => deletePin(selected)}
+          onClose={() => setSelection(null)}
+        />
       )}
       <aside className="absolute top-[5px] left-[5px] bottom-[5px] w-1/4 min-w-[220px] bg-surface border border-border rounded-card shadow-popover flex flex-col min-h-0 z-10">
         <div className="p-2 space-y-2 border-b border-border">
           <div className="flex justify-end">
-            <button
-              type="button"
-              aria-label={cleared ? "Show" : "Hide"}
-              onClick={() => (cleared ? showBoard() : clearBoard())}
-              className={cn("relative w-7 h-7 inline-flex items-center justify-center text-text-2 hover:text-text", FOCUS_RING)}
-            >
-              <Eye size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", cleared ? "opacity-0" : "opacity-100")} />
-              <EyeOff size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", cleared ? "opacity-100" : "opacity-0")} />
-            </button>
+            <div className="relative group">
+              <button
+                type="button"
+                aria-label={showing ? "Hide" : "Show all"}
+                aria-disabled={showBlocked}
+                title={showBlocked ? SHOW_ALL_TOOLTIP : undefined}
+                onClick={() => {
+                  if (showing) clearBoard();
+                  else if (!showBlocked) void reveal(boardIds, true);
+                }}
+                className={cn(
+                  "relative w-7 h-7 inline-flex items-center justify-center",
+                  showBlocked ? "text-text-3 cursor-not-allowed" : "text-text-2 hover:text-text",
+                  FOCUS_RING
+                )}
+              >
+                <Eye size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", showing ? "opacity-100" : "opacity-0")} />
+                <EyeOff size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", showing ? "opacity-0" : "opacity-100")} />
+              </button>
+              {showBlocked && (
+                <span
+                  role="tooltip"
+                  className="pointer-events-none absolute right-0 top-full z-20 mt-1 whitespace-nowrap rounded-control bg-ink px-2 py-1 text-xs text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
+                >
+                  {SHOW_ALL_TOOLTIP}
+                </span>
+              )}
+            </div>
           </div>
           <Select small aria-label="Listing" value={listingId} onChange={(e) => onListingId(e.target.value)}>
             <option value="">All tenants</option>
@@ -238,7 +365,9 @@ export default function BrandMap({
           </Select>
           <Input small aria-label="Search" placeholder="Search" value={query} onChange={(e) => onQuery(e.target.value)} />
           {addingId && (
-            <div className="flex flex-wrap gap-1">
+            <div className="space-y-1">
+            <p className="px-1 text-xs text-text truncate">{brands.find((brand) => brand.id === addingId)?.brandName}</p>
+            <div className="flex flex-wrap items-center gap-1">
               {LOCATION_STATUSES.map((value) => (
                 <button
                   key={value}
@@ -254,9 +383,10 @@ export default function BrandMap({
                   {LOCATION_STATUS_LABEL[value]}
                 </button>
               ))}
-              {lastId && (
+              {lastPin && (
                 <Button variant="ghost" size="sm" onClick={undo}>Undo</Button>
               )}
+            </div>
             </div>
           )}
         </div>
@@ -273,7 +403,16 @@ export default function BrandMap({
                       <span className="flex-1 border-t border-border" />
                     </div>
                     {list.map((brand, index) => (
-                      <BrandRow key={brand.id} brand={brand} rank={index + 1} on={active.includes(brand.id)} adding={addingId === brand.id} dim={addingId != null && addingId !== brand.id} onToggle={() => toggle(brand.id)} onAdd={() => toggleAdd(brand.id)} />
+                      <BrandRow
+                        key={brand.id}
+                        brand={brand}
+                        rank={index + 1}
+                        on={active.includes(brand.id)}
+                        adding={addingId === brand.id}
+                        dim={addingId != null && addingId !== brand.id}
+                        onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
+                        onAdd={() => selectForAdd(brand.id)}
+                      />
                     ))}
                   </div>
                 );
@@ -283,12 +422,20 @@ export default function BrandMap({
                   {showAll ? "Hide" : "Show all"}
                 </button>
               </div>
-              <div className={cn("grid transition-[grid-template-rows,opacity] duration-300 ease-in-out", showAll ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0 pointer-events-none")}>
-                <div className="overflow-hidden">
+              <div className={cn("grid transition-[grid-template-rows,opacity] duration-300 ease-in-out", showAll ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
+                <Collapsed inert={!showAll}>
                   {rest.map((brand) => (
-                    <BrandRow key={brand.id} brand={brand} on={active.includes(brand.id)} adding={addingId === brand.id} dim={addingId != null && addingId !== brand.id} onToggle={() => toggle(brand.id)} onAdd={() => toggleAdd(brand.id)} />
+                    <BrandRow
+                      key={brand.id}
+                      brand={brand}
+                      on={active.includes(brand.id)}
+                      adding={addingId === brand.id}
+                      dim={addingId != null && addingId !== brand.id}
+                      onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
+                      onAdd={() => selectForAdd(brand.id)}
+                    />
                   ))}
-                </div>
+                </Collapsed>
               </div>
             </>
           ) : (
@@ -296,13 +443,36 @@ export default function BrandMap({
               <div key={category} className="px-2 mb-2">
                 <p className="px-2 py-1 text-xs text-text-3">{category}</p>
                 {list.map((brand) => (
-                  <BrandRow key={brand.id} brand={brand} on={active.includes(brand.id)} adding={addingId === brand.id} dim={addingId != null && addingId !== brand.id} onToggle={() => toggle(brand.id)} onAdd={() => toggleAdd(brand.id)} />
+                  <BrandRow
+                    key={brand.id}
+                    brand={brand}
+                    on={active.includes(brand.id)}
+                    adding={addingId === brand.id}
+                    dim={addingId != null && addingId !== brand.id}
+                    onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
+                    onAdd={() => selectForAdd(brand.id)}
+                  />
                 ))}
               </div>
             ))
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+function Collapsed({ inert, children }: { inert: boolean; children: ReactNode }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (inert) node.setAttribute("inert", "");
+    else node.removeAttribute("inert");
+  }, [inert]);
+  return (
+    <div ref={ref} className={cn("overflow-hidden", inert && "pointer-events-none")}>
+      {children}
     </div>
   );
 }
@@ -325,7 +495,7 @@ function BrandRow({
   onAdd: () => void;
 }) {
   return (
-    <div className={cn("flex items-center rounded-control mx-1", (on || adding) && "bg-surface-2")}>
+    <div className={cn("flex items-center rounded-control mx-1", (on || adding) && !dim && "bg-surface-2")}>
       {rank != null && <span className="w-5 text-right text-xs text-text-3 tabular-nums">{rank}</span>}
       <button
         type="button"
@@ -347,311 +517,494 @@ function BrandRow({
   );
 }
 
-function CanvasMap({
-  stores,
-  spacing,
-  focus,
-  adding,
-  onPlace,
+export function PinCard({
+  store,
+  color,
+  x,
+  y,
+  onStatus,
+  onDelete,
+  onClose,
 }: {
-  stores: Store[];
-  spacing: Map<string, number | null>;
-  focus: Focus | null;
-  adding: boolean;
-  onPlace: (lat: number, lng: number) => void;
+  store: Store;
+  color: string;
+  x: number;
+  y: number;
+  onStatus: (status: LocationStatus) => void;
+  onDelete: () => void;
+  onClose: () => void;
 }) {
-  const ref = useRef<HTMLCanvasElement>(null);
-  const frame = useRef<{ minLng: number; maxLng: number; minLat: number; maxLat: number; width: number; height: number; pad: number } | null>(null);
+  const toast = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const label = pinPlaceLabel(store.address, store.lat, store.lng);
+  const left = Math.max(x + 12, 16);
+  const top = Math.max(8, y - 8);
 
-  useEffect(() => {
-    const canvas = ref.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-    const paint = () => {
-      const width = parent.clientWidth;
-      const height = parent.clientHeight;
-      if (width < 20 || height < 20) return;
-      const ratio = window.devicePixelRatio || 1;
-      canvas.width = Math.floor(width * ratio);
-      canvas.height = Math.floor(height * ratio);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-      ctx.fillStyle = "#F7F7F8";
-      ctx.fillRect(0, 0, width, height);
-      ctx.strokeStyle = "#E6E6E8";
-      ctx.lineWidth = 1;
-      for (let x = 40; x < width; x += 80) {
-        ctx.beginPath();
-        ctx.moveTo(x, 0);
-        ctx.lineTo(x, height);
-        ctx.stroke();
-      }
-      for (let y = 40; y < height; y += 80) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(width, y);
-        ctx.stroke();
-      }
-      const pad = 72;
-      const pts: { lng: number; lat: number }[] = stores.map((store) => ({ lng: store.lng, lat: store.lat }));
-      if (focus?.lng != null && focus.lat != null) pts.push({ lng: focus.lng, lat: focus.lat });
-      if (!pts.length) pts.push({ lng: PHX_CENTER[0], lat: PHX_CENTER[1] });
-      let minLng = Math.min(...pts.map((point) => point.lng));
-      let maxLng = Math.max(...pts.map((point) => point.lng));
-      let minLat = Math.min(...pts.map((point) => point.lat));
-      let maxLat = Math.max(...pts.map((point) => point.lat));
-      const reach = Math.max(1, ...stores.map((store) => spacing.get(store.tenantId) || 0));
-      const mid = (minLat + maxLat) / 2;
-      minLat -= reach / 69 + 0.04;
-      maxLat += reach / 69 + 0.04;
-      const lngReach = reach / Math.max(0.2, 69 * Math.cos((mid * Math.PI) / 180)) + 0.04;
-      minLng -= lngReach;
-      maxLng += lngReach;
-      frame.current = { minLng, maxLng, minLat, maxLat, width, height, pad };
-      const project = (lng: number, lat: number) => [
-        pad + ((lng - minLng) / (maxLng - minLng)) * (width - pad * 2),
-        pad + ((maxLat - lat) / (maxLat - minLat)) * (height - pad * 2),
-      ] as const;
-      const radius = (lat: number, miles: number) => {
-        const [x1] = project(0, lat);
-        const [x2] = project(miles / Math.max(0.2, 69 * Math.cos((lat * Math.PI) / 180)), lat);
-        return Math.max(6, Math.abs(x2 - x1));
-      };
-      if (focus?.parcel) {
-        const ring = flatten(focus.parcel.coordinates);
-        if (ring.length) {
-          ctx.beginPath();
-          ring.forEach((pair, index) => {
-            const [x, y] = project(pair[0], pair[1]);
-            if (index === 0) ctx.moveTo(x, y);
-            else ctx.lineTo(x, y);
-          });
-          ctx.closePath();
-          ctx.fillStyle = "rgba(140,198,68,0.18)";
-          ctx.fill();
-          ctx.strokeStyle = "#8CC644";
-          ctx.lineWidth = 2;
-          ctx.setLineDash([]);
-          ctx.stroke();
-        }
-      }
-      for (const store of stores) {
-        const [x, y] = project(store.lng, store.lat);
-        const kind = locationStatus(store.status);
-        ctx.strokeStyle = "#1F5F8B";
-        ctx.lineWidth = 2;
-        ctx.setLineDash(kind === "open" ? [] : kind === "under_construction" ? [10, 7] : [2, 10]);
-        const miles = spacing.get(store.tenantId);
-        if (miles && miles > 0) {
-          ctx.beginPath();
-          ctx.arc(x, y, radius(store.lat, miles), 0, Math.PI * 2);
-          ctx.stroke();
-        }
-        ctx.beginPath();
-        ctx.arc(x, y, 7, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(31,95,139,0.2)";
-        ctx.fill();
-        ctx.stroke();
-      }
-    };
-    paint();
-    const observer = new ResizeObserver(paint);
-    observer.observe(parent);
-    return () => observer.disconnect();
-  }, [stores, spacing, focus]);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(label);
+      toast.success("Copied");
+    } catch {
+      toast.error("Could not copy");
+    }
+  }
 
   return (
-    <canvas
-      ref={ref}
-      className={cn("absolute inset-0 w-full h-full bg-canvas", adding ? "cursor-crosshair" : "")}
-      onClick={(event) => {
-        const box = frame.current;
-        const canvas = ref.current;
-        if (!adding || !box || !canvas) return;
-        const rect = canvas.getBoundingClientRect();
-        const x = event.clientX - rect.left;
-        const y = event.clientY - rect.top;
-        const lng = box.minLng + ((x - box.pad) / (box.width - box.pad * 2)) * (box.maxLng - box.minLng);
-        const lat = box.maxLat - ((y - box.pad) / (box.height - box.pad * 2)) * (box.maxLat - box.minLat);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) onPlace(lat, lng);
-      }}
-    />
+    <div
+      className="absolute z-30 w-64 bg-surface border border-border rounded-card shadow-popover p-3"
+      style={{ left: `min(${left}px, calc(100% - 17rem))`, top: `min(${top}px, calc(100% - 14rem))` }}
+      role="dialog"
+      aria-label="Location"
+    >
+      <div className="flex items-start gap-2">
+        <span className="mt-1 w-2.5 h-2.5 rounded-full shrink-0 border-2 border-white" style={{ background: color }} />
+        <p className="flex-1 min-w-0 text-sm text-text">{label}</p>
+        <button type="button" aria-label="Copy address" onClick={copy} className={cn("shrink-0 text-text-2 hover:text-text", FOCUS_RING)}>
+          <Copy size={14} strokeWidth={1.75} />
+        </button>
+      </div>
+      <a
+        className="mt-2 inline-block text-sm text-text-2 underline hover:text-text"
+        href={googleMapsUrl(store.lat, store.lng)}
+        target="_blank"
+        rel="noreferrer"
+      >
+        Open in Google Maps
+      </a>
+      <div className="flex flex-wrap gap-1 mt-3">
+        {LOCATION_STATUSES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            aria-pressed={store.status === value}
+            onClick={() => onStatus(value)}
+            className={cn(
+              "h-7 px-2 rounded-control text-xs font-medium border border-border",
+              store.status === value ? "bg-surface-2 text-text" : "text-text-2",
+              FOCUS_RING
+            )}
+          >
+            {LOCATION_STATUS_LABEL[value]}
+          </button>
+        ))}
+      </div>
+      <div className="flex items-center gap-2 mt-3">
+        {confirming ? (
+          <>
+            <span className="text-sm text-text-2">Delete this pin?</span>
+            <Button size="sm" variant="danger" onClick={onDelete}>Delete</Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(false)}>Cancel</Button>
+          </>
+        ) : (
+          <>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)}>Delete</Button>
+            <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
-function MapCanvas({
+export function MapCanvas({
   base,
   stores,
   spacing,
+  colors,
   focus,
   adding,
+  fitRequest,
   onPlace,
+  onSelect,
+  view,
 }: {
   base: BaseMap;
   stores: Store[];
   spacing: Map<string, number | null>;
+  colors: Map<string, string>;
   focus: Focus | null;
   adding: boolean;
+  fitRequest: number;
   onPlace: (lat: number, lng: number) => void;
+  onSelect: (store: Store | null, x: number, y: number) => void;
+  /** Optional camera. The demand page leaves this unset and fits when tenants toggle. */
+  view?: { lng: number; lat: number; zoom: number };
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<import("mapbox-gl").Map | null>(null);
+  const glRef = useRef<typeof import("mapbox-gl").default | null>(null);
   const ready = useRef(false);
-  const snap = useRef({ stores, spacing, focus, onPlace, adding });
-  snap.current = { stores, spacing, focus, onPlace, adding };
-  const fitted = useRef("");
+  const appliedBase = useRef<BaseMap | null>(null);
+  const wantedBase = useRef(base);
+  const snap = useRef({ stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view });
+  const fade = useRef(new Map<string, number>());
+  const cache = useRef(new Map<string, Store>());
+  const rafRef = useRef(0);
+  const lastFit = useRef(0);
+  wantedBase.current = base;
+  snap.current = { stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view };
+
+  const dataSig = [
+    stores.map((store) => `${store.id}:${store.status}:${store.lat}:${store.lng}:${store.tenantId}`).join(","),
+    Array.from(spacing.entries()).map(([id, miles]) => `${id}:${miles ?? ""}`).join(","),
+    Array.from(colors.entries()).map(([id, color]) => `${id}:${color}`).join(","),
+    focus ? `${focus.lat ?? ""}:${focus.lng ?? ""}:${focus.parcel ? "parcel" : "dot"}` : "",
+  ].join("|");
 
   useEffect(() => {
     if (!ref.current) return;
     let cancelled = false;
     let map: import("mapbox-gl").Map | null = null;
+    let observer: ResizeObserver | null = null;
     import("mapbox-gl").then((mod) => {
       if (cancelled || !ref.current) return;
       const mapboxgl = mod.default;
+      glRef.current = mapboxgl;
       if (MAPBOX_TOKEN) mapboxgl.accessToken = MAPBOX_TOKEN;
+      const initial = wantedBase.current;
       map = new mapboxgl.Map({
         container: ref.current,
-        style: styleFor(base),
+        style: styleFor(initial),
         center: PHX_CENTER,
         zoom: 9,
         testMode: !MAPBOX_TOKEN,
         transformRequest: (url) => (!MAPBOX_TOKEN && /mapbox\.(com|cn)/.test(url) ? { url: "about:blank" } : { url }),
       });
-      map.addControl(new mapboxgl.NavigationControl(), "top-right");
+      appliedBase.current = initial;
+      map.addControl(new mapboxgl.NavigationControl(), "bottom-right");
+      observer = new ResizeObserver(() => map?.resize());
+      if (ref.current) observer.observe(ref.current);
+      map.on("click", (event) => {
+        const current = snap.current;
+        if (current.adding) {
+          current.onPlace(event.lngLat.lat, event.lngLat.lng);
+          return;
+        }
+        const mapNow = mapRef.current;
+        if (!mapNow || !mapNow.getLayer("pins")) {
+          current.onSelect(null, 0, 0);
+          return;
+        }
+        const hits = mapNow.queryRenderedFeatures(event.point, { layers: ["pins"] });
+        const hit = hits[0];
+        if (!hit) {
+          current.onSelect(null, event.point.x, event.point.y);
+          return;
+        }
+        const id = String(hit.id ?? hit.properties?.id ?? "");
+        const store = current.stores.find((item) => item.id === id) || cache.current.get(id) || null;
+        current.onSelect(store, event.point.x, event.point.y);
+      });
       map.on("load", () => {
         if (!map) return;
         ready.current = true;
-        fitted.current = "";
-        map.addSource("parcel", { type: "geojson", data: empty() });
-        map.addSource("rings", { type: "geojson", data: empty() });
-        map.addLayer({ id: "parcel-fill", type: "fill", source: "parcel", paint: { "fill-color": GREEN, "fill-opacity": 0.15 } });
-        map.addLayer({ id: "parcel-line", type: "line", source: "parcel", paint: { "line-color": GREEN, "line-width": 2 } });
-        for (const value of LOCATION_STATUSES) {
-          const dash = ringDash(value);
-          map.addLayer({
-            id: `ring-${value}`,
-            type: "line",
-            source: "rings",
-            filter: ["==", ["get", "status"], value],
-            paint: { "line-color": RING, "line-width": 2, "line-opacity": ["get", "opacity"], ...(dash ? { "line-dasharray": dash } : {}) },
-          });
+        if (wantedBase.current !== appliedBase.current) {
+          switchStyle(map, wantedBase.current);
+          return;
         }
-        map.on("click", (event) => {
-          if (!snap.current.adding) return;
-          snap.current.onPlace(event.lngLat.lat, event.lngLat.lng);
-        });
-        paint(map, mapboxgl);
+        mount(map);
+        map.resize();
+        reconcile(map);
+        const camera = snap.current.view;
+        if (camera) map.jumpTo({ center: [camera.lng, camera.lat], zoom: camera.zoom });
+        maybeFit();
+        syncCursor(map);
       });
       mapRef.current = map;
     });
     return () => {
       cancelled = true;
       ready.current = false;
+      cancelAnimationFrame(rafRef.current);
+      observer?.disconnect();
       map?.remove();
       mapRef.current = null;
     };
-    // Rebuild only when the base style changes. paint reads the latest snap.
+    // The map is created once. switchStyle is called from the load handler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready.current || appliedBase.current === base) return;
+    switchStyle(map, base);
+    // switchStyle closes over the latest snap ref.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [base]);
 
-  const fade = useRef(new Map<string, number>());
-  const ghosts = useRef<Store[]>([]);
-
-  const key = `${stores.map((store) => store.id + store.status).join()}|${focus?.lat ?? ""}|${focus?.lng ?? ""}`;
   useEffect(() => {
-    const ids = new Set(stores.map((store) => store.id));
+    const map = mapRef.current;
+    if (!map || !ready.current) return;
+    reconcile(map);
+    // reconcile reads snap.current, which dataSig already describes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataSig]);
+
+  useEffect(() => {
+    maybeFit();
+    // maybeFit reads the map ref and the latest snap.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fitRequest, adding]);
+
+  const viewLng = view?.lng;
+  const viewLat = view?.lat;
+  const viewZoom = view?.zoom;
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !ready.current || viewLng == null || viewLat == null || viewZoom == null) return;
+    map.jumpTo({ center: [viewLng, viewLat], zoom: viewZoom });
+  }, [viewLng, viewLat, viewZoom]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && ready.current) syncCursor(map);
+  }, [adding]);
+
+  function switchStyle(map: import("mapbox-gl").Map, next: BaseMap) {
+    cancelAnimationFrame(rafRef.current);
+    const camera = {
+      center: map.getCenter(),
+      zoom: map.getZoom(),
+      bearing: map.getBearing(),
+      pitch: map.getPitch(),
+    };
+    appliedBase.current = next;
+    map.once("style.load", () => {
+      map.jumpTo(camera);
+      mount(map);
+      reconcile(map);
+      syncCursor(map);
+    });
+    map.setStyle(styleFor(next));
+  }
+
+  function syncCursor(map: import("mapbox-gl").Map) {
+    map.getCanvas().style.cursor = snap.current.adding ? "crosshair" : "";
+    if (snap.current.adding) map.doubleClickZoom.disable();
+    else map.doubleClickZoom.enable();
+  }
+
+  function maybeFit() {
+    const map = mapRef.current;
+    const mapboxgl = glRef.current;
+    if (!map || !mapboxgl || !ready.current) return;
+    if (snap.current.adding) return;
+    if (lastFit.current === snap.current.fitRequest) return;
+    lastFit.current = snap.current.fitRequest;
+    if (!snap.current.fitRequest) return;
+    const bounds = new mapboxgl.LngLatBounds();
+    let count = 0;
+    for (const store of snap.current.stores) {
+      bounds.extend([store.lng, store.lat]);
+      count += 1;
+    }
+    const currentFocus = snap.current.focus;
+    if (currentFocus?.parcel) {
+      for (const pair of flatten(currentFocus.parcel.coordinates)) {
+        if (pair.length >= 2) {
+          bounds.extend([pair[0], pair[1]]);
+          count += 1;
+        }
+      }
+    } else if (currentFocus?.lat != null && currentFocus.lng != null) {
+      bounds.extend([currentFocus.lng, currentFocus.lat]);
+      count += 1;
+    }
+    if (!count || bounds.isEmpty()) return;
+    const width = map.getContainer().clientWidth;
+    const left = Math.max(240, Math.round(width * 0.25) + 24);
+    map.fitBounds(bounds, { padding: { top: 56, right: 56, bottom: 72, left }, maxZoom: 15, duration: 350 });
+  }
+
+  function reconcile(map: import("mapbox-gl").Map) {
+    if (!map.getSource("pins")) return;
+    cancelAnimationFrame(rafRef.current);
+    const current = snap.current;
+    const next = current.stores;
+    const nextIds = new Set(next.map((store) => store.id));
+    for (const store of next) cache.current.set(store.id, store);
+    const leaving = Array.from(fade.current.keys())
+      .filter((id) => !nextIds.has(id))
+      .map((id) => cache.current.get(id))
+      .filter((store): store is Store => !!store);
+    const combined = [...next, ...leaving];
+    ensureIcons(map, combined, current.colors);
+    writeSources(map, combined, current);
     const from = new Map(fade.current);
-    for (const store of stores) if (!from.has(store.id)) from.set(store.id, 0);
-    const leaving = ghosts.current.filter((store) => !ids.has(store.id));
-    ghosts.current = [...stores, ...leaving];
+    for (const store of next) if (!from.has(store.id)) from.set(store.id, 0);
+    const instant = combined.length > 800;
     const start = performance.now();
-    let raf = 0;
-    const step = (now: number) => {
-      const t = Math.min(1, (now - start) / 320);
+    const apply = (now: number) => {
+      const t = instant ? 1 : Math.min(1, (now - start) / FADE_MS);
       const ease = t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
-      const next = new Map<string, number>();
-      for (const store of stores) {
+      for (const store of next) {
         const begin = from.get(store.id) ?? 0;
-        next.set(store.id, begin + (1 - begin) * ease);
+        setOpacity(map, fade.current, store.id, begin + (1 - begin) * ease);
       }
       for (const store of leaving) {
         const begin = from.get(store.id) ?? 1;
-        next.set(store.id, begin * (1 - ease));
+        setOpacity(map, fade.current, store.id, begin * (1 - ease));
       }
-      fade.current = next;
-      const map = mapRef.current;
-      if (map && ready.current) {
-        import("mapbox-gl").then((mod) => {
-          if (mapRef.current) paint(mapRef.current, mod.default);
-        });
+      if (t < 1) {
+        rafRef.current = requestAnimationFrame(apply);
+        return;
       }
-      if (t < 1) raf = requestAnimationFrame(step);
-      else ghosts.current = stores;
+      for (const store of leaving) {
+        fade.current.delete(store.id);
+        cache.current.delete(store.id);
+      }
+      if (leaving.length) {
+        writeSources(map, next, snap.current);
+        for (const store of next) setOpacity(map, fade.current, store.id, fade.current.get(store.id) ?? 1);
+      }
     };
-    raf = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(raf);
-    // `key` already changes when the store list changes.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [key]);
-
-  useEffect(() => {
-    mapRef.current?.getCanvas().style.setProperty("cursor", adding ? "crosshair" : "");
-  }, [adding]);
-
-  function paint(map: import("mapbox-gl").Map, mapboxgl: typeof import("mapbox-gl").default) {
-    const current = snap.current;
-    const parcel = map.getSource("parcel") as import("mapbox-gl").GeoJSONSource | undefined;
-    const rings = map.getSource("rings") as import("mapbox-gl").GeoJSONSource | undefined;
-    if (!parcel || !rings) return;
-    const geometry = current.focus?.parcel;
-    parcel.setData(geometry ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: geometry as GeoJSON.Geometry, properties: {} }] } : empty());
-    const visible = ghosts.current.filter((store) => (fade.current.get(store.id) ?? 0) > 0.01);
-    const features: GeoJSON.Feature[] = [];
-    for (const store of visible) {
-      const miles = current.spacing.get(store.tenantId);
-      const opacity = fade.current.get(store.id) ?? 0;
-      features.push(ringFeature(store, MARKER_MILES, opacity));
-      if (miles && miles > 0) features.push(ringFeature(store, miles, opacity));
-    }
-    rings.setData({ type: "FeatureCollection", features });
-    fitCamera(map, mapboxgl);
+    for (const store of next) setOpacity(map, fade.current, store.id, from.get(store.id) ?? 0);
+    for (const store of leaving) setOpacity(map, fade.current, store.id, from.get(store.id) ?? 1);
+    rafRef.current = requestAnimationFrame(apply);
   }
 
-  function fitCamera(map: import("mapbox-gl").Map, mapboxgl: typeof import("mapbox-gl").default) {
-    const current = snap.current;
-    const listing = current.focus?.lat != null && current.focus.lng != null;
-    const sig = listing
-      ? `listing:${current.focus?.lat},${current.focus?.lng}:${current.focus?.parcel ? "parcel" : "point"}`
-      : `stores:${current.stores.map((store) => store.id).sort().join(",")}`;
-    if (fitted.current === sig) return;
-    fitted.current = sig;
-    const geometry = current.focus?.parcel;
-    if (geometry) {
-      const bounds = new mapboxgl.LngLatBounds();
-      flatten(geometry.coordinates).forEach((pair) => bounds.extend(pair as [number, number]));
-      if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 350 });
-      return;
-    }
-    if (listing && current.focus?.lat != null && current.focus.lng != null) {
-      map.easeTo({ center: [current.focus.lng, current.focus.lat], zoom: 15, duration: 350 });
-      return;
-    }
-    if (!current.stores.length) return;
-    const bounds = new mapboxgl.LngLatBounds();
-    current.stores.forEach((store) => bounds.extend([store.lng, store.lat]));
-    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 350 });
-  }
-
-  return <div ref={ref} className="absolute inset-0" />;
+  return (
+    <div className="absolute inset-0">
+      <div ref={ref} className="h-full w-full" />
+    </div>
+  );
 }
 
-function ringFeature(store: Store, miles: number, opacity: number): GeoJSON.Feature {
-  return {
-    type: "Feature",
-    geometry: { type: "Polygon", coordinates: [circlePolygon(store.lng, store.lat, miles)] },
-    properties: { status: locationStatus(store.status), opacity },
-  };
+function setOpacity(map: import("mapbox-gl").Map, book: Map<string, number>, id: string, value: number) {
+  book.set(id, value);
+  if (!map.getSource("pins")) return;
+  map.setFeatureState({ source: "pins", id }, { opacity: value });
+  if (map.getSource("rings")) map.setFeatureState({ source: "rings", id }, { opacity: value });
+}
+
+function mount(map: import("mapbox-gl").Map) {
+  if (map.getSource("parcel")) return;
+  map.addSource("parcel", { type: "geojson", data: empty() });
+  map.addSource("rings", { type: "geojson", data: empty() });
+  map.addSource("listing-dot", { type: "geojson", data: empty() });
+  map.addSource("pins", { type: "geojson", data: empty() });
+  map.addLayer({ id: "parcel-fill", type: "fill", source: "parcel", paint: { "fill-color": GREEN, "fill-opacity": 0.15 } });
+  map.addLayer({ id: "parcel-line", type: "line", source: "parcel", paint: { "line-color": GREEN, "line-width": 2 } });
+  for (const value of LOCATION_STATUSES) {
+    const dash = ringDash(value);
+    map.addLayer({
+      id: `ring-${value}`,
+      type: "line",
+      source: "rings",
+      filter: ["==", ["get", "status"], value],
+      paint: {
+        "line-color": RING,
+        "line-width": 2,
+        "line-opacity": ["coalesce", ["feature-state", "opacity"], 0],
+        ...(dash ? { "line-dasharray": dash } : {}),
+      },
+    });
+  }
+  map.addLayer({
+    id: "listing-dot",
+    type: "circle",
+    source: "listing-dot",
+    paint: {
+      "circle-radius": 6,
+      "circle-color": GREEN,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+  map.addLayer({
+    id: "pins",
+    type: "symbol",
+    source: "pins",
+    layout: {
+      "icon-image": ["get", "icon"],
+      "icon-size": ["interpolate", ["linear"], ["zoom"], PIN_MIN_ZOOM, 6 / PIN_MAX_DIAMETER, PIN_STREET_ZOOM, 1],
+      "icon-allow-overlap": true,
+      "icon-ignore-placement": true,
+      "icon-anchor": "center",
+    },
+    paint: {
+      "icon-opacity": ["coalesce", ["feature-state", "opacity"], 0],
+    },
+  });
+}
+
+function writeSources(
+  map: import("mapbox-gl").Map,
+  stores: Store[],
+  current: { spacing: Map<string, number | null>; colors: Map<string, string>; focus: Focus | null }
+) {
+  const parcel = map.getSource("parcel") as import("mapbox-gl").GeoJSONSource | undefined;
+  const rings = map.getSource("rings") as import("mapbox-gl").GeoJSONSource | undefined;
+  const dot = map.getSource("listing-dot") as import("mapbox-gl").GeoJSONSource | undefined;
+  const pins = map.getSource("pins") as import("mapbox-gl").GeoJSONSource | undefined;
+  if (!parcel || !rings || !dot || !pins) return;
+  const geometry = current.focus?.parcel;
+  parcel.setData(geometry ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: geometry as GeoJSON.Geometry, properties: {} }] } : empty());
+  const point = current.focus?.lat != null && current.focus.lng != null && !geometry
+    ? {
+        type: "FeatureCollection" as const,
+        features: [{ type: "Feature" as const, geometry: { type: "Point" as const, coordinates: [current.focus.lng, current.focus.lat] }, properties: {} }],
+      }
+    : empty();
+  dot.setData(point);
+  const ringFeatures: GeoJSON.Feature[] = [];
+  const pinFeatures: GeoJSON.Feature[] = [];
+  for (const store of stores) {
+    const miles = current.spacing.get(store.tenantId);
+    const kind = locationStatus(store.status);
+    const color = current.colors.get(store.tenantId) || brandColor(store.tenantId);
+    if (miles && miles > 0) {
+      ringFeatures.push({
+        type: "Feature",
+        id: store.id,
+        geometry: { type: "Polygon", coordinates: [circlePolygon(store.lng, store.lat, miles)] },
+        properties: { status: kind },
+      });
+    }
+    pinFeatures.push({
+      type: "Feature",
+      id: store.id,
+      geometry: { type: "Point", coordinates: [store.lng, store.lat] },
+      properties: { id: store.id, status: kind, icon: pinImageId(color, kind) },
+    });
+  }
+    rings.setData({ type: "FeatureCollection", features: ringFeatures });
+    pins.setData({ type: "FeatureCollection", features: pinFeatures });
+}
+
+function ensureIcons(map: import("mapbox-gl").Map, stores: Store[], colors: Map<string, string>) {
+  for (const store of stores) {
+    const color = colors.get(store.tenantId) || brandColor(store.tenantId);
+    const kind = locationStatus(store.status);
+    const id = pinImageId(color, kind);
+    if (map.hasImage(id)) continue;
+    const image = drawPin(color, kind);
+    if (image) map.addImage(id, image, { pixelRatio: 2 });
+  }
+}
+
+function drawPin(color: string, status: LocationStatus): ImageData | null {
+  const pixelRatio = 2;
+  const diameter = PIN_MAX_DIAMETER;
+  const pad = 2;
+  const logical = diameter + PIN_STROKE + pad * 2;
+  const size = logical * pixelRatio;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const center = size / 2;
+  ctx.beginPath();
+  ctx.arc(center, center, (diameter / 2) * pixelRatio, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.lineWidth = PIN_STROKE * pixelRatio;
+  ctx.strokeStyle = "#ffffff";
+  const dash = pinStrokeDash(status);
+  ctx.setLineDash(dash ? dash.map((part) => part * pixelRatio) : []);
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
 }
 
 function flatten(value: unknown): number[][] {

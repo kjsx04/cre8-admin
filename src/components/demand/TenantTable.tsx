@@ -9,9 +9,6 @@ import { rangeText } from "@/lib/demand/format";
 import type { Bucket, DealFlags } from "@/lib/demand/types";
 import type { CatalogResponse, ContactView, MatchResponse, TenantAdminView, TenantMatchView } from "@/lib/demand/view";
 
-const EASE = "ease-in-out";
-const MS = 320;
-
 type Row = {
   tenantId: string;
   brandName: string;
@@ -83,14 +80,20 @@ function person(contacts: ContactView[], type: "in_house" | "broker"): string {
 
 const RANK: Record<Bucket, number> = { optimal: 0, possible: 1, excluded: 2 };
 
-export default function TenantTable({ query, listingId }: { query: string; listingId: string }) {
+export default function TenantTable({
+  query,
+  listingId,
+  match,
+}: {
+  query: string;
+  listingId: string;
+  match: MatchResponse | null;
+}) {
   const toast = useToast();
   const [catalog, setCatalog] = useState<TenantAdminView[] | null>(null);
-  const [match, setMatch] = useState<MatchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const scroller = useRef<HTMLDivElement>(null);
-  const tops = useRef(new Map<string, number>());
   const q = query.trim().toLowerCase();
 
   useEffect(() => {
@@ -114,67 +117,40 @@ export default function TenantTable({ query, listingId }: { query: string; listi
     };
   }, [refreshCatalog]);
 
-  useEffect(() => {
-    if (!listingId) {
-      setMatch(null);
-      return;
-    }
-    let cancelled = false;
-    const load = apiFetch(`/api/demand/match?listingId=${listingId}`).then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "Could not match tenants");
-      return body;
-    });
-    load
-      .then((body) => {
-        if (!cancelled) setMatch(body as MatchResponse);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not match tenants");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [listingId]);
-
   const items = useMemo(() => buildItems(catalog || [], match, listingId, q, showAll), [catalog, match, listingId, q, showAll]);
 
-  useLayoutEffect(() => {
-    const root = scroller.current;
-    if (!root) return;
-    const nodes = root.querySelectorAll<HTMLElement>("[data-flip]");
-    const next = new Map<string, number>();
-    nodes.forEach((node) => {
-      const id = node.dataset.flip || "";
-      const top = node.getBoundingClientRect().top;
-      const prev = tops.current.get(id);
-      const hidden = node.dataset.hidden === "true";
-      if (prev != null && hidden) {
-        const dy = prev - top;
-        node.animate(
-          [
-            { transform: `translateY(${dy}px)`, opacity: 1, maxHeight: "160px" },
-            { transform: `translateY(${dy}px)`, opacity: 0, maxHeight: "0px" },
-          ],
-          { duration: MS, easing: EASE }
-        );
-      } else if (prev != null && !hidden) {
-        const dy = prev - top;
-        if (Math.abs(dy) > 1) {
-          node.animate([{ transform: `translateY(${dy}px)` }, { transform: "translateY(0)" }], { duration: MS, easing: EASE });
-        }
-      }
-      next.set(id, hidden ? (prev ?? top) : top);
-    });
-    tops.current = next;
-  }, [items]);
-
-  async function saveFlags(row: Row, next: DealFlags) {
+  async function saveFlags(row: Row, next: DealFlags): Promise<boolean> {
     const res = await apiFetch(`/api/demand/tenants/${row.tenantId}/research`, { method: "POST", body: JSON.stringify(next) });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       toast.error(body?.error || "Could not save");
+      return false;
     }
+    setCatalog((current) =>
+      current?.map((tenant) => (tenant.id === row.tenantId ? { ...tenant, ...next } : tenant)) ?? current
+    );
+    return true;
+  }
+
+  function saveContact(tenantId: string, contact: ContactView) {
+    setCatalog((current) =>
+      current?.map((tenant) => {
+        if (tenant.id !== tenantId) return tenant;
+        const exists = tenant.contacts.some((item) => item.id === contact.id);
+        const contacts = exists
+          ? tenant.contacts.map((item) => (item.id === contact.id ? contact : item))
+          : [...tenant.contacts, contact];
+        return { ...tenant, contacts };
+      }) ?? current
+    );
+  }
+
+  function removeContact(tenantId: string, contactId: string) {
+    setCatalog((current) =>
+      current?.map((tenant) =>
+        tenant.id === tenantId ? { ...tenant, contacts: tenant.contacts.filter((item) => item.id !== contactId) } : tenant
+      ) ?? current
+    );
   }
 
   if (error) return <p className="px-4 py-6 text-sm text-danger-fg">{error}</p>;
@@ -194,7 +170,13 @@ export default function TenantTable({ query, listingId }: { query: string; listi
         item.kind === "tier" ? (
           <TierLine key={item.id} id={item.id} label={item.label} hidden={item.hidden} />
         ) : (
-          <DataRow key={item.id} item={item} onFlags={(next) => saveFlags(item.row, next)} onContacts={() => refreshCatalog().catch(() => undefined)} />
+          <DataRow
+            key={item.id}
+            item={item}
+            onFlags={(next) => saveFlags(item.row, next)}
+            onContact={(contact) => saveContact(item.row.tenantId, contact)}
+            onContactDeleted={(contactId) => removeContact(item.row.tenantId, contactId)}
+          />
         )
       )}
       {fit && (
@@ -226,6 +208,7 @@ function buildItems(catalog: TenantAdminView[], match: MatchResponse | null, lis
         ...base,
         ...fromMatch(tenant, group.title),
         contacts: base.contacts.length ? base.contacts : tenant.contacts,
+        flags: base.flags,
       };
       const prev = best.get(row.tenantId);
       if (!prev || RANK[row.bucket || "excluded"] < RANK[prev.bucket || "excluded"] || (row.bucket === prev.bucket && row.score > prev.score)) {
@@ -277,11 +260,14 @@ function fromMatch(tenant: TenantMatchView, space: string): Row {
 }
 
 function TierLine({ id, label, hidden }: { id: string; label: string; hidden: boolean }) {
+  const ref = useInert(hidden);
   return (
-    <div data-flip={id} data-hidden={hidden ? "true" : "false"} className={shell(hidden)}>
-      <div className="flex items-center gap-3 px-3 h-8">
-        <span className="text-xs text-text-3">{label}</span>
-        <span className="flex-1 border-t border-border" />
+    <div ref={ref} data-flip={id} aria-hidden={hidden || undefined} className={shell(hidden)}>
+      <div className="overflow-hidden min-h-0">
+        <div className="flex items-center gap-3 px-3 h-8">
+          <span className="text-xs text-text-3">{label}</span>
+          <span className="flex-1 border-t border-border" />
+        </div>
       </div>
     </div>
   );
@@ -290,16 +276,38 @@ function TierLine({ id, label, hidden }: { id: string; label: string; hidden: bo
 function DataRow({
   item,
   onFlags,
-  onContacts,
+  onContact,
+  onContactDeleted,
 }: {
   item: Extract<Item, { kind: "row" }>;
-  onFlags: (next: DealFlags) => void;
-  onContacts: () => void;
+  onFlags: (next: DealFlags) => Promise<boolean>;
+  onContact: (contact: ContactView) => void;
+  onContactDeleted: (contactId: string) => void;
 }) {
   const { row, rank, hidden } = item;
+  const ref = useInert(hidden);
   const [flags, setFlags] = useState(row.flags);
+  const ticket = useRef(0);
+  const serial = JSON.stringify(row.flags);
+  useEffect(() => {
+    setFlags(row.flags);
+    // serial is the value identity. row.flags is a new object whenever the parent renders.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serial]);
+
+  function change(next: DealFlags) {
+    const mine = ++ticket.current;
+    const saved = row.flags;
+    setFlags(next);
+    void onFlags(next).then((ok) => {
+      if (ticket.current !== mine) return;
+      if (!ok) setFlags(saved);
+    });
+  }
+
   return (
-    <div data-flip={row.tenantId} data-hidden={hidden ? "true" : "false"} className={shell(hidden)}>
+    <div ref={ref} data-flip={row.tenantId} aria-hidden={hidden || undefined} className={shell(hidden)}>
+      <div className="overflow-hidden min-h-0">
       <div className="grid grid-cols-[40px_minmax(140px,1.4fr)_minmax(100px,1fr)_minmax(140px,1.2fr)_minmax(220px,2.2fr)_minmax(100px,1fr)_minmax(100px,1fr)_40px] items-center border-b border-border min-h-11">
         <div className="px-3 text-xs text-text-3 tabular-nums">{rank ?? ""}</div>
         <div className="px-3 py-2 font-medium text-sm text-text">
@@ -313,25 +321,40 @@ function DataRow({
           <DealMarks
             compact
             value={flags}
-            onChange={(next) => {
-              setFlags(next);
-              onFlags(next);
-            }}
+            onChange={change}
           />
         </div>
         <div className="px-3 text-sm text-text truncate">{person(row.contacts, "in_house")}</div>
         <div className="px-3 text-sm text-text truncate">{person(row.contacts, "broker")}</div>
         <div className="px-1">
-          <ContactPopover contacts={row.contacts} tenantName={row.brandName} tenantId={row.tenantId} onChanged={onContacts} />
+          <ContactPopover
+            contacts={row.contacts}
+            tenantName={row.brandName}
+            tenantId={row.tenantId}
+            onSaved={onContact}
+            onDeleted={onContactDeleted}
+          />
         </div>
+      </div>
       </div>
     </div>
   );
 }
 
+function useInert(hidden: boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    if (hidden) node.setAttribute("inert", "");
+    else node.removeAttribute("inert");
+  }, [hidden]);
+  return ref;
+}
+
 function shell(hidden: boolean): string {
   return [
-    "overflow-hidden transition-[max-height,opacity] duration-300 ease-in-out",
-    hidden ? "max-h-0 opacity-0 pointer-events-none" : "max-h-40 opacity-100",
+    "grid transition-[grid-template-rows,opacity] duration-300 ease-in-out",
+    hidden ? "grid-rows-[0fr] opacity-0 pointer-events-none" : "grid-rows-[1fr] opacity-100",
   ].join(" ");
 }
