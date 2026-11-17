@@ -18,11 +18,13 @@ export default function DealMarks({
   onChange,
   onSave,
   saving,
+  compact,
 }: {
   value: DealFlags;
   onChange: (next: DealFlags) => void;
   onSave?: () => void;
   saving?: boolean;
+  compact?: boolean;
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
@@ -46,6 +48,8 @@ export default function DealMarks({
           </button>
         );
       })}
+      {!compact && (
+        <>
       <Input
         small
         className="w-36"
@@ -76,6 +80,8 @@ export default function DealMarks({
         <Button size="sm" variant="secondary" loading={saving} onClick={onSave}>
           Save
         </Button>
+      )}
+        </>
       )}
     </div>
   );

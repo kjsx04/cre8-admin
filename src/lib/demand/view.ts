@@ -40,6 +40,10 @@ export interface TenantMatchView {
   score: number;
   reasons: string[];
   requirement: string;
+  sfMin: number | null;
+  sfMax: number | null;
+  acresMin: number | null;
+  acresMax: number | null;
   dealLease: boolean | null;
   dealBuy: boolean | null;
   dealGroundLease: boolean | null;

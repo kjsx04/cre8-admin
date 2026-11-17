@@ -116,10 +116,14 @@ function propertyFamily(propertyType: string): ListingContext["propertyFamily"] 
 
 function spaceTypeFor(label: string, unit: "sf" | "acres" | null, propertyType: string): SpaceType {
   if (/end[-\s]?cap/i.test(label)) return "endcap";
+  const namedPad = /\bpads?\b/i.test(label);
+  // A shop, suite, or anchor measured in square feet stays shop space even when
+  // the listing itself is "Retail Pads". Acre tiers are for the pads.
+  if (unit === "sf" && !namedPad) return "inline";
   const family = propertyFamily(propertyType);
-  const pads = propertyType.toLowerCase().includes("retail pads") || /pad/i.test(label);
+  const pads = propertyType.toLowerCase().includes("retail pads") || namedPad;
   if (pads && family !== "land") return "pad";
-  if (unit === "acres" && family === "land" && !/pad/i.test(label)) return "land parcel";
+  if (unit === "acres" && family === "land" && !namedPad) return "land parcel";
   if (unit === "acres" && pads) return "pad";
   if (unit === "sf") return "inline";
   if (family === "land") return "land parcel";

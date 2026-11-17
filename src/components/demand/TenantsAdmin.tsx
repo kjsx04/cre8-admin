@@ -227,6 +227,7 @@ function TenantForm({
   catalog: CatalogResponse;
   onChange: (tenant: TenantAdminView) => void;
 }) {
+  const confirm = useConfirm();
   const set = (patch: Partial<TenantAdminView>) => onChange({ ...tenant, ...patch });
   return (
     <div className="space-y-4">
@@ -335,6 +336,21 @@ function TenantForm({
             <Input small placeholder="Title" value={contact.title || ""} onChange={(e) => patchContact(tenant, index, { title: e.target.value || null }, set)} />
             <Input small placeholder="Email" value={contact.email || ""} onChange={(e) => patchContact(tenant, index, { email: e.target.value || null }, set)} />
             <Input small placeholder="Phone" value={contact.phone || ""} onChange={(e) => patchContact(tenant, index, { phone: e.target.value || null }, set)} />
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={async () => {
+                const ok = await confirm({
+                  title: `Delete ${contact.name || "this contact"}?`,
+                  confirmLabel: "Delete",
+                  tone: "danger",
+                });
+                if (!ok) return;
+                set({ contacts: tenant.contacts.filter((_, i) => i !== index) });
+              }}
+            >
+              Delete
+            </Button>
           </div>
         ))}
         <Button
