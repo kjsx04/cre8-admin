@@ -1,0 +1,1055 @@
+import { supabase } from "@/lib/flow/supabase";
+import { escapeLikePattern } from "@/lib/sql-escape";
+import { asBoolean, asNumber, asString, asStringList, DemandError, fromSupabase } from "./coerce";
+import { parseContactCsv, parseTenantCsv, toCsv } from "./csv";
+import { effectiveRequirement, groupSpaceMatches, matchSpaces, normalizeFormats, requirementText, suggestAlsoPitch } from "./match";
+import { parcelAtPoint } from "./parcels";
+import { deriveSpaces, listingContext } from "./spaces";
+import type { ListingRow } from "./spaces";
+import type {
+  CategoryDefault,
+  ContactType,
+  Deal,
+  DemandSpace,
+  InterestStatus,
+  OverrideDecision,
+  Relation,
+  SizeTier,
+  SpaceOverride,
+  SpaceType,
+  TenantInput,
+  TenantLocation,
+  TenantRelationship,
+} from "./types";
+import type {
+  CatalogResponse,
+  CategoryAdminView,
+  ContactView,
+  GroupView,
+  ListingSummary,
+  MapResponse,
+  MatchResponse,
+  ReverseResponse,
+  SpaceView,
+  TenantAdminView,
+  TenantMatchView,
+  TierAdminView,
+} from "./view";
+
+const LISTING_COLS =
+  "id, name, slug, full_address, city_county, acres, building_sqft, list_price, listing_type, property_type, zoning, property_overview, spaces_available, latitude, longitude, status, sold";
+
+const PITCH = new Set(["interested", "touring", "LOI"]);
+const SPACE_TYPES = new Set(["pad", "inline", "endcap", "land parcel"]);
+const DEALS = new Set(["sale", "lease", "both"]);
+const INTEREST = new Set(["submitted", "interested", "touring", "LOI", "passed"]);
+
+type Row = Record<string, unknown>;
+
+async function many(builder: PromiseLike<{ data: Row[] | null; error: { message: string } | null }>, what: string): Promise<Row[]> {
+  const { data, error } = await builder;
+  if (error) throw fromSupabase(error, what);
+  return data || [];
+}
+
+function listingRow(row: Row): ListingRow & { status: string } {
+  return {
+    id: String(row.id),
+    name: String(row.name || "Untitled"),
+    fullAddress: asString(row.full_address),
+    cityCounty: asString(row.city_county),
+    acres: asNumber(row.acres),
+    buildingSqft: asNumber(row.building_sqft) == null ? null : Math.round(asNumber(row.building_sqft) as number),
+    listPrice: asString(row.list_price),
+    listingType: asString(row.listing_type),
+    propertyType: asString(row.property_type),
+    zoning: asString(row.zoning),
+    overview: asString(row.property_overview),
+    spacesHtml: asString(row.spaces_available),
+    latitude: asNumber(row.latitude),
+    longitude: asNumber(row.longitude),
+    sold: row.sold === true || row.status === "sold",
+    status: String(row.status || ""),
+  };
+}
+
+function summary(row: ReturnType<typeof listingRow>): ListingSummary {
+  const place = row.cityCounty ? splitPlace(row.cityCounty) : { city: null, county: null };
+  return {
+    id: row.id,
+    name: row.name,
+    city: place.city,
+    county: place.county,
+    address: row.fullAddress || "",
+    acres: row.acres ?? null,
+    buildingSf: row.buildingSqft ?? null,
+    listingType: row.listingType || "",
+    propertyType: row.propertyType || "",
+    status: row.status,
+    sold: row.sold || false,
+    lat: row.latitude ?? null,
+    lng: row.longitude ?? null,
+  };
+}
+
+function splitPlace(raw: string): { city: string | null; county: string | null } {
+  const ctx = listingContext({ id: "", name: "", cityCounty: raw });
+  return { city: ctx.city, county: ctx.county };
+}
+
+function spaceFrom(row: Row): DemandSpace {
+  const type = String(row.space_type || "");
+  const deal = String(row.deal || "both");
+  return {
+    id: String(row.id),
+    label: String(row.label || "Space"),
+    spaceType: (SPACE_TYPES.has(type) ? type : "inline") as SpaceType,
+    acres: asNumber(row.acres),
+    sf: asNumber(row.sf) == null ? null : Math.round(asNumber(row.sf) as number),
+    driveThru: asBoolean(row.drive_thru),
+    deal: (DEALS.has(deal) ? deal : "both") as Deal,
+    priceRate: asString(row.price_rate),
+    status: asString(row.status),
+    notes: asString(row.notes),
+    sortOrder: asNumber(row.sort_order) ?? 0,
+    geometry: row.geometry ?? undefined,
+  };
+}
+
+function spaceView(space: DemandSpace): SpaceView {
+  return {
+    id: space.id,
+    label: space.label,
+    spaceType: space.spaceType,
+    acres: space.acres,
+    sf: space.sf,
+    driveThru: space.driveThru,
+    deal: space.deal,
+    priceRate: space.priceRate,
+    status: space.status,
+    notes: space.notes,
+    sortOrder: space.sortOrder,
+    hasGeometry: space.geometry != null,
+  };
+}
+
+interface Bundle {
+  tenants: TenantInput[];
+  admin: Map<string, { subcategory: string | null; source: string | null; date: string | null; notes: string | null }>;
+  defaults: CategoryDefault[];
+  tiers: SizeTier[];
+  locations: TenantLocation[];
+  relationships: TenantRelationship[];
+  contacts: Map<string, ContactView[]>;
+}
+
+async function loadBundle(): Promise<Bundle> {
+  const [tenantRows, contactRows, firmRows, tierRows, categoryRows, categoryTiers, tenantTiers, locationRows, relationshipRows] =
+    await Promise.all([
+      many(supabase.from("tenants").select("*").order("brand_name"), "tenants"),
+      many(supabase.from("tenant_contacts").select("*").order("name"), "contacts"),
+      many(supabase.from("rep_firms").select("*").order("name"), "firms"),
+      many(supabase.from("size_tiers").select("*").order("sort_order"), "tiers"),
+      many(supabase.from("category_defaults").select("*").order("category"), "categories"),
+      many(supabase.from("category_size_tiers").select("*"), "category tiers"),
+      many(supabase.from("tenant_size_tiers").select("*"), "tenant tiers"),
+      many(supabase.from("tenant_locations").select("*"), "locations"),
+      many(supabase.from("tenant_relationships").select("*"), "relationships"),
+    ]);
+
+  const firmName = new Map(firmRows.map((row) => [String(row.id), String(row.name || "")]));
+  const tiersByTenant = new Map<string, string[]>();
+  for (const row of tenantTiers) {
+    const id = String(row.tenant_id);
+    const list = tiersByTenant.get(id) || [];
+    list.push(String(row.size_tier_id));
+    tiersByTenant.set(id, list);
+  }
+  const tiersByCategory = new Map<string, string[]>();
+  for (const row of categoryTiers) {
+    const id = String(row.category);
+    const list = tiersByCategory.get(id) || [];
+    list.push(String(row.size_tier_id));
+    tiersByCategory.set(id, list);
+  }
+
+  const contacts = new Map<string, ContactView[]>();
+  for (const row of contactRows) {
+    const tenantId = String(row.tenant_id);
+    const view: ContactView = {
+      id: String(row.id),
+      contactType: row.contact_type === "broker" ? "broker" : "in_house",
+      name: String(row.name || ""),
+      title: asString(row.title),
+      firmName: row.firm_id ? firmName.get(String(row.firm_id)) || null : null,
+      email: asString(row.email),
+      phone: asString(row.phone),
+      isPrimary: row.is_primary === true,
+      confidence: asString(row.confidence),
+    };
+    const list = contacts.get(tenantId) || [];
+    list.push(view);
+    contacts.set(tenantId, list);
+  }
+  Array.from(contacts.values()).forEach((list) => list.sort(contactOrder));
+
+  const tenants: TenantInput[] = tenantRows.map((row) => ({
+    id: String(row.id),
+    brandName: String(row.brand_name || ""),
+    category: String(row.category || "other"),
+    subcategory: asString(row.subcategory),
+    formats: asStringList(row.formats),
+    sfMin: asNumber(row.sf_min),
+    sfMax: asNumber(row.sf_max),
+    acresMin: asNumber(row.acres_min),
+    acresMax: asNumber(row.acres_max),
+    tierIds: tiersByTenant.get(String(row.id)) || [],
+    driveThruRequired: asBoolean(row.drive_thru_required),
+    azMarkets: asStringList(row.az_markets),
+    spacingMiles: asNumber(row.spacing_miles),
+    active: row.active !== false,
+  }));
+
+  const admin = new Map(
+    tenantRows.map((row) => [
+      String(row.id),
+      {
+        subcategory: asString(row.subcategory),
+        source: asString(row.requirement_source),
+        date: asString(row.requirement_date),
+        notes: asString(row.notes),
+      },
+    ])
+  );
+
+  const tiers: SizeTier[] = tierRows.map((row) => ({
+    id: String(row.id),
+    name: String(row.name || ""),
+    kind: row.kind === "acres" ? "acres" : "sf",
+    minValue: asNumber(row.min_value),
+    maxValue: asNumber(row.max_value),
+    sortOrder: asNumber(row.sort_order) ?? 0,
+  }));
+
+  const defaults: CategoryDefault[] = categoryRows.map((row) => ({
+    category: String(row.category),
+    formats: asStringList(row.formats),
+    sfMin: asNumber(row.sf_min),
+    sfMax: asNumber(row.sf_max),
+    acresMin: asNumber(row.acres_min),
+    acresMax: asNumber(row.acres_max),
+    tierIds: tiersByCategory.get(String(row.category)) || [],
+    driveThruTypical: asBoolean(row.drive_thru_typical),
+    spacingMiles: asNumber(row.spacing_miles),
+  }));
+
+  const locations: TenantLocation[] = locationRows.map((row) => ({
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    name: asString(row.name),
+    address: asString(row.address),
+    lat: asNumber(row.lat),
+    lng: asNumber(row.lng),
+    status: asString(row.status),
+  }));
+
+  const relationships: TenantRelationship[] = relationshipRows.map((row) => ({
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    relatedTenantId: String(row.related_tenant_id),
+    relation: (row.relation === "similar" || row.relation === "co_tenant" ? row.relation : "competitor") as Relation,
+  }));
+
+  return { tenants, admin, defaults, tiers, locations, relationships, contacts };
+}
+
+function contactOrder(a: ContactView, b: ContactView): number {
+  const type = (a.contactType === "broker" ? 0 : 1) - (b.contactType === "broker" ? 0 : 1);
+  if (type) return type;
+  return Number(b.isPrimary) - Number(a.isPrimary) || a.name.localeCompare(b.name);
+}
+
+async function oneListing(id: string): Promise<ReturnType<typeof listingRow>> {
+  const { data, error } = await supabase.from("listings").select(LISTING_COLS).eq("id", id).maybeSingle();
+  if (error) throw fromSupabase(error, "listing");
+  if (!data) throw new DemandError("Listing not found.", 404);
+  return listingRow(data as Row);
+}
+
+async function spaceRows(listingId: string): Promise<DemandSpace[]> {
+  const rows = await many(
+    supabase.from("listing_spaces").select("*").eq("listing_id", listingId).order("sort_order"),
+    "spaces"
+  );
+  return rows.map(spaceFrom);
+}
+
+async function ensureSpaces(row: ReturnType<typeof listingRow>): Promise<{ spaces: DemandSpace[]; seeded: boolean }> {
+  const existing = await spaceRows(row.id);
+  if (existing.length) return { spaces: existing, seeded: false };
+  const drafts = deriveSpaces(row);
+  const { data, error } = await supabase
+    .from("listing_spaces")
+    .insert(
+      drafts.map((space) => ({
+        listing_id: row.id,
+        label: space.label,
+        space_type: space.spaceType,
+        acres: space.acres,
+        sf: space.sf,
+        drive_thru: space.driveThru,
+        deal: space.deal,
+        price_rate: space.priceRate,
+        status: space.status,
+        notes: space.notes,
+        sort_order: space.sortOrder,
+      }))
+    )
+    .select("*");
+  if (error) throw fromSupabase(error, "seed spaces");
+  return { spaces: ((data || []) as Row[]).map(spaceFrom), seeded: true };
+}
+
+async function overridesFor(listingId: string): Promise<SpaceOverride[]> {
+  const rows = await many(supabase.from("demand_overrides").select("*").eq("listing_id", listingId), "overrides");
+  return rows.map((row) => ({
+    spaceId: String(row.listing_space_id),
+    tenantId: String(row.tenant_id),
+    decision: row.decision === "include" ? "include" : "exclude",
+    reason: asString(row.reason),
+  }));
+}
+
+async function interestFor(listingId: string): Promise<{ spaceId: string; tenantId: string; status: InterestStatus; notes: string | null }[]> {
+  const rows = await many(supabase.from("demand_interest").select("*").eq("listing_id", listingId), "interest");
+  return rows
+    .filter((row) => INTEREST.has(String(row.status)))
+    .map((row) => ({
+      spaceId: String(row.listing_space_id),
+      tenantId: String(row.tenant_id),
+      status: String(row.status) as InterestStatus,
+      notes: asString(row.notes),
+    }));
+}
+
+function toGroup(group: ReturnType<typeof groupSpaceMatches>[number], bundle: Bundle, interest: Awaited<ReturnType<typeof interestFor>>, overrides: SpaceOverride[]): GroupView {
+  const spaceIds = new Set(group.spaces.map((space) => space.id));
+  const buckets = new Map(group.tenants.map((tenant) => [tenant.tenantId, tenant.bucket]));
+  const byId = new Map(bundle.tenants.map((tenant) => [tenant.id, tenant]));
+  const views = group.tenants.map((classified) => {
+    const tenant = byId.get(classified.tenantId);
+    const interests = interest.filter((row) => row.tenantId === classified.tenantId && spaceIds.has(row.spaceId));
+    const overs = overrides.filter((row) => row.tenantId === classified.tenantId && spaceIds.has(row.spaceId));
+    const alsoPitch = interests.some((row) => PITCH.has(row.status))
+      ? suggestAlsoPitch({
+          tenantId: classified.tenantId,
+          tenants: bundle.tenants,
+          defaults: bundle.defaults,
+          tiers: bundle.tiers,
+          relationships: bundle.relationships,
+          space: group.spaces[0],
+          buckets,
+        })
+      : [];
+    const view: TenantMatchView = {
+      tenantId: classified.tenantId,
+      brandName: tenant?.brandName || "Tenant",
+      category: tenant?.category || "",
+      subcategory: tenant?.subcategory || null,
+      bucket: classified.bucket,
+      score: classified.score,
+      reasons: classified.reasons,
+      requirement: requirementText(classified.requirement, bundle.tiers),
+      contacts: bundle.contacts.get(classified.tenantId) || [],
+      interests: interests.map((row) => ({ spaceId: row.spaceId, status: row.status, notes: row.notes })),
+      overrides: overs.map((row) => ({ spaceId: row.spaceId, decision: row.decision, reason: row.reason })),
+      alsoPitch,
+    };
+    return view;
+  });
+  return {
+    key: group.key,
+    title: group.title,
+    tierName: group.tierName,
+    spaces: group.spaces.map(spaceView),
+    optimal: views.filter((view) => view.bucket === "optimal"),
+    possible: views.filter((view) => view.bucket === "possible"),
+    excluded: views.filter((view) => view.bucket === "excluded"),
+  };
+}
+
+export async function listListings(): Promise<ListingSummary[]> {
+  const rows = await many(supabase.from("listings").select(LISTING_COLS).order("name"), "listings");
+  return rows.map((row) => summary(listingRow(row)));
+}
+
+export async function getMatch(listingId: string): Promise<MatchResponse> {
+  const row = await oneListing(listingId);
+  const bundle = await loadBundle();
+  const { spaces, seeded } = await ensureSpaces(row);
+  const [overrides, interest] = await Promise.all([overridesFor(listingId), interestFor(listingId)]);
+  const groups = groupSpaceMatches(
+    matchSpaces({
+      listing: listingContext(row),
+      spaces,
+      tenants: bundle.tenants,
+      defaults: bundle.defaults,
+      tiers: bundle.tiers,
+      locations: bundle.locations,
+      overrides,
+    }),
+    bundle.tiers
+  );
+  return { listing: summary(row), spacesSeeded: seeded, groups: groups.map((group) => toGroup(group, bundle, interest, overrides)) };
+}
+
+export async function getReverse(tenantId: string): Promise<ReverseResponse> {
+  const bundle = await loadBundle();
+  const tenant = bundle.tenants.find((item) => item.id === tenantId);
+  if (!tenant) throw new DemandError("Tenant not found.", 404);
+  const [listingRows, spaceData, overrideRows] = await Promise.all([
+    many(supabase.from("listings").select(LISTING_COLS), "listings"),
+    many(supabase.from("listing_spaces").select("*"), "spaces"),
+    many(supabase.from("demand_overrides").select("*").eq("tenant_id", tenantId), "overrides"),
+  ]);
+  const byListing = new Map<string, DemandSpace[]>();
+  for (const row of spaceData) {
+    const space = spaceFrom(row);
+    const list = byListing.get(String(row.listing_id)) || [];
+    list.push(space);
+    byListing.set(String(row.listing_id), list);
+  }
+  const overrides: SpaceOverride[] = overrideRows.map((row) => ({
+    spaceId: String(row.listing_space_id),
+    tenantId,
+    decision: row.decision === "include" ? "include" : "exclude",
+    reason: asString(row.reason),
+  }));
+  const hits: ReverseResponse = {
+    tenant: {
+      id: tenant.id,
+      brandName: tenant.brandName,
+      category: tenant.category,
+      requirement: requirementText(effectiveRequirement(tenant, bundle.defaults.find((d) => d.category === tenant.category) ?? null, bundle.tiers), bundle.tiers),
+    },
+    optimal: [],
+    possible: [],
+    excluded: [],
+  };
+  for (const raw of listingRows) {
+    const row = listingRow(raw);
+    let spaces = byListing.get(row.id) || [];
+    if (!spaces.length) {
+      spaces = deriveSpaces(row).map((space, index) => ({ ...space, id: `draft:${row.id}:${index}` }));
+    }
+    const groups = groupSpaceMatches(
+      matchSpaces({
+        listing: listingContext(row),
+        spaces,
+        tenants: [{ ...tenant, active: true }],
+        defaults: bundle.defaults,
+        tiers: bundle.tiers,
+        locations: bundle.locations,
+        overrides,
+      }),
+      bundle.tiers
+    );
+    const place = summary(row);
+    for (const group of groups) {
+      const classified = group.tenants[0];
+      if (!classified) continue;
+      hits[classified.bucket].push({
+        listingId: row.id,
+        listingName: row.name,
+        city: place.city,
+        title: group.title,
+        reasons: classified.reasons,
+        score: classified.score,
+      });
+    }
+  }
+  for (const bucket of ["optimal", "possible", "excluded"] as const) {
+    hits[bucket].sort((a, b) => b.score - a.score || a.listingName.localeCompare(b.listingName));
+  }
+  return hits;
+}
+
+export async function getMap(listingId: string): Promise<MapResponse> {
+  const match = await getMatch(listingId);
+  const bundle = await loadBundle();
+  const spaces = await spaceRows(listingId);
+  const seen = new Set<string>();
+  const tenants = [];
+  for (const group of match.groups) {
+    for (const view of [...group.optimal, ...group.possible]) {
+      if (seen.has(view.tenantId)) continue;
+      seen.add(view.tenantId);
+      const tenant = bundle.tenants.find((item) => item.id === view.tenantId);
+      const requirement = tenant
+        ? effectiveRequirement(tenant, bundle.defaults.find((item) => item.category === tenant.category) ?? null, bundle.tiers)
+        : null;
+      tenants.push({
+        id: view.tenantId,
+        brandName: view.brandName,
+        category: view.category,
+        spacingMiles: requirement?.spacingMiles ?? null,
+        locations: bundle.locations
+          .filter((loc) => loc.tenantId === view.tenantId && loc.lat != null && loc.lng != null && !/closed|dead|former|relocated/i.test(loc.status || ""))
+          .map((loc) => ({ id: loc.id, name: loc.name, lat: loc.lat as number, lng: loc.lng as number })),
+      });
+    }
+  }
+  tenants.sort((a, b) => a.category.localeCompare(b.category) || a.brandName.localeCompare(b.brandName));
+  const spaceOutlines = spaces
+    .filter((space) => space.geometry)
+    .map((space) => ({ id: space.id, label: space.label, geometry: space.geometry }));
+  let parcel: MapResponse["parcel"] = null;
+  if (match.listing.lat != null && match.listing.lng != null) {
+    const hit = await parcelAtPoint(match.listing.lng, match.listing.lat);
+    if (hit) parcel = { type: "Feature", geometry: hit.geometry };
+  }
+  const note =
+    parcel || spaceOutlines.length
+      ? null
+      : match.listing.lat == null
+        ? "This listing has no map location yet."
+        : "No parcel outline on file. Showing the listing pin.";
+  return {
+    listing: { id: match.listing.id, name: match.listing.name, city: match.listing.city, lat: match.listing.lat, lng: match.listing.lng },
+    parcel,
+    spaceOutlines,
+    note,
+    tenants,
+  };
+}
+
+export function exportCsv(match: MatchResponse, includeRest: boolean): string {
+  const headers = [
+    "group", "spaces", "bucket", "brand_name", "category", "requirement", "reasons", "interest", "override",
+    "broker_name", "broker_firm", "broker_email", "broker_phone",
+    "in_house_name", "in_house_title", "in_house_email", "in_house_phone",
+  ];
+  const lines: (string | null)[][] = [];
+  for (const group of match.groups) {
+    const buckets = includeRest ? [group.optimal, group.possible, group.excluded] : [group.optimal];
+    for (const list of buckets) {
+      for (const tenant of list) {
+        const broker = tenant.contacts.find((contact) => contact.contactType === "broker");
+        const house = tenant.contacts.find((contact) => contact.contactType === "in_house");
+        const interest = tenant.interests.map((row) => {
+          const label = group.spaces.find((space) => space.id === row.spaceId)?.label || row.spaceId;
+          return `${label}: ${row.status}`;
+        }).join("; ");
+        const override = tenant.overrides.map((row) => `${row.decision}${row.reason ? ` (${row.reason})` : ""}`).join("; ");
+        lines.push([
+          group.title,
+          group.spaces.map((space) => space.label).join("; "),
+          tenant.bucket,
+          tenant.brandName,
+          tenant.category,
+          tenant.requirement,
+          tenant.reasons.join("; "),
+          interest,
+          override,
+          broker?.name || "",
+          broker?.firmName || "",
+          broker?.email || "",
+          broker?.phone || "",
+          house?.name || "",
+          house?.title || "",
+          house?.email || "",
+          house?.phone || "",
+        ]);
+      }
+    }
+  }
+  return toCsv(headers, lines);
+}
+
+export interface SpaceInput {
+  id?: string;
+  label: string;
+  spaceType: SpaceType;
+  acres: number | null;
+  sf: number | null;
+  driveThru: boolean | null;
+  deal: Deal;
+  priceRate: string | null;
+  status: string | null;
+  notes: string | null;
+}
+
+export async function saveSpaces(listingId: string, spaces: SpaceInput[]): Promise<void> {
+  await oneListing(listingId);
+  const existing = await spaceRows(listingId);
+  const keep = new Set<string>();
+  for (let index = 0; index < spaces.length; index++) {
+    const space = spaces[index];
+    if (!SPACE_TYPES.has(space.spaceType)) throw new DemandError("Unknown space type.", 400);
+    const payload = {
+      listing_id: listingId,
+      label: space.label.trim() || "Space",
+      space_type: space.spaceType,
+      acres: space.acres,
+      sf: space.sf,
+      drive_thru: space.driveThru,
+      deal: DEALS.has(space.deal) ? space.deal : "both",
+      price_rate: space.priceRate,
+      status: space.status,
+      notes: space.notes,
+      sort_order: index,
+    };
+    if (space.id && existing.some((row) => row.id === space.id)) {
+      keep.add(space.id);
+      const { error } = await supabase.from("listing_spaces").update(payload).eq("id", space.id);
+      if (error) throw fromSupabase(error, "update space");
+    } else {
+      const { data, error } = await supabase.from("listing_spaces").insert(payload).select("id").single();
+      if (error || !data) throw fromSupabase(error || { message: "Insert failed" }, "insert space");
+      keep.add(String((data as Row).id));
+    }
+  }
+  const remove = existing.map((space) => space.id).filter((id) => !keep.has(id));
+  if (remove.length) {
+    const { error } = await supabase.from("listing_spaces").delete().in("id", remove);
+    if (error) throw fromSupabase(error, "delete space");
+  }
+}
+
+export async function setOverride(input: {
+  listingId: string;
+  spaceIds: string[];
+  tenantId: string;
+  decision: OverrideDecision;
+  reason: string;
+  createdBy: string;
+}): Promise<void> {
+  if (!input.reason.trim()) throw new DemandError("Add a reason.", 400);
+  if (input.decision !== "include" && input.decision !== "exclude") throw new DemandError("Unknown decision.", 400);
+  for (const spaceId of input.spaceIds) {
+    const { error } = await supabase.from("demand_overrides").upsert(
+      {
+        listing_id: input.listingId,
+        listing_space_id: spaceId,
+        tenant_id: input.tenantId,
+        decision: input.decision,
+        reason: input.reason.trim(),
+        created_by: input.createdBy,
+        created_at: new Date().toISOString(),
+      },
+      { onConflict: "listing_space_id,tenant_id" }
+    );
+    if (error) throw fromSupabase(error, "override");
+  }
+}
+
+export async function clearOverride(spaceIds: string[], tenantId: string): Promise<void> {
+  if (!spaceIds.length) return;
+  const { error } = await supabase.from("demand_overrides").delete().eq("tenant_id", tenantId).in("listing_space_id", spaceIds);
+  if (error) throw fromSupabase(error, "clear override");
+}
+
+export async function setInterest(input: {
+  listingId: string;
+  spaceIds: string[];
+  tenantId: string;
+  status: InterestStatus | null;
+  notes: string | null;
+}): Promise<void> {
+  if (input.status && !INTEREST.has(input.status)) throw new DemandError("Unknown interest status.", 400);
+  if (!input.status) {
+    const { error } = await supabase.from("demand_interest").delete().eq("tenant_id", input.tenantId).in("listing_space_id", input.spaceIds);
+    if (error) throw fromSupabase(error, "clear interest");
+    return;
+  }
+  for (const spaceId of input.spaceIds) {
+    const { error } = await supabase.from("demand_interest").upsert(
+      {
+        listing_id: input.listingId,
+        listing_space_id: spaceId,
+        tenant_id: input.tenantId,
+        status: input.status,
+        notes: input.notes,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "listing_space_id,tenant_id" }
+    );
+    if (error) throw fromSupabase(error, "interest");
+  }
+}
+
+export async function getCatalog(): Promise<CatalogResponse> {
+  const bundle = await loadBundle();
+  const [firmRows] = await Promise.all([many(supabase.from("rep_firms").select("*").order("name"), "firms")]);
+  const tenants: TenantAdminView[] = bundle.tenants.map((tenant) => {
+    const extra = bundle.admin.get(tenant.id);
+    return {
+      ...tenant,
+      requirementSource: extra?.source || null,
+      requirementDate: extra?.date || null,
+      notes: extra?.notes || null,
+      contacts: bundle.contacts.get(tenant.id) || [],
+      relationships: bundle.relationships
+        .filter((rel) => rel.tenantId === tenant.id)
+        .map((rel) => ({ id: rel.id, relatedTenantId: rel.relatedTenantId, relation: rel.relation })),
+    };
+  });
+  const categories: CategoryAdminView[] = bundle.defaults.map((item) => ({
+    category: item.category,
+    formats: item.formats,
+    sfMin: item.sfMin,
+    sfMax: item.sfMax,
+    acresMin: item.acresMin,
+    acresMax: item.acresMax,
+    tierIds: item.tierIds,
+    driveThruTypical: item.driveThruTypical,
+    spacingMiles: item.spacingMiles,
+  }));
+  return {
+    tenants,
+    firms: firmRows.map((row) => ({
+      id: String(row.id),
+      name: String(row.name || ""),
+      website: asString(row.website),
+      notes: asString(row.notes),
+    })),
+    categories,
+    tiers: bundle.tiers.map((tier) => ({
+      id: tier.id,
+      name: tier.name,
+      kind: tier.kind,
+      minValue: tier.minValue,
+      maxValue: tier.maxValue,
+      sortOrder: tier.sortOrder,
+    })),
+  };
+}
+
+export interface TenantWrite {
+  brandName: string;
+  category: string;
+  subcategory: string | null;
+  formats: string[];
+  sfMin: number | null;
+  sfMax: number | null;
+  acresMin: number | null;
+  acresMax: number | null;
+  tierIds: string[];
+  driveThruRequired: boolean | null;
+  azMarkets: string[];
+  spacingMiles: number | null;
+  requirementSource: string | null;
+  requirementDate: string | null;
+  notes: string | null;
+  active: boolean;
+  contacts: {
+    contactType: ContactType;
+    firmName: string | null;
+    name: string;
+    title: string | null;
+    email: string | null;
+    phone: string | null;
+    isPrimary: boolean;
+    confidence: string | null;
+  }[];
+  relationships: { relatedTenantId: string; relation: Relation }[];
+}
+
+function tenantPayload(input: TenantWrite) {
+  const formats = normalizeFormats(input.formats);
+  if (input.formats.length && formats.length !== input.formats.length) {
+    throw new DemandError("Unknown format. Use pad, inline, endcap, junior box, big box, ground lease, or BTS.", 400);
+  }
+  if (!input.brandName.trim() || !input.category.trim()) throw new DemandError("Name and category are required.", 400);
+  return {
+    brand_name: input.brandName.trim(),
+    category: input.category.trim(),
+    subcategory: input.subcategory,
+    formats,
+    sf_min: input.sfMin,
+    sf_max: input.sfMax,
+    acres_min: input.acresMin,
+    acres_max: input.acresMax,
+    drive_thru_required: input.driveThruRequired,
+    az_markets: input.azMarkets,
+    spacing_miles: input.spacingMiles,
+    requirement_source: input.requirementSource,
+    requirement_date: input.requirementDate,
+    notes: input.notes,
+    active: input.active,
+  };
+}
+
+async function replaceTenantChildren(tenantId: string, input: TenantWrite): Promise<void> {
+  const { error: tierError } = await supabase.from("tenant_size_tiers").delete().eq("tenant_id", tenantId);
+  if (tierError) throw fromSupabase(tierError, "clear tiers");
+  if (input.tierIds.length) {
+    const { error } = await supabase.from("tenant_size_tiers").insert(input.tierIds.map((id) => ({ tenant_id: tenantId, size_tier_id: id })));
+    if (error) throw fromSupabase(error, "tiers");
+  }
+  const { error: contactError } = await supabase.from("tenant_contacts").delete().eq("tenant_id", tenantId);
+  if (contactError) throw fromSupabase(contactError, "clear contacts");
+  if (input.contacts.length) {
+    const firms = await many(supabase.from("rep_firms").select("id, name"), "firms");
+    const firmId = new Map(firms.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
+    const { error } = await supabase.from("tenant_contacts").insert(
+      input.contacts.filter((contact) => contact.name.trim()).map((contact) => ({
+        tenant_id: tenantId,
+        contact_type: contact.contactType === "broker" ? "broker" : "in_house",
+        firm_id: contact.firmName ? firmId.get(contact.firmName.trim().toLowerCase()) || null : null,
+        name: contact.name.trim(),
+        title: contact.title,
+        email: contact.email,
+        phone: contact.phone,
+        is_primary: contact.isPrimary,
+        confidence: contact.confidence === "High" || contact.confidence === "Medium" || contact.confidence === "Low" ? contact.confidence : null,
+      }))
+    );
+    if (error) throw fromSupabase(error, "contacts");
+  }
+  const { error: relError } = await supabase.from("tenant_relationships").delete().eq("tenant_id", tenantId);
+  if (relError) throw fromSupabase(relError, "clear relationships");
+  const rels = input.relationships.filter((rel) => rel.relatedTenantId && rel.relatedTenantId !== tenantId);
+  if (rels.length) {
+    const { error } = await supabase.from("tenant_relationships").insert(
+      rels.map((rel) => ({
+        tenant_id: tenantId,
+        related_tenant_id: rel.relatedTenantId,
+        relation: rel.relation,
+      }))
+    );
+    if (error) throw fromSupabase(error, "relationships");
+  }
+}
+
+export async function createTenant(input: TenantWrite): Promise<string> {
+  const { data, error } = await supabase.from("tenants").insert(tenantPayload(input)).select("id").single();
+  if (error || !data) throw fromSupabase(error || { message: "Insert failed" }, "create tenant");
+  const id = String((data as Row).id);
+  await replaceTenantChildren(id, input);
+  return id;
+}
+
+export async function updateTenant(id: string, input: TenantWrite): Promise<void> {
+  const { error } = await supabase.from("tenants").update(tenantPayload(input)).eq("id", id);
+  if (error) throw fromSupabase(error, "update tenant");
+  await replaceTenantChildren(id, input);
+}
+
+export async function deleteTenant(id: string): Promise<void> {
+  const { error } = await supabase.from("tenants").delete().eq("id", id);
+  if (error) throw fromSupabase(error, "delete tenant");
+}
+
+export async function saveFirm(input: { id?: string; name: string; website: string | null; notes: string | null }): Promise<void> {
+  if (!input.name.trim()) throw new DemandError("Firm name is required.", 400);
+  const payload = { name: input.name.trim(), website: input.website, notes: input.notes };
+  const { error } = input.id
+    ? await supabase.from("rep_firms").update(payload).eq("id", input.id)
+    : await supabase.from("rep_firms").insert(payload);
+  if (error) throw fromSupabase(error, "firm");
+}
+
+export async function deleteFirm(id: string): Promise<void> {
+  const { error } = await supabase.from("rep_firms").delete().eq("id", id);
+  if (error) throw fromSupabase(error, "delete firm");
+}
+
+export async function saveCategories(categories: CategoryAdminView[]): Promise<void> {
+  for (const category of categories) {
+    const formats = normalizeFormats(category.formats);
+    const payload = {
+      category: category.category.trim(),
+      formats,
+      sf_min: category.sfMin,
+      sf_max: category.sfMax,
+      acres_min: category.acresMin,
+      acres_max: category.acresMax,
+      drive_thru_typical: category.driveThruTypical,
+      spacing_miles: category.spacingMiles,
+    };
+    const { data: existing } = await supabase.from("category_defaults").select("category").eq("category", payload.category).maybeSingle();
+    const { error } = existing
+      ? await supabase.from("category_defaults").update(payload).eq("category", payload.category)
+      : await supabase.from("category_defaults").insert(payload);
+    if (error) throw fromSupabase(error, "category");
+    const { error: clearError } = await supabase.from("category_size_tiers").delete().eq("category", payload.category);
+    if (clearError) throw fromSupabase(clearError, "category tiers");
+    if (category.tierIds.length) {
+      const { error: linkError } = await supabase
+        .from("category_size_tiers")
+        .insert(category.tierIds.map((id) => ({ category: payload.category, size_tier_id: id })));
+      if (linkError) throw fromSupabase(linkError, "category tiers");
+    }
+  }
+}
+
+export async function saveTiers(tiers: TierAdminView[]): Promise<void> {
+  const existing = await many(supabase.from("size_tiers").select("id"), "tiers");
+  const keep = new Set<string>();
+  for (const tier of tiers) {
+    if (!tier.name.trim()) throw new DemandError("Every tier needs a name.", 400);
+    if (tier.kind !== "sf" && tier.kind !== "acres") throw new DemandError("Tier kind must be sf or acres.", 400);
+    const payload = {
+      name: tier.name.trim(),
+      kind: tier.kind,
+      min_value: tier.minValue,
+      max_value: tier.maxValue,
+      sort_order: tier.sortOrder,
+    };
+    if (tier.id && existing.some((row) => String(row.id) === tier.id)) {
+      keep.add(tier.id);
+      const { error } = await supabase.from("size_tiers").update(payload).eq("id", tier.id);
+      if (error) throw fromSupabase(error, "update tier");
+    } else {
+      const { data, error } = await supabase.from("size_tiers").insert(payload).select("id").single();
+      if (error || !data) throw fromSupabase(error || { message: "Insert failed" }, "insert tier");
+      keep.add(String((data as Row).id));
+    }
+  }
+  const remove = existing.map((row) => String(row.id)).filter((id) => !keep.has(id));
+  if (remove.length) {
+    const { error } = await supabase.from("size_tiers").delete().in("id", remove);
+    if (error) throw fromSupabase(error, "delete tier");
+  }
+}
+
+export async function importCsv(kind: "tenants" | "contacts", csv: string): Promise<{ created: number; updated: number; errors: { row: number; message: string }[] }> {
+  if (kind === "tenants") return importTenants(csv);
+  if (kind === "contacts") return importContacts(csv);
+  throw new DemandError("Import kind must be tenants or contacts.", 400);
+}
+
+async function importTenants(csv: string) {
+  const parsed = parseTenantCsv(csv);
+  if (!parsed.rows.length) return { created: 0, updated: 0, errors: parsed.errors };
+  const [tenants, tiers] = await Promise.all([
+    many(supabase.from("tenants").select("id, brand_name"), "tenants"),
+    many(supabase.from("size_tiers").select("id, name"), "tiers"),
+  ]);
+  const byName = new Map(tenants.map((row) => [String(row.brand_name).toLowerCase(), String(row.id)]));
+  const tierId = new Map(tiers.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
+  let created = 0;
+  let updated = 0;
+  const errors = [...parsed.errors];
+  for (let index = 0; index < parsed.rows.length; index++) {
+    const row = parsed.rows[index];
+    const missing = row.sizeTiers.filter((name) => !tierId.has(name.toLowerCase()));
+    if (missing.length) {
+      errors.push({ row: index + 2, message: `Unknown size tier: ${missing.join(", ")}` });
+      continue;
+    }
+    const payload = {
+      brand_name: row.brandName,
+      category: row.category,
+      subcategory: row.subcategory,
+      formats: normalizeFormats(row.formats),
+      sf_min: row.sfMin,
+      sf_max: row.sfMax,
+      acres_min: row.acresMin,
+      acres_max: row.acresMax,
+      drive_thru_required: row.driveThruRequired,
+      az_markets: row.azMarkets,
+      spacing_miles: row.spacingMiles,
+      requirement_source: row.requirementSource,
+      requirement_date: row.requirementDate,
+      notes: row.notes,
+      active: row.active,
+    };
+    const existingId = byName.get(row.brandName.toLowerCase());
+    let id = existingId;
+    if (existingId) {
+      const { error } = await supabase.from("tenants").update(payload).eq("id", existingId);
+      if (error) {
+        errors.push({ row: index + 2, message: error.message });
+        continue;
+      }
+      updated += 1;
+    } else {
+      const { data, error } = await supabase.from("tenants").insert(payload).select("id").single();
+      if (error || !data) {
+        errors.push({ row: index + 2, message: error?.message || "Insert failed" });
+        continue;
+      }
+      id = String((data as Row).id);
+      byName.set(row.brandName.toLowerCase(), id);
+      created += 1;
+    }
+    if (!id || !row.sizeTiers.length) continue;
+    await supabase.from("tenant_size_tiers").delete().eq("tenant_id", id);
+    const { error } = await supabase.from("tenant_size_tiers").insert(
+      row.sizeTiers.map((name) => ({ tenant_id: id, size_tier_id: tierId.get(name.toLowerCase()) }))
+    );
+    if (error) errors.push({ row: index + 2, message: error.message });
+  }
+  return { created, updated, errors };
+}
+
+async function importContacts(csv: string) {
+  const parsed = parseContactCsv(csv);
+  if (!parsed.rows.length) return { created: 0, updated: 0, errors: parsed.errors };
+  const [tenants, firms] = await Promise.all([
+    many(supabase.from("tenants").select("id, brand_name"), "tenants"),
+    many(supabase.from("rep_firms").select("id, name"), "firms"),
+  ]);
+  const tenantId = new Map(tenants.map((row) => [String(row.brand_name).toLowerCase(), String(row.id)]));
+  const firmId = new Map(firms.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
+  let created = 0;
+  let updated = 0;
+  const errors = [...parsed.errors];
+  for (let index = 0; index < parsed.rows.length; index++) {
+    const row = parsed.rows[index];
+    const owner = tenantId.get(row.brandName.toLowerCase());
+    if (!owner) {
+      errors.push({ row: index + 2, message: `No tenant named ${row.brandName}.` });
+      continue;
+    }
+    let firm: string | null = null;
+    if (row.firmName) {
+      firm = firmId.get(row.firmName.toLowerCase()) || null;
+      if (!firm) {
+        const { data, error } = await supabase.from("rep_firms").insert({ name: row.firmName }).select("id").single();
+        if (error || !data) {
+          errors.push({ row: index + 2, message: error?.message || "Could not add the firm." });
+          continue;
+        }
+        firm = String((data as Row).id);
+        firmId.set(row.firmName.toLowerCase(), firm);
+      }
+    }
+    const payload = {
+      tenant_id: owner,
+      contact_type: row.contactType,
+      firm_id: firm,
+      name: row.name,
+      title: row.title,
+      email: row.email,
+      phone: row.phone,
+      is_primary: row.isPrimary,
+      source: row.source,
+      confidence: row.confidence,
+      last_verified: row.lastVerified,
+    };
+    let existing: string | null = null;
+    if (row.email) {
+      const { data } = await supabase
+        .from("tenant_contacts")
+        .select("id")
+        .eq("tenant_id", owner)
+        .eq("contact_type", row.contactType)
+        .ilike("email", escapeLikePattern(row.email))
+        .maybeSingle();
+      existing = data ? String((data as Row).id) : null;
+    }
+    if (existing) {
+      const { error } = await supabase.from("tenant_contacts").update(payload).eq("id", existing);
+      if (error) errors.push({ row: index + 2, message: error.message });
+      else updated += 1;
+    } else {
+      const { error } = await supabase.from("tenant_contacts").insert(payload);
+      if (error) errors.push({ row: index + 2, message: error.message });
+      else created += 1;
+    }
+  }
+  return { created, updated, errors };
+}
