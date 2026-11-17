@@ -44,11 +44,16 @@ export default function ContactPopover({
   contacts,
   tenantName,
   tenantId,
+  onSaved,
+  onDeleted,
   onChanged,
 }: {
   contacts: ContactView[];
   tenantName: string;
   tenantId: string;
+  onSaved?: (contact: ContactView) => void;
+  onDeleted?: (id: string) => void;
+  /** Optional refresh for callers that still reload. The open popover does not reset from that reload. */
   onChanged?: () => void;
 }) {
   const confirm = useConfirm();
@@ -61,10 +66,13 @@ export default function ContactPopover({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const popRef = useRef<HTMLDivElement>(null);
   const holding = useRef(false);
+  const contactsRef = useRef(contacts);
+  contactsRef.current = contacts;
 
   useEffect(() => {
-    setRows((contacts || []).map(draftFrom));
-  }, [contacts]);
+    if (!open) return;
+    setRows((contactsRef.current || []).map(draftFrom));
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -89,10 +97,12 @@ export default function ContactPopover({
       if (event.key === "Escape") setOpen(false);
     };
     window.addEventListener("resize", place);
+    document.addEventListener("scroll", place, true);
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
     return () => {
       window.removeEventListener("resize", place);
+      document.removeEventListener("scroll", place, true);
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
@@ -140,6 +150,7 @@ export default function ContactPopover({
       const saved = draftFrom(body as ContactView);
       setRows((current) => current.map((item) => (item.id === row.id ? saved : item)));
       toast.success("Saved");
+      onSaved?.(body as ContactView);
       onChanged?.();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save the contact");
@@ -170,6 +181,7 @@ export default function ContactPopover({
     }
     setRows((current) => current.filter((item) => item.id !== row.id));
     toast.success("Deleted");
+    onDeleted?.(row.id);
     onChanged?.();
   }
 

@@ -19,6 +19,8 @@ import {
 } from "@/components/ui";
 import { FORMATS } from "@/lib/demand/types";
 import DealMarks, { researchFieldLabel, researchLine, researchValueLabel, shortDate } from "@/components/demand/DealMarks";
+import SiteSpacingField from "@/components/demand/SiteSpacingField";
+import { categoryOptions, DEMAND_CATEGORIES, lookupCategory } from "@/lib/demand/categories";
 import type { CatalogResponse, CategoryAdminView, TenantAdminView, TierAdminView } from "@/lib/demand/view";
 
 type AdminTab = "tenants" | "firms" | "categories" | "tiers" | "import";
@@ -26,7 +28,7 @@ type AdminTab = "tenants" | "firms" | "categories" | "tiers" | "import";
 const EMPTY_TENANT: TenantAdminView = {
   id: "",
   brandName: "",
-  category: "other",
+  category: DEMAND_CATEGORIES[0],
   subcategory: null,
   formats: [],
   sfMin: null,
@@ -171,7 +173,7 @@ export default function TenantsAdmin() {
               <div className="w-64">
                 <Input small value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tenants" aria-label="Search tenants" />
               </div>
-              <Button size="sm" onClick={() => setEditing({ ...EMPTY_TENANT, category: catalog.categories[0]?.category || "other" })}>Add tenant</Button>
+              <Button size="sm" onClick={() => setEditing({ ...EMPTY_TENANT })}>Add tenant</Button>
             </div>
             <Card padding="none">
               {tenants.map((tenant) => (
@@ -234,8 +236,8 @@ function TenantForm({
       <Field label="Brand" required><Input value={tenant.brandName} onChange={(e) => set({ brandName: e.target.value })} /></Field>
       <Field label="Category">
         <Select value={tenant.category} onChange={(e) => set({ category: e.target.value })}>
-          {catalog.categories.map((category) => (
-            <option key={category.category} value={category.category}>{category.category}</option>
+          {categoryOptions(tenant.category).map((category) => (
+            <option key={category} value={category}>{category}</option>
           ))}
         </Select>
       </Field>
@@ -291,7 +293,11 @@ function TenantForm({
       <Field label="Arizona markets" hint="Separate cities with commas. Phoenix metro covers the Valley.">
         <Input value={tenant.azMarkets.join(", ")} onChange={(e) => set({ azMarkets: splitList(e.target.value) })} />
       </Field>
-      <Field label="Spacing (miles)"><Input type="number" step="0.1" value={tenant.spacingMiles ?? ""} onChange={(e) => set({ spacingMiles: num(e.target.value) })} /></Field>
+      <SiteSpacingField
+        value={tenant.spacingMiles}
+        fallback={lookupCategory(catalog.categories, tenant.category)?.spacingMiles ?? null}
+        onChange={(spacingMiles) => set({ spacingMiles })}
+      />
       <Field label="Deal type">
         <DealMarks
           value={tenant}
