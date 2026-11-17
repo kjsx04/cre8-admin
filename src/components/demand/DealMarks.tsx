@@ -1,16 +1,8 @@
 "use client";
 
 import { Button, Input, Select, cn, FOCUS_RING } from "@/components/ui";
+import { DEAL_FIELDS } from "@/lib/demand/deals";
 import type { DealFlags } from "@/lib/demand/types";
-
-const FLAGS: { key: keyof DealFlags; label: string }[] = [
-  { key: "dealLease", label: "Rent" },
-  { key: "dealBuy", label: "Buy" },
-  { key: "dealGroundLease", label: "Ground lease" },
-  { key: "dealBts", label: "BTS" },
-  { key: "freestanding", label: "Freestanding" },
-  { key: "inline", label: "Inline" },
-];
 
 /** Yes / No / unknown. Click cycles unknown → yes → no. */
 export default function DealMarks({
@@ -28,7 +20,7 @@ export default function DealMarks({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {FLAGS.map((flag) => {
+      {DEAL_FIELDS.map((flag) => {
         const raw = value?.[flag.key];
         const current = raw === true ? true : raw === false ? false : null;
         const text = current === true ? "Yes" : current === false ? "No" : "—";

@@ -2,6 +2,20 @@ import type { TenantLocation } from "./types";
 
 const EARTH_MILES = 3958.7613;
 
+/** Locations farther than this from a selected listing are not drawn. */
+export const DEMAND_LISTING_RADIUS_MILES = 10;
+
+/** No origin means every location is in range (the map is not focused on a listing). */
+export function withinListingRadius(
+  origin: { lat: number; lng: number } | null,
+  lat: number,
+  lng: number,
+  radiusMiles = DEMAND_LISTING_RADIUS_MILES
+): boolean {
+  if (!origin) return true;
+  return haversineMiles(origin.lat, origin.lng, lat, lng) <= radiusMiles;
+}
+
 export function haversineMiles(aLat: number, aLng: number, bLat: number, bLng: number): number {
   const dLat = ((bLat - aLat) * Math.PI) / 180;
   const dLng = ((bLng - aLng) * Math.PI) / 180;

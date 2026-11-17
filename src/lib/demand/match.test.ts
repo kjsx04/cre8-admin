@@ -4,12 +4,14 @@
 
 import { readFileSync } from "fs";
 import { DEFAULT_TIERS, tierForValue } from "./tiers";
-import { circlePolygon, haversineMiles, spacingCue } from "./geo";
+import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, haversineMiles, spacingCue, withinListingRadius } from "./geo";
 import { deriveSpaces, parseSpacesHtml } from "./spaces";
 import { groupTitle } from "./format";
 import { CONTACT_CSV_HEADERS, TENANT_CSV_HEADERS, parseContactCsv, parseTenantCsv } from "./csv";
 import { classifySpace, dealTypeFit, effectiveRequirement, groupSpaceMatches, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
-import type { CategoryDefault, DemandSpace, ListingContext, SizeTier, TenantInput, TenantLocation } from "./types";
+import { yesDealLabels } from "./deals";
+import { CANONICAL_CATEGORIES } from "./categories";
+import { BUCKET_LABEL, type CategoryDefault, type DemandSpace, type ListingContext, type SizeTier, type TenantInput, type TenantLocation } from "./types";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -236,7 +238,7 @@ const unknownDeal = tenant({
   dealBts: null,
 });
 const unknownResult = classifySpace(listing, salePad, unknownDeal, null, tiers, [], null);
-assert(unknownResult.bucket === "possible" && unknownResult.reasons.includes("deal type unknown"), "unknown deal type is possible, not optimal");
+assert(unknownResult.bucket === "optimal" && !unknownResult.reasons.includes("deal type unknown"), "a blank deal type stays optimal");
 
 const inlineOnly = tenant({
   id: "inline-only",
@@ -314,7 +316,7 @@ const bare = tenant({
   inline: null,
 });
 const bareResult = classifySpace(listing, salePad, bare, null, [], [], null);
-assert(bareResult.bucket === "possible" && bareResult.reasons.includes("deal type unknown"), "blank research and empty arrays stay possible instead of throwing");
+assert(bareResult.bucket === "optimal" && !bareResult.reasons.includes("No format on the requirement") && !bareResult.reasons.includes("deal type unknown"), "blank format, size, and deal type stay optimal");
 
 const pads = ["A", "B", "C", "D"].map((letter, i) =>
   space({
@@ -401,7 +403,124 @@ const renter = tenant({
   inline: true,
 });
 const renterResult = classifySpace(listing, salePad, renter, null, tiers, [], null);
-assert(renterResult.bucket !== "optimal", "a lease-only brand is not pitched for a pad that is for sale");
+assert(renterResult.bucket === "optimal", "a blank ground-lease flag does not demote a pad tenant");
+const refusesPads = classifySpace(
+  listing,
+  salePad,
+  { ...renter, dealBuy: false, dealGroundLease: false, dealBts: false },
+  null,
+  tiers,
+  [],
+  null
+);
+assert(refusesPads.bucket === "excluded" && refusesPads.reasons.some((reason) => reason.includes("does not buy pads")), "an explicit no on every pad path still excludes");
+
+const closeSite = space({ id: "close", label: "Parcel", spaceType: "land parcel", acres: 1.7, driveThru: true, deal: "sale" });
+const closeSize = classifySpace(
+  listing,
+  closeSite,
+  tenant({ id: "close", brandName: "Close", formats: ["pad"], acresMin: 0.8, acresMax: 1.5, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(closeSize.bucket === "possible" && closeSize.reasons.some((reason) => reason.includes("1.7 ac")), "a size just outside the range stays possible");
+
+const blankSize = classifySpace(
+  listing,
+  space({ id: "nosize", label: "Pad A", spaceType: "pad", acres: null, driveThru: true, deal: "sale" }),
+  tenant({ id: "nosize", brandName: "No size", formats: ["pad"], acresMin: 0.8, acresMax: 1.5, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(blankSize.bucket === "optimal", "a blank space size stays optimal");
+
+const noFormat = classifySpace(
+  listing,
+  salePad,
+  tenant({ id: "noformat", brandName: "No format", formats: [], acresMin: 0.8, acresMax: 1.5, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(noFormat.bucket === "optimal", "a blank format is treated as a fit");
+
+const endcapOnly = classifySpace(
+  { ...listing, propertyFamily: "retail", propertyType: "Retail" },
+  shopLease,
+  tenant({ id: "endcap", brandName: "Endcap", formats: ["endcap"], sfMin: 2000, sfMax: 4000, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(endcapOnly.bucket === "possible" && endcapOnly.reasons.some((reason) => reason.includes("endcap")), "a secondary format stays possible");
+
+const unsaidDrive = classifySpace(
+  listing,
+  space({ id: "quiet-dt", label: "Pad A", spaceType: "pad", acres: 1.1, driveThru: null, deal: "sale" }),
+  tenant({ id: "quiet-dt", brandName: "Drive", formats: ["pad"], acresMin: 0.8, acresMax: 1.5, driveThruRequired: true, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(unsaidDrive.bucket === "optimal", "a listing that doesn't say drive-thru stays optimal");
+
+const saleShop = space({ id: "sale-shop", label: "Suite 100", spaceType: "inline", sf: 2400, deal: "sale" });
+const usuallyLeases = classifySpace(
+  { ...listing, propertyFamily: "retail", propertyType: "Retail" },
+  saleShop,
+  tenant({ id: "leases", brandName: "Leases", formats: ["inline"], sfMin: 2000, sfMax: 4000, azMarkets: ["Mesa"], dealBuy: true, inline: true }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(
+  usuallyLeases.bucket === "possible" && usuallyLeases.reasons.includes("Listed for sale; this tenant typically leases"),
+  "a shop tenant on a suite for sale stays possible"
+);
+
+const btsLease = classifySpace(
+  listing,
+  space({ id: "bts", label: "Pad A", spaceType: "pad", acres: 1.1, driveThru: true, deal: "lease" }),
+  tenant({ id: "bts", brandName: "BTS", formats: ["BTS"], acresMin: 0.8, acresMax: 1.5, azMarkets: ["Mesa"], dealGroundLease: true, dealBts: true }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(
+  btsLease.bucket === "possible" && btsLease.reasons.includes("Listed for lease; build-to-suit usually buys the land"),
+  "BTS on a lease pad stays possible"
+);
+
+const industrial = classifySpace(
+  { ...listing, propertyFamily: "industrial", propertyType: "Industrial" },
+  salePad,
+  tenant({ id: "industrial", brandName: "Industrial", formats: ["pad"], acresMin: 0.8, acresMax: 1.5, azMarkets: ["Mesa"] }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(industrial.bucket === "possible" && industrial.reasons.includes("Property type is Industrial"), "industrial property type stays possible");
+
+const blankLease = classifySpace(
+  { ...listing, propertyFamily: "retail", propertyType: "Retail" },
+  shopLease,
+  { ...shopTenant, dealLease: null },
+  null,
+  tiers,
+  [],
+  null
+);
+assert(blankLease.bucket === "optimal", "a blank lease flag does not demote an inline tenant");
 
 const forced = classifySpace(listing, bigSite, tenant({ id: "x", brandName: "X", formats: ["inline"], sfMin: 1000, sfMax: 2000 }), null, tiers, [], {
   spaceId: "site",
@@ -440,6 +559,18 @@ assert(shopsOnPadSite[1].spaceType === "inline" && shopsOnPadSite[1].sf === 8000
 assert(shopsOnPadSite[2].spaceType === "pad" && shopsOnPadSite[2].acres === 2, "a 2.0 acre pad is not folded into the shop row");
 const suite = parseSpacesHtml("<table><tr><td>Suite 104</td><td>2,400 SF</td></tr></table>");
 assert(suite.length === 1 && suite[0].amount === 2400 && suite[0].unit === "sf", "a suite row keeps the square footage");
+
+assert(DEMAND_LISTING_RADIUS_MILES === 10, "the listing radius is 10 miles");
+const nearListing = { lat: 33.21908, lng: -111.54483 };
+assert(withinListingRadius(nearListing, nearListing.lat + 1 / 69, nearListing.lng), "a store about a mile away is inside the listing radius");
+assert(!withinListingRadius(nearListing, nearListing.lat + 12 / 69, nearListing.lng), "a store about 12 miles away is outside the listing radius");
+assert(withinListingRadius(null, 0, 0), "no listing keeps every location");
+assert(yesDealLabels({ dealLease: true, dealBuy: false, dealGroundLease: null, dealBts: true, freestanding: null, inline: true, dealTypesSource: null, dealTypesConfidence: null }).join(",") === "Rent,BTS,Inline", "only Yes deal types are labeled");
+assert(CANONICAL_CATEGORIES.length === 20 && CANONICAL_CATEGORIES.includes("QSR") && CANONICAL_CATEGORIES.includes("Specialty Retail"), "there are 20 canonical categories");
+assert(
+  BUCKET_LABEL.optimal === "Top" && BUCKET_LABEL.possible === "Possible" && BUCKET_LABEL.excluded === "Not a fit",
+  "bucket labels are Top, Possible, and Not a fit"
+);
 
 const miles = haversineMiles(33.45, -112.07, 33.45 + 1 / 69, -112.07);
 assert(miles > 0.9 && miles < 1.1, "one degree-minute of latitude is about a mile");

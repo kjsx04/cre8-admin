@@ -1,11 +1,14 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { Settings } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Input, Select, Tabs, cn, FOCUS_RING } from "@/components/ui";
 import TenantTable from "@/components/demand/TenantTable";
-import BrandMap, { type BaseMap } from "@/components/demand/BrandMap";
+import type { BaseMap } from "@/components/demand/BrandMap";
+
+const BrandMap = dynamic(() => import("@/components/demand/BrandMap"), { ssr: false });
 import type { ListingSummary, MatchResponse } from "@/lib/demand/view";
 import type { Bucket } from "@/lib/demand/types";
 
@@ -73,7 +76,7 @@ export default function DemandPage() {
     <>
       <div className="w-64">
         <Select small aria-label="Listing" value={listingId} onChange={(e) => setListingId(e.target.value)}>
-          <option value="">All tenants</option>
+          <option value="">All listings</option>
           {listings.map((listing) => (
             <option key={listing.id} value={listing.id}>{listing.name}</option>
           ))}

@@ -5,7 +5,8 @@ import { Eye, EyeOff, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
-import { circlePolygon } from "@/lib/demand/geo";
+import { BUCKET_LABEL } from "@/lib/demand/types";
+import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 
 export type BaseMap = "light" | "dark" | "satellite";
@@ -15,6 +16,7 @@ interface Brand {
   brandName: string;
   category: string;
   spacingMiles: number | null;
+  locationCount: number;
 }
 
 interface Store {
@@ -39,7 +41,6 @@ interface Focus {
 
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
-const MARKER_MILES = 0.04;
 
 export default function BrandMap({
   listings,
@@ -135,7 +136,10 @@ export default function BrandMap({
     return Array.from(map.entries());
   })();
 
-  const shown = active.flatMap((id) => stores[id] || []);
+  const origin = focus?.lat != null && focus?.lng != null ? { lat: focus.lat, lng: focus.lng } : null;
+  const shown = active
+    .flatMap((id) => stores[id] || [])
+    .filter((store) => withinListingRadius(origin, store.lat, store.lng));
   const spacing = new Map(brands.map((brand) => [brand.id, brand.spacingMiles]));
 
   async function loadStores(ids: string[]) {
@@ -231,7 +235,7 @@ export default function BrandMap({
             </button>
           </div>
           <Select small aria-label="Listing" value={listingId} onChange={(e) => onListingId(e.target.value)}>
-            <option value="">All tenants</option>
+            <option value="">All listings</option>
             {listings.map((listing) => (
               <option key={listing.id} value={listing.id}>{listing.name}</option>
             ))}
@@ -269,7 +273,7 @@ export default function BrandMap({
                 return (
                   <div key={bucket} className="mb-2">
                     <div className="flex items-center gap-2 px-3 py-1">
-                      <span className="text-xs text-text-3">{bucket === "optimal" ? "Optimal" : "Possible"}</span>
+                      <span className="text-xs text-text-3">{BUCKET_LABEL[bucket]}</span>
                       <span className="flex-1 border-t border-border" />
                     </div>
                     {list.map((brand, index) => (
@@ -330,9 +334,10 @@ function BrandRow({
       <button
         type="button"
         onClick={onToggle}
-        className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm truncate", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
+        className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
       >
-        {brand.brandName}
+        <span className="block truncate">{brand.brandName}</span>
+        {brand.locationCount === 0 && <span className="block text-xs text-text-3 font-normal">No locations</span>}
       </button>
       <button
         type="button"
@@ -395,7 +400,12 @@ function CanvasMap({
       }
       const pad = 72;
       const pts: { lng: number; lat: number }[] = stores.map((store) => ({ lng: store.lng, lat: store.lat }));
-      if (focus?.lng != null && focus.lat != null) pts.push({ lng: focus.lng, lat: focus.lat });
+      if (focus?.lng != null && focus.lat != null) {
+        pts.push({ lng: focus.lng, lat: focus.lat });
+        for (const pair of circlePolygon(focus.lng, focus.lat, DEMAND_LISTING_RADIUS_MILES, 16)) {
+          pts.push({ lng: pair[0], lat: pair[1] });
+        }
+      }
       if (!pts.length) pts.push({ lng: PHX_CENTER[0], lat: PHX_CENTER[1] });
       let minLng = Math.min(...pts.map((point) => point.lng));
       let maxLng = Math.max(...pts.map((point) => point.lng));
@@ -418,6 +428,15 @@ function CanvasMap({
         const [x2] = project(miles / Math.max(0.2, 69 * Math.cos((lat * Math.PI) / 180)), lat);
         return Math.max(6, Math.abs(x2 - x1));
       };
+      if (focus?.lng != null && focus.lat != null) {
+        const [x, y] = project(focus.lng, focus.lat);
+        ctx.beginPath();
+        ctx.arc(x, y, radius(focus.lat, DEMAND_LISTING_RADIUS_MILES), 0, Math.PI * 2);
+        ctx.strokeStyle = "rgba(31,95,139,0.35)";
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([]);
+        ctx.stroke();
+      }
       if (focus?.parcel) {
         const ring = flatten(focus.parcel.coordinates);
         if (ring.length) {
@@ -506,6 +525,7 @@ function MapCanvas({
     if (!ref.current) return;
     let cancelled = false;
     let map: import("mapbox-gl").Map | null = null;
+    let observer: ResizeObserver | null = null;
     import("mapbox-gl").then((mod) => {
       if (cancelled || !ref.current) return;
       const mapboxgl = mod.default;
@@ -519,28 +539,48 @@ function MapCanvas({
         transformRequest: (url) => (!MAPBOX_TOKEN && /mapbox\.(com|cn)/.test(url) ? { url: "about:blank" } : { url }),
       });
       map.addControl(new mapboxgl.NavigationControl(), "top-right");
+      observer = new ResizeObserver(() => map?.resize());
+      observer.observe(ref.current);
       map.on("load", () => {
         if (!map) return;
         ready.current = true;
         fitted.current = "";
         map.addSource("parcel", { type: "geojson", data: empty() });
         map.addSource("rings", { type: "geojson", data: empty() });
+        map.addSource("pins", { type: "geojson", data: empty() });
+        map.addSource("radius", { type: "geojson", data: empty() });
         map.addLayer({ id: "parcel-fill", type: "fill", source: "parcel", paint: { "fill-color": GREEN, "fill-opacity": 0.15 } });
         map.addLayer({ id: "parcel-line", type: "line", source: "parcel", paint: { "line-color": GREEN, "line-width": 2 } });
+        map.addLayer({ id: "listing-radius", type: "line", source: "radius", paint: { "line-color": RING, "line-width": 1.5, "line-opacity": 0.35 } });
         for (const value of LOCATION_STATUSES) {
           const dash = ringDash(value);
+          // line-opacity stays a number. A data expression here used to fail
+          // style validation and abort the load handler before anything was drawn.
           map.addLayer({
             id: `ring-${value}`,
             type: "line",
             source: "rings",
             filter: ["==", ["get", "status"], value],
-            paint: { "line-color": RING, "line-width": 2, "line-opacity": ["get", "opacity"], ...(dash ? { "line-dasharray": dash } : {}) },
+            paint: { "line-color": RING, "line-width": 2, "line-opacity": 0.9, ...(dash ? { "line-dasharray": dash } : {}) },
           });
         }
+        map.addLayer({
+          id: "pins",
+          type: "circle",
+          source: "pins",
+          paint: {
+            "circle-radius": ["interpolate", ["linear"], ["zoom"], 4, 3.5, 11, 6, 15, 8],
+            "circle-color": RING,
+            "circle-opacity": 0.95,
+            "circle-stroke-width": 1.5,
+            "circle-stroke-color": "#ffffff",
+          },
+        });
         map.on("click", (event) => {
           if (!snap.current.adding) return;
           snap.current.onPlace(event.lngLat.lat, event.lngLat.lng);
         });
+        map.resize();
         paint(map, mapboxgl);
       });
       mapRef.current = map;
@@ -548,6 +588,7 @@ function MapCanvas({
     return () => {
       cancelled = true;
       ready.current = false;
+      observer?.disconnect();
       map?.remove();
       mapRef.current = null;
     };
@@ -603,54 +644,62 @@ function MapCanvas({
     const current = snap.current;
     const parcel = map.getSource("parcel") as import("mapbox-gl").GeoJSONSource | undefined;
     const rings = map.getSource("rings") as import("mapbox-gl").GeoJSONSource | undefined;
-    if (!parcel || !rings) return;
+    const pins = map.getSource("pins") as import("mapbox-gl").GeoJSONSource | undefined;
+    const radius = map.getSource("radius") as import("mapbox-gl").GeoJSONSource | undefined;
+    if (!parcel || !rings || !pins || !radius) return;
     const geometry = current.focus?.parcel;
     parcel.setData(geometry ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: geometry as GeoJSON.Geometry, properties: {} }] } : empty());
     const visible = ghosts.current.filter((store) => (fade.current.get(store.id) ?? 0) > 0.01);
-    const features: GeoJSON.Feature[] = [];
+    const ringFeatures: GeoJSON.Feature[] = [];
+    const pinFeatures: GeoJSON.Feature[] = [];
     for (const store of visible) {
       const miles = current.spacing.get(store.tenantId);
-      const opacity = fade.current.get(store.id) ?? 0;
-      features.push(ringFeature(store, MARKER_MILES, opacity));
-      if (miles && miles > 0) features.push(ringFeature(store, miles, opacity));
+      pinFeatures.push(pinFeature(store));
+      if (miles && miles > 0) ringFeatures.push(ringFeature(store, miles));
     }
-    rings.setData({ type: "FeatureCollection", features });
+    rings.setData({ type: "FeatureCollection", features: ringFeatures });
+    pins.setData({ type: "FeatureCollection", features: pinFeatures });
+    const focus = current.focus;
+    radius.setData(
+      focus?.lat != null && focus.lng != null
+        ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: { type: "Polygon", coordinates: [circlePolygon(focus.lng, focus.lat, DEMAND_LISTING_RADIUS_MILES)] }, properties: {} }] }
+        : empty()
+    );
     fitCamera(map, mapboxgl);
   }
 
   function fitCamera(map: import("mapbox-gl").Map, mapboxgl: typeof import("mapbox-gl").default) {
     const current = snap.current;
     const listing = current.focus?.lat != null && current.focus.lng != null;
-    const sig = listing
-      ? `listing:${current.focus?.lat},${current.focus?.lng}:${current.focus?.parcel ? "parcel" : "point"}`
-      : `stores:${current.stores.map((store) => store.id).sort().join(",")}`;
-    if (fitted.current === sig) return;
+    const storeKey = current.stores.map((store) => store.id).sort().join(",");
+    const sig = listing ? `listing:${current.focus?.lat},${current.focus?.lng}:${storeKey}` : `stores:${storeKey}`;
+    if (fitted.current === sig || (!listing && !current.stores.length)) return;
     fitted.current = sig;
-    const geometry = current.focus?.parcel;
-    if (geometry) {
-      const bounds = new mapboxgl.LngLatBounds();
-      flatten(geometry.coordinates).forEach((pair) => bounds.extend(pair as [number, number]));
-      if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 80, maxZoom: 16, duration: 350 });
-      return;
-    }
-    if (listing && current.focus?.lat != null && current.focus.lng != null) {
-      map.easeTo({ center: [current.focus.lng, current.focus.lat], zoom: 15, duration: 350 });
-      return;
-    }
-    if (!current.stores.length) return;
     const bounds = new mapboxgl.LngLatBounds();
-    current.stores.forEach((store) => bounds.extend([store.lng, store.lat]));
-    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 80, maxZoom: 14, duration: 350 });
+    if (listing && current.focus?.lat != null && current.focus.lng != null) {
+      circlePolygon(current.focus.lng, current.focus.lat, DEMAND_LISTING_RADIUS_MILES, 16).forEach((pair) => bounds.extend(pair as [number, number]));
+    } else {
+      current.stores.forEach((store) => bounds.extend([store.lng, store.lat]));
+    }
+    if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 72, maxZoom: listing ? 13 : 12, duration: 350 });
   }
 
   return <div ref={ref} className="absolute inset-0" />;
 }
 
-function ringFeature(store: Store, miles: number, opacity: number): GeoJSON.Feature {
+function pinFeature(store: Store): GeoJSON.Feature {
+  return {
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [store.lng, store.lat] },
+    properties: {},
+  };
+}
+
+function ringFeature(store: Store, miles: number): GeoJSON.Feature {
   return {
     type: "Feature",
     geometry: { type: "Polygon", coordinates: [circlePolygon(store.lng, store.lat, miles)] },
-    properties: { status: locationStatus(store.status), opacity },
+    properties: { status: locationStatus(store.status) },
   };
 }
 

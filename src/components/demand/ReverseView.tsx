@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Button, Card, EmptyState, Input, LoadingBlock, cn, FOCUS_RING } from "@/components/ui";
+import { BUCKET_LABEL } from "@/lib/demand/types";
 import type { CatalogResponse, ReverseResponse } from "@/lib/demand/view";
 
 export default function ReverseView({ onOpenListing }: { onOpenListing: (listingId: string) => void }) {
@@ -83,16 +84,18 @@ export default function ReverseView({ onOpenListing }: { onOpenListing: (listing
               <h2 className="text-md font-semibold text-text">{result.tenant.brandName}</h2>
               <p className="text-sm text-text-2">{result.tenant.requirement}</p>
             </div>
-            <HitList title="Optimal" hits={result.optimal} onOpen={onOpenListing} />
+            <HitList title={BUCKET_LABEL.optimal} hits={result.optimal} onOpen={onOpenListing} />
             {(result.possible.length > 0 || result.excluded.length > 0) && (
               <div className="px-4 py-2 border-t border-border">
                 <Button variant="ghost" size="sm" onClick={() => setOpen((value) => !value)}>
-                  {open ? "Hide possible and excluded" : `Show ${result.possible.length} possible and ${result.excluded.length} excluded`}
+                  {open
+                    ? `Hide ${BUCKET_LABEL.possible} and ${BUCKET_LABEL.excluded}`
+                    : `Show ${result.possible.length} ${BUCKET_LABEL.possible} and ${result.excluded.length} ${BUCKET_LABEL.excluded}`}
                 </Button>
                 {open && (
                   <>
-                    <HitList title="Possible" hits={result.possible} onOpen={onOpenListing} />
-                    <HitList title="Excluded" hits={result.excluded} onOpen={onOpenListing} />
+                    <HitList title={BUCKET_LABEL.possible} hits={result.possible} onOpen={onOpenListing} />
+                    <HitList title={BUCKET_LABEL.excluded} hits={result.excluded} onOpen={onOpenListing} />
                   </>
                 )}
               </div>

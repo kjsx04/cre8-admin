@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { IconButton, cn, FOCUS_RING, useLayerBehavior } from "@/components/ui";
 import { nearestLocations, spacingCue, circlePolygon } from "@/lib/demand/geo";
+import { BUCKET_LABEL } from "@/lib/demand/types";
 import type { MapResponse, MapTenant } from "@/lib/demand/view";
 
 const PIN_COLORS = ["#1F5F8B", "#8A5A00", "#B42323", "#111113", "#3F6E13", "#2A2A2E", "#5C5C63", "#6B9A33"];
@@ -95,7 +96,7 @@ export default function DemandMap({ listingId, onClose }: { listingId: string; o
           <div className="flex-1 overflow-y-auto py-2">
             {error && <p className="px-4 py-2 text-sm text-danger-fg">{error}</p>}
             {!error && categories.length === 0 && data && (
-              <p className="px-4 py-6 text-sm text-text-2">No optimal or possible tenants for this listing.</p>
+              <p className="px-4 py-6 text-sm text-text-2">No {BUCKET_LABEL.optimal} or {BUCKET_LABEL.possible} tenants for this listing.</p>
             )}
             {categories.map(([category, tenants]) => {
               const closed = collapsed[category];
