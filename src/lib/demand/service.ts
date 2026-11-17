@@ -4,6 +4,7 @@ import { asBoolean, asNumber, asString, asStringList, DemandError, fromSupabase 
 import { parseContactCsv, parseTenantCsv, toCsv } from "./csv";
 import { effectiveRequirement, groupSpaceMatches, matchSpaces, normalizeFormats, requirementText, suggestAlsoPitch } from "./match";
 import { parcelAtPoint } from "./parcels";
+import { locationStatus, type LocationStatus } from "./location-status";
 import { deriveSpaces, listingContext } from "./spaces";
 import type { ListingRow } from "./spaces";
 import type {
@@ -161,32 +162,68 @@ interface Bundle {
   contacts: Map<string, ContactView[]>;
 }
 
-/** PostgREST returns at most 1,000 rows unless we page. Locations are past that, and geom is huge, so it is not selected. */
-async function fetchAll(table: string, columns: string, orderColumn: string): Promise<Row[]> {
+interface PageQuery {
+  eq: (column: string, value: string) => PageQuery;
+  in: (column: string, values: string[]) => PageQuery;
+  order: (column: string, options: { ascending: boolean }) => PageQuery;
+  range: (from: number, to: number) => PromiseLike<{ data: Row[] | null; error: { message: string } | null }>;
+}
+
+/**
+ * PostgREST returns at most 1,000 rows per request. A table past that — locations,
+ * relationships, and the tenant/contact tables as they grow — is cut off with no error
+ * unless we page. Order columns need to be unique together so a page boundary can't skip a row.
+ * Location rows omit geom; the geography payload is large and matching only needs lat/lng.
+ */
+async function fetchAll(
+  table: string,
+  columns: string,
+  orderColumns: string[],
+  filter?: (query: PageQuery) => PageQuery
+): Promise<Row[]> {
   const size = 1000;
   const rows: Row[] = [];
   for (let from = 0; ; from += size) {
-    const { data, error } = await supabase.from(table).select(columns).order(orderColumn, { ascending: true }).range(from, from + size - 1);
+    let query = supabase.from(table).select(columns) as unknown as PageQuery;
+    if (filter) query = filter(query);
+    for (const column of orderColumns) query = query.order(column, { ascending: true });
+    const { data, error } = await query.range(from, from + size - 1);
     if (error) throw fromSupabase(error, table);
-    const batch = (data || []) as unknown as Row[];
+    const batch = data || [];
     for (const row of batch) rows.push(row);
-    if (batch.length < size) break;
+    if (batch.length < size) return rows;
   }
-  return rows;
+}
+
+let bundleCache: { at: number; value: Promise<Bundle> } | null = null;
+const BUNDLE_MS = 30_000;
+
+function invalidateBundle(): void {
+  bundleCache = null;
 }
 
 async function loadBundle(): Promise<Bundle> {
+  if (bundleCache && Date.now() - bundleCache.at < BUNDLE_MS) return bundleCache.value;
+  const value = readBundle().catch((err) => {
+    if (bundleCache?.value === value) bundleCache = null;
+    throw err;
+  });
+  bundleCache = { at: Date.now(), value };
+  return value;
+}
+
+async function readBundle(): Promise<Bundle> {
   const [tenantRows, contactRows, firmRows, tierRows, categoryRows, categoryTiers, tenantTiers, locationRows, relationshipRows] =
     await Promise.all([
-      fetchAll("tenants", "*", "brand_name"),
-      fetchAll("tenant_contacts", "*", "id"),
-      many(supabase.from("rep_firms").select("*").order("name"), "firms"),
-      many(supabase.from("size_tiers").select("*").order("sort_order"), "tiers"),
-      many(supabase.from("category_defaults").select("*").order("category"), "categories"),
-      many(supabase.from("category_size_tiers").select("*"), "category tiers"),
-      many(supabase.from("tenant_size_tiers").select("*"), "tenant tiers"),
-      fetchAll("tenant_locations", "id, tenant_id, name, address, lat, lng, status", "id"),
-      many(supabase.from("tenant_relationships").select("*"), "relationships"),
+      fetchAll("tenants", "*", ["brand_name", "id"]),
+      fetchAll("tenant_contacts", "*", ["id"]),
+      fetchAll("rep_firms", "*", ["name", "id"]),
+      fetchAll("size_tiers", "*", ["sort_order", "id"]),
+      fetchAll("category_defaults", "*", ["category"]),
+      fetchAll("category_size_tiers", "*", ["category", "size_tier_id"]),
+      fetchAll("tenant_size_tiers", "*", ["tenant_id", "size_tier_id"]),
+      fetchAll("tenant_locations", "id, tenant_id, name, address, lat, lng, status", ["id"]),
+      fetchAll("tenant_relationships", "*", ["id"]),
     ]);
 
   const firmName = new Map(firmRows.map((row) => [String(row.id), String(row.name || "")]));
@@ -363,7 +400,7 @@ async function ensureSpaces(row: ReturnType<typeof listingRow>): Promise<{ space
 }
 
 async function overridesFor(listingId: string): Promise<SpaceOverride[]> {
-  const rows = await many(supabase.from("demand_overrides").select("*").eq("listing_id", listingId), "overrides");
+  const rows = await fetchAll("demand_overrides", "*", ["id"], (query) => query.eq("listing_id", listingId));
   return rows.map((row) => ({
     spaceId: String(row.listing_space_id),
     tenantId: String(row.tenant_id),
@@ -373,7 +410,7 @@ async function overridesFor(listingId: string): Promise<SpaceOverride[]> {
 }
 
 async function interestFor(listingId: string): Promise<{ spaceId: string; tenantId: string; status: InterestStatus; notes: string | null }[]> {
-  const rows = await many(supabase.from("demand_interest").select("*").eq("listing_id", listingId), "interest");
+  const rows = await fetchAll("demand_interest", "*", ["id"], (query) => query.eq("listing_id", listingId));
   return rows
     .filter((row) => INTEREST.has(String(row.status)))
     .map((row) => ({
@@ -412,6 +449,10 @@ function toGroup(group: ReturnType<typeof groupSpaceMatches>[number], bundle: Bu
       score: classified.score,
       reasons: classified.reasons,
       requirement: requirementText(classified.requirement, bundle.tiers),
+      sfMin: tenant?.sfMin ?? null,
+      sfMax: tenant?.sfMax ?? null,
+      acresMin: tenant?.acresMin ?? null,
+      acresMax: tenant?.acresMax ?? null,
       dealLease: tenant?.dealLease ?? null,
       dealBuy: tenant?.dealBuy ?? null,
       dealGroundLease: tenant?.dealGroundLease ?? null,
@@ -442,7 +483,7 @@ function toGroup(group: ReturnType<typeof groupSpaceMatches>[number], bundle: Bu
 }
 
 export async function listListings(): Promise<ListingSummary[]> {
-  const rows = await many(supabase.from("listings").select(LISTING_COLS).order("name"), "listings");
+  const rows = await fetchAll("listings", LISTING_COLS, ["name", "id"]);
   return rows.map((row) => summary(listingRow(row)));
 }
 
@@ -471,9 +512,9 @@ export async function getReverse(tenantId: string): Promise<ReverseResponse> {
   const tenant = bundle.tenants.find((item) => item.id === tenantId);
   if (!tenant) throw new DemandError("Tenant not found.", 404);
   const [listingRows, spaceData, overrideRows] = await Promise.all([
-    many(supabase.from("listings").select(LISTING_COLS), "listings"),
-    many(supabase.from("listing_spaces").select("*"), "spaces"),
-    many(supabase.from("demand_overrides").select("*").eq("tenant_id", tenantId), "overrides"),
+    fetchAll("listings", LISTING_COLS, ["id"]),
+    fetchAll("listing_spaces", "*", ["id"]),
+    fetchAll("demand_overrides", "*", ["id"], (query) => query.eq("tenant_id", tenantId)),
   ]);
   const byListing = new Map<string, DemandSpace[]>();
   for (const row of spaceData) {
@@ -744,7 +785,7 @@ export async function setInterest(input: {
 export async function getCatalog(): Promise<CatalogResponse> {
   const bundle = await loadBundle();
   const [firmRows, logRows] = await Promise.all([
-    many(supabase.from("rep_firms").select("*").order("name"), "firms"),
+    fetchAll("rep_firms", "*", ["name", "id"]),
     many(
       supabase
         .from("tenant_research_log")
@@ -949,7 +990,7 @@ async function replaceTenantChildren(tenantId: string, input: TenantWrite): Prom
   const { error: contactError } = await supabase.from("tenant_contacts").delete().eq("tenant_id", tenantId);
   if (contactError) throw fromSupabase(contactError, "clear contacts");
   if (input.contacts.length) {
-    const firms = await many(supabase.from("rep_firms").select("id, name"), "firms");
+    const firms = await fetchAll("rep_firms", "id, name", ["name", "id"]);
     const firmId = new Map(firms.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
     const { error } = await supabase.from("tenant_contacts").insert(
       input.contacts.filter((contact) => contact.name.trim()).map((contact) => ({
@@ -1015,6 +1056,7 @@ export async function createTenant(input: TenantWrite): Promise<string> {
     if (logError) throw fromSupabase(logError, "research log");
   }
   await replaceTenantChildren(id, input);
+  invalidateBundle();
   return id;
 }
 
@@ -1026,6 +1068,7 @@ export async function updateTenant(id: string, input: TenantWrite): Promise<void
   const { error } = await supabase.from("tenants").update(payload).eq("id", id);
   if (error) throw fromSupabase(error, "update tenant");
   await replaceTenantChildren(id, input);
+  invalidateBundle();
 }
 
 export async function saveDealResearch(id: string, input: DealFlags): Promise<void> {
@@ -1049,11 +1092,13 @@ export async function saveDealResearch(id: string, input: DealFlags): Promise<vo
     })
     .eq("id", id);
   if (error) throw fromSupabase(error, "save research");
+  invalidateBundle();
 }
 
 export async function deleteTenant(id: string): Promise<void> {
   const { error } = await supabase.from("tenants").delete().eq("id", id);
   if (error) throw fromSupabase(error, "delete tenant");
+  invalidateBundle();
 }
 
 export async function saveFirm(input: { id?: string; name: string; website: string | null; notes: string | null }): Promise<void> {
@@ -1063,11 +1108,13 @@ export async function saveFirm(input: { id?: string; name: string; website: stri
     ? await supabase.from("rep_firms").update(payload).eq("id", input.id)
     : await supabase.from("rep_firms").insert(payload);
   if (error) throw fromSupabase(error, "firm");
+  invalidateBundle();
 }
 
 export async function deleteFirm(id: string): Promise<void> {
   const { error } = await supabase.from("rep_firms").delete().eq("id", id);
   if (error) throw fromSupabase(error, "delete firm");
+  invalidateBundle();
 }
 
 export async function saveCategories(categories: CategoryAdminView[]): Promise<void> {
@@ -1097,10 +1144,11 @@ export async function saveCategories(categories: CategoryAdminView[]): Promise<v
       if (linkError) throw fromSupabase(linkError, "category tiers");
     }
   }
+  invalidateBundle();
 }
 
 export async function saveTiers(tiers: TierAdminView[]): Promise<void> {
-  const existing = await many(supabase.from("size_tiers").select("id"), "tiers");
+  const existing = await fetchAll("size_tiers", "id", ["id"]);
   const keep = new Set<string>();
   for (const tier of tiers) {
     if (!tier.name.trim()) throw new DemandError("Every tier needs a name.", 400);
@@ -1127,6 +1175,7 @@ export async function saveTiers(tiers: TierAdminView[]): Promise<void> {
     const { error } = await supabase.from("size_tiers").delete().in("id", remove);
     if (error) throw fromSupabase(error, "delete tier");
   }
+  invalidateBundle();
 }
 
 export async function importCsv(kind: "tenants" | "contacts", csv: string): Promise<{ created: number; updated: number; errors: { row: number; message: string }[] }> {
@@ -1139,8 +1188,8 @@ async function importTenants(csv: string) {
   const parsed = parseTenantCsv(csv);
   if (!parsed.rows.length) return { created: 0, updated: 0, errors: parsed.errors };
   const [tenants, tiers] = await Promise.all([
-    many(supabase.from("tenants").select("id, brand_name"), "tenants"),
-    many(supabase.from("size_tiers").select("id, name"), "tiers"),
+    fetchAll("tenants", "id, brand_name", ["brand_name", "id"]),
+    fetchAll("size_tiers", "id, name", ["name", "id"]),
   ]);
   const byName = new Map(tenants.map((row) => [String(row.brand_name).toLowerCase(), String(row.id)]));
   const tierId = new Map(tiers.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
@@ -1197,6 +1246,7 @@ async function importTenants(csv: string) {
     );
     if (error) errors.push({ row: index + 2, message: error.message });
   }
+  invalidateBundle();
   return { created, updated, errors };
 }
 
@@ -1204,8 +1254,8 @@ async function importContacts(csv: string) {
   const parsed = parseContactCsv(csv);
   if (!parsed.rows.length) return { created: 0, updated: 0, errors: parsed.errors };
   const [tenants, firms] = await Promise.all([
-    many(supabase.from("tenants").select("id, brand_name"), "tenants"),
-    many(supabase.from("rep_firms").select("id, name"), "firms"),
+    fetchAll("tenants", "id, brand_name", ["brand_name", "id"]),
+    fetchAll("rep_firms", "id, name", ["name", "id"]),
   ]);
   const tenantId = new Map(tenants.map((row) => [String(row.brand_name).toLowerCase(), String(row.id)]));
   const firmId = new Map(firms.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
@@ -1266,5 +1316,236 @@ async function importContacts(csv: string) {
       else created += 1;
     }
   }
+  invalidateBundle();
   return { created, updated, errors };
+}
+
+export interface BrandRow {
+  id: string;
+  brandName: string;
+  category: string;
+  spacingMiles: number | null;
+}
+
+export async function listBrands(): Promise<BrandRow[]> {
+  const rows = await fetchAll("tenants", "id, brand_name, category, spacing_miles, active", ["brand_name", "id"]);
+  return rows
+    .filter((row) => row.active !== false)
+    .map((row) => ({
+      id: String(row.id),
+      brandName: String(row.brand_name || "Tenant"),
+      category: String(row.category || "other"),
+      spacingMiles: asNumber(row.spacing_miles),
+    }));
+}
+
+export interface StoreLocation {
+  id: string;
+  tenantId: string;
+  name: string | null;
+  address: string | null;
+  lat: number;
+  lng: number;
+  status: LocationStatus;
+}
+
+function storeFrom(row: Row): StoreLocation | null {
+  const lat = asNumber(row.lat);
+  const lng = asNumber(row.lng);
+  if (lat == null || lng == null) return null;
+  if (/closed|dead|former|relocated/i.test(String(row.status || ""))) return null;
+  return {
+    id: String(row.id),
+    tenantId: String(row.tenant_id),
+    name: asString(row.name),
+    address: asString(row.address),
+    lat,
+    lng,
+    status: locationStatus(asString(row.status)),
+  };
+}
+
+export async function listLocations(tenantId: string): Promise<StoreLocation[]> {
+  return listLocationsFor([tenantId]);
+}
+
+export async function listLocationsFor(tenantIds: string[]): Promise<StoreLocation[]> {
+  const out: StoreLocation[] = [];
+  for (let index = 0; index < tenantIds.length; index += 80) {
+    const chunk = tenantIds.slice(index, index + 80);
+    if (!chunk.length) continue;
+    const rows = await fetchAll("tenant_locations", "id, tenant_id, name, address, lat, lng, status", ["id"], (query) =>
+      query.in("tenant_id", chunk)
+    );
+    for (const row of rows) {
+      const store = storeFrom(row);
+      if (store) out.push(store);
+    }
+  }
+  return out;
+}
+
+async function reverseGeocode(lng: number, lat: number): Promise<string | null> {
+  const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || "";
+  if (!token) return null;
+  const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(`${lng},${lat}`)}.json?access_token=${encodeURIComponent(token)}&limit=1`;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { features?: { place_name?: string }[] };
+    const place = data.features?.[0]?.place_name;
+    return place ? String(place) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function createLocation(input: {
+  tenantId: string;
+  lat: number;
+  lng: number;
+  status: LocationStatus;
+  address: string | null;
+}): Promise<StoreLocation> {
+  const address = input.address?.trim() || (await reverseGeocode(input.lng, input.lat));
+  const { data, error } = await supabase
+    .from("tenant_locations")
+    .insert({
+      tenant_id: input.tenantId,
+      lat: input.lat,
+      lng: input.lng,
+      status: input.status,
+      address,
+      source: "manual",
+    })
+    .select("id, tenant_id, name, address, lat, lng, status")
+    .single();
+  if (error || !data) throw fromSupabase(error || { message: "Could not save the location." }, "location");
+  invalidateBundle();
+  const store = storeFrom(data as Row);
+  if (!store) throw new DemandError("Could not save the location.", 500);
+  return store;
+}
+
+export async function deleteLocation(id: string): Promise<void> {
+  const { error } = await supabase.from("tenant_locations").delete().eq("id", id);
+  if (error) throw fromSupabase(error, "delete location");
+  invalidateBundle();
+}
+
+export async function listingFocus(id: string): Promise<{
+  id: string;
+  name: string;
+  lat: number | null;
+  lng: number | null;
+  parcel: { type: string; coordinates: unknown } | null;
+}> {
+  const row = await oneListing(id);
+  let parcel: { type: string; coordinates: unknown } | null = null;
+  if (row.latitude != null && row.longitude != null) {
+    const hit = await parcelAtPoint(row.longitude, row.latitude);
+    if (hit) parcel = hit.geometry;
+  }
+  return { id: row.id, name: row.name, lat: row.latitude ?? null, lng: row.longitude ?? null, parcel };
+}
+
+export interface ContactWrite {
+  contactType: ContactType;
+  name: string;
+  company: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+async function firmIdFor(company: string | null): Promise<string | null> {
+  const name = company?.trim();
+  if (!name) return null;
+  const firms = await fetchAll("rep_firms", "id, name", ["name", "id"]);
+  const found = firms.find((row) => String(row.name).toLowerCase() === name.toLowerCase());
+  if (found) return String(found.id);
+  const { data, error } = await supabase.from("rep_firms").insert({ name }).select("id, name").single();
+  if (error || !data) throw fromSupabase(error || { message: "Could not add the company." }, "firm");
+  return String((data as Row).id);
+}
+
+function contactFromRow(row: Row, firmName: string | null): ContactView {
+  return {
+    id: String(row.id),
+    contactType: row.contact_type === "broker" ? "broker" : "in_house",
+    name: String(row.name || ""),
+    title: asString(row.title),
+    firmName,
+    email: asString(row.email),
+    phone: asString(row.phone),
+    isPrimary: row.is_primary === true,
+    confidence: asString(row.confidence),
+  };
+}
+
+async function contactById(tenantId: string, contactId: string): Promise<ContactView> {
+  const { data, error } = await supabase.from("tenant_contacts").select("*").eq("id", contactId).eq("tenant_id", tenantId).maybeSingle();
+  if (error) throw fromSupabase(error, "contact");
+  if (!data) throw new DemandError("Contact not found.", 404);
+  const row = data as Row;
+  let firmName: string | null = null;
+  if (row.firm_id) {
+    const { data: firm } = await supabase.from("rep_firms").select("name").eq("id", String(row.firm_id)).maybeSingle();
+    firmName = firm ? asString((firm as Row).name) : null;
+  }
+  return contactFromRow(row, firmName);
+}
+
+export async function createContact(tenantId: string, input: ContactWrite): Promise<ContactView> {
+  if (!input.name.trim()) throw new DemandError("Name is required.", 400);
+  const { data: tenant, error: tenantError } = await supabase.from("tenants").select("id").eq("id", tenantId).maybeSingle();
+  if (tenantError) throw fromSupabase(tenantError, "tenant");
+  if (!tenant) throw new DemandError("Tenant not found.", 404);
+  const firmId = await firmIdFor(input.company);
+  const { data, error } = await supabase
+    .from("tenant_contacts")
+    .insert({
+      tenant_id: tenantId,
+      contact_type: input.contactType === "broker" ? "broker" : "in_house",
+      firm_id: firmId,
+      name: input.name.trim(),
+      title: input.title,
+      email: input.email,
+      phone: input.phone,
+      is_primary: false,
+    })
+    .select("id")
+    .single();
+  if (error || !data) throw fromSupabase(error || { message: "Could not add the contact." }, "contact");
+  invalidateBundle();
+  return contactById(tenantId, String((data as Row).id));
+}
+
+export async function updateContact(tenantId: string, contactId: string, input: ContactWrite): Promise<ContactView> {
+  if (!input.name.trim()) throw new DemandError("Name is required.", 400);
+  const firmId = await firmIdFor(input.company);
+  const { data, error } = await supabase
+    .from("tenant_contacts")
+    .update({
+      contact_type: input.contactType === "broker" ? "broker" : "in_house",
+      firm_id: firmId,
+      name: input.name.trim(),
+      title: input.title,
+      email: input.email,
+      phone: input.phone,
+    })
+    .eq("id", contactId)
+    .eq("tenant_id", tenantId)
+    .select("id");
+  if (error) throw fromSupabase(error, "contact");
+  if (!data?.length) throw new DemandError("Contact not found.", 404);
+  invalidateBundle();
+  return contactById(tenantId, contactId);
+}
+
+export async function deleteContact(tenantId: string, contactId: string): Promise<void> {
+  const { data, error } = await supabase.from("tenant_contacts").delete().eq("id", contactId).eq("tenant_id", tenantId).select("id");
+  if (error) throw fromSupabase(error, "delete contact");
+  if (!data?.length) throw new DemandError("Contact not found.", 404);
+  invalidateBundle();
 }

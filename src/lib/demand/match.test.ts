@@ -367,6 +367,42 @@ const split = groupSpaceMatches(
 assert(split.length === 2, "a per-pad override pulls that pad out of the shared group");
 assert(split.some((g) => g.spaces.length === 1 && g.spaces[0].id === "pad-A"), "the overridden pad stands alone");
 
+const openTenant = tenant({ id: "open", brandName: "Open", formats: ["pad"], azMarkets: ["Mesa"] });
+const tierSplit = groupSpaceMatches(
+  matchSpaces({
+    listing,
+    spaces: [
+      space({ id: "small", label: "Pad A", spaceType: "pad", acres: 1.2, sortOrder: 0, driveThru: true }),
+      space({ id: "mid", label: "Pad B", spaceType: "pad", acres: 4, sortOrder: 1, driveThru: true }),
+    ],
+    tenants: [openTenant],
+    defaults: [],
+    tiers,
+    locations: [],
+    overrides: [],
+  }),
+  tiers
+);
+assert(tierSplit.length === 2, "pads in different acre tiers stay in separate groups");
+assert(tierSplit[0].tierName === "0-1.5 ac" && tierSplit[1].tierName === "2.5-5 ac", "each group keeps its acre tier");
+
+const renter = tenant({
+  id: "renter",
+  brandName: "Renter",
+  formats: ["pad"],
+  acresMin: 0.8,
+  acresMax: 1.5,
+  azMarkets: ["Mesa"],
+  dealLease: true,
+  dealBuy: false,
+  dealGroundLease: null,
+  dealBts: null,
+  freestanding: true,
+  inline: true,
+});
+const renterResult = classifySpace(listing, salePad, renter, null, tiers, [], null);
+assert(renterResult.bucket !== "optimal", "a lease-only brand is not pitched for a pad that is for sale");
+
 const forced = classifySpace(listing, bigSite, tenant({ id: "x", brandName: "X", formats: ["inline"], sfMin: 1000, sfMax: 2000 }), null, tiers, [], {
   spaceId: "site",
   tenantId: "x",
@@ -390,6 +426,18 @@ const derived = deriveSpaces({
 });
 assert(derived.length === 2 && derived[0].acres === 1.3 && derived[1].acres === 0.75, "pad rows are used instead of the 28 ac site total");
 assert(derived.every((s) => s.spaceType === "pad" && s.driveThru === true), "parsed pads keep drive-thru from the overview");
+const shopsOnPadSite = deriveSpaces({
+  id: "l2",
+  name: "Blossom",
+  acres: 28,
+  propertyType: "Retail Pads",
+  listingType: "For Sale",
+  spacesHtml: "<table><tr><td>PAD A</td><td>1.3 Acres</td></tr><tr><td>SHOPS A</td><td>8000 SF</td></tr><tr><td>PAD C</td><td>2.0 Acres</td></tr></table>",
+});
+assert(shopsOnPadSite.length === 3, "each pad and shop row is its own space");
+assert(shopsOnPadSite[0].spaceType === "pad" && shopsOnPadSite[0].acres === 1.3, "an acre pad stays a pad");
+assert(shopsOnPadSite[1].spaceType === "inline" && shopsOnPadSite[1].sf === 8000, "shop square footage stays shop space on a pad site");
+assert(shopsOnPadSite[2].spaceType === "pad" && shopsOnPadSite[2].acres === 2, "a 2.0 acre pad is not folded into the shop row");
 const suite = parseSpacesHtml("<table><tr><td>Suite 104</td><td>2,400 SF</td></tr></table>");
 assert(suite.length === 1 && suite[0].amount === 2400 && suite[0].unit === "sf", "a suite row keeps the square footage");
 

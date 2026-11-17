@@ -7,16 +7,20 @@ import Link from "next/link";
 import { LogOut, Menu } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui";
 
-/* Module tabs — add more here as new sections are built */
+/* Module tabs — add more here as new sections are built.
+   Demand stays last so it sits at the right end of the bar. */
 const NAV_ITEMS = [
   { label: "Listings", href: "/" },
-  { label: "Demand", href: "/demand" },
   { label: "Flow", href: "/flow" },
   { label: "Docs", href: "/docs" },
   { label: "Marketing", href: "/marketing" },
   { label: "Logos", href: "/logos" },
   { label: "Intel", href: "/intel" },
+  { label: "Demand", href: "/demand" },
 ];
+
+const PRIMARY_NAV = NAV_ITEMS.filter((item) => item.href !== "/demand");
+const DEMAND_NAV = NAV_ITEMS[NAV_ITEMS.length - 1];
 
 /** "Kevin Smith" → "KS", "kevin@cre8advisors.com" → "K" */
 function initialsFor(name?: string, email?: string): string {
@@ -53,23 +57,16 @@ export default function NavBar() {
 
       {/* Center: module tabs (hidden on phones — they live in the avatar menu there) */}
       <div className="hidden md:flex items-center gap-0.5">
-        {NAV_ITEMS.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "h-8 px-3 inline-flex items-center rounded-control text-sm font-medium transition-colors duration-150",
-              isActive(item.href) ? "bg-surface-2 text-text" : "text-text-2 hover:text-text hover:bg-surface-2/60",
-              FOCUS_RING
-            )}
-          >
-            {item.label}
-          </Link>
+        {PRIMARY_NAV.map((item) => (
+          <NavTab key={item.href} item={item} active={isActive(item.href)} />
         ))}
       </div>
 
-      {/* Right: avatar menu */}
-      <div className="flex items-center justify-end">
+      {/* Right: Demand, then the account menu. Demand is the last tab, at the end of the bar. */}
+      <div className="flex items-center justify-end gap-1">
+        <div className="hidden md:flex">
+          <NavTab item={DEMAND_NAV} active={isActive(DEMAND_NAV.href)} />
+        </div>
         <AvatarMenu
           initials={initialsFor(account?.name, account?.username)}
           name={userName}
@@ -80,6 +77,21 @@ export default function NavBar() {
         />
       </div>
     </nav>
+  );
+}
+
+function NavTab({ item, active }: { item: { label: string; href: string }; active: boolean }) {
+  return (
+    <Link
+      href={item.href}
+      className={cn(
+        "h-8 px-3 inline-flex items-center rounded-control text-sm font-medium transition-colors duration-150",
+        active ? "bg-surface-2 text-text" : "text-text-2 hover:text-text hover:bg-surface-2/60",
+        FOCUS_RING
+      )}
+    >
+      {item.label}
+    </Link>
   );
 }
 

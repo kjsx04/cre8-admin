@@ -507,10 +507,18 @@ function signature(tenants: ClassifiedTenant[]): string {
  * tenant list. A parcel whose set differs stays on its own.
  * Interest does not change the set; an override does.
  */
+function tierKey(space: DemandSpace, tiers: SizeTier[]): string {
+  const kind = space.spaceType === "inline" || space.spaceType === "endcap" ? "sf" : "acres";
+  const value = kind === "sf" ? space.sf : space.acres;
+  if (value == null) return `${kind}:unknown`;
+  return tierForValue(value, tiers, kind)?.id || `${kind}:none`;
+}
+
 export function groupSpaceMatches(matches: SpaceMatch[], tiers: SizeTier[]): SpaceGroup[] {
   const groups: SpaceGroup[] = [];
   for (const match of matches) {
-    const key = signature(match.tenants);
+    // Same tenant set on two sizes is still two matches when the tiers differ.
+    const key = `${tierKey(match.space, tiers)}:${signature(match.tenants)}`;
     const existing = groups.find((g) => g.key === key);
     if (existing) existing.spaces.push(match.space);
     else groups.push({ key, title: "", tierName: null, spaces: [match.space], tenants: match.tenants });

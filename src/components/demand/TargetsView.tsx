@@ -79,11 +79,19 @@ export default function TargetsView({
   }, []);
 
   useEffect(() => {
-    loadList();
+    const desktop = window.matchMedia("(min-width: 768px)");
+    const start = () => {
+      if (desktop.matches) loadList();
+    };
+    start();
+    desktop.addEventListener("change", start);
+    return () => desktop.removeEventListener("change", start);
   }, [loadList]);
 
   useEffect(() => {
-    if (listingId) loadMatch(listingId);
+    if (!listingId) return;
+    if (window.matchMedia("(max-width: 767px)").matches) return;
+    loadMatch(listingId);
   }, [listingId, loadMatch]);
 
   const filtered = useMemo(() => {
@@ -372,7 +380,12 @@ function TenantRow({
           <p className="text-xs text-text-3 mt-1">{researchLine(tenant.researchStatus, tenant.lastResearched, tenant.storeCount)}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <ContactPopover contacts={tenant.contacts || []} tenantName={tenant.brandName || "Tenant"} />
+          <ContactPopover
+            contacts={tenant.contacts || []}
+            tenantName={tenant.brandName || "Tenant"}
+            tenantId={tenant.tenantId}
+            onChanged={onChanged}
+          />
           <div className="w-32">
             <Select
               small
