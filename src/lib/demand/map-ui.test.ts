@@ -47,6 +47,14 @@ assert(
   "google maps link uses the pin coordinate"
 );
 
+const map = readFileSync("src/components/demand/BrandMap.tsx", "utf8");
+assert(!map.includes('["feature-state"'), "pins and rings do not use a feature-state expression");
+assert(!map.includes("setFeatureState"), "opacity is not applied with setFeatureState");
+assert(map.includes('"icon-opacity": 1'), "store pins are drawn at full opacity");
+assert(map.includes("None within 10 mi"), "a tenant with nothing nearby says so");
+assert(map.includes("No locations"), "a tenant with no stores says so");
+assert(map.includes("Location status"), "a new pin asks for its status on the map");
+
 const sql = readFileSync("supabase/migrations/2026-11-17_spacing_defaults.sql", "utf8");
 for (const snippet of [
   "('coffee drive-thru', 1)",

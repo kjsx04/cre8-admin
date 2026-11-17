@@ -216,7 +216,7 @@ const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { 
         <PersonHover contact={personContact(row.tenant.contacts, "in_house")} />
       </div>
       <div className="px-3 min-w-0">
-        <PersonHover contact={personContact(row.tenant.contacts, "broker")} />
+        <PersonHover contact={personContact(row.tenant.contacts, "broker")} showCompany />
       </div>
       <div className="flex justify-end pr-1">
         <IconButton label={`Edit ${row.tenant.brandName}`} size="sm" icon={<Pencil size={16} strokeWidth={1.75} />} onClick={() => onEdit(row.tenant.id)} />
