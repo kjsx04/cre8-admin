@@ -4,10 +4,11 @@ import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Copy } from "lucide-react";
 import { IconButton } from "@/components/ui";
+import { contactLine } from "@/lib/demand/contact-line";
 import type { ContactView } from "@/lib/demand/view";
 
 /** Name in the broker or in-house column. Hovering keeps a card open so phone and email can be copied. */
-export default function PersonHover({ contact }: { contact: ContactView | null }) {
+export default function PersonHover({ contact, showCompany = false }: { contact: ContactView | null; showCompany?: boolean }) {
   const [open, setOpen] = useState(false);
   const [box, setBox] = useState<{ top: number; left: number } | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -52,7 +53,9 @@ export default function PersonHover({ contact }: { contact: ContactView | null }
     }
   }
 
-  if (!contact?.name) return <span className="text-sm text-text">—</span>;
+  const line = contactLine(contact?.name, contact?.firmName, showCompany);
+  if (!contact || !line) return <span className="text-sm text-text">—</span>;
+  const title = line.name || line.company;
 
   return (
     <>
@@ -68,7 +71,9 @@ export default function PersonHover({ contact }: { contact: ContactView | null }
           scheduleClose();
         }}
       >
-        {contact.name}
+        {line.name}
+        {line.name && line.company ? ", " : ""}
+        {line.company ? <em className="italic">{line.company}</em> : null}
       </span>
       {open && box && typeof document !== "undefined" &&
         createPortal(
@@ -80,8 +85,8 @@ export default function PersonHover({ contact }: { contact: ContactView | null }
             onMouseEnter={show}
             onMouseLeave={scheduleClose}
           >
-            <p className="text-sm font-medium text-text">{contact.name}</p>
-            {contact.firmName && <p className="text-xs text-text-2 mt-0.5">{contact.firmName}</p>}
+            <p className="text-sm font-medium text-text">{title}</p>
+            {contact.firmName && line.name ? <p className="text-xs text-text-2 mt-0.5">{contact.firmName}</p> : null}
             <CopyLine label="Copy phone" value={contact.phone} copied={copied === "phone"} onCopy={() => contact.phone && copy("phone", contact.phone)} />
             <CopyLine label="Copy email" value={contact.email} copied={copied === "email"} onCopy={() => contact.email && copy("email", contact.email)} />
           </div>,

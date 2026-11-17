@@ -49,7 +49,6 @@ interface LastPin {
 
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
-const FADE_MS = 320;
 
 export default function BrandMap({
   listings,
@@ -74,7 +73,7 @@ export default function BrandMap({
   const [brands, setBrands] = useState<Brand[]>([]);
   const [active, setActive] = useState<string[]>([]);
   const [addingId, setAddingId] = useState<string | null>(null);
-  const [status, setStatus] = useState<LocationStatus>("open");
+  const [pending, setPending] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
   const [stores, setStores] = useState<Record<string, Store[]>>({});
   const [lastPin, setLastPin] = useState<LastPin | null>(null);
   const [showAll, setShowAll] = useState(false);
@@ -83,8 +82,10 @@ export default function BrandMap({
   const [selection, setSelection] = useState<{ id: string; x: number; y: number } | null>(null);
   const storesRef = useRef(stores);
   const addingRef = useRef(addingId);
+  const pendingRef = useRef(pending);
   storesRef.current = stores;
   addingRef.current = addingId;
+  pendingRef.current = pending;
 
   useEffect(() => {
     let cancelled = false;
@@ -132,6 +133,7 @@ export default function BrandMap({
   useEffect(() => {
     addingRef.current = null;
     setAddingId(null);
+    setPending(null);
     setActive([]);
     setShowAll(false);
     setSelection(null);
@@ -141,6 +143,10 @@ export default function BrandMap({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
+      if (pendingRef.current) {
+        setPending(null);
+        return;
+      }
       if (addingRef.current) {
         addingRef.current = null;
         setAddingId(null);
@@ -184,6 +190,15 @@ export default function BrandMap({
   const showBlocked = !showing && !showAllAllowed(boardIds.length);
   const selected = selection ? shown.find((store) => store.id === selection.id) || null : null;
 
+  function locationHint(brand: Brand): string | null {
+    const loaded = stores[brand.id];
+    const knownEmpty = loaded ? loaded.length === 0 : brand.locationCount === 0;
+    if (knownEmpty) return "No locations";
+    if (!active.includes(brand.id) || !loaded || !listingId || !origin) return null;
+    const near = loaded.filter((store) => withinListingRadius(origin, store.lat, store.lng));
+    return near.length === 0 ? "None within 10 mi" : null;
+  }
+
   async function reveal(ids: string[], fit: boolean) {
     const missing = ids.filter((id) => !storesRef.current[id]);
     setActive((current) => Array.from(new Set([...current, ...ids])));
@@ -215,10 +230,9 @@ export default function BrandMap({
   }
 
   function selectForAdd(id: string) {
-    const entering = addingRef.current == null;
     addingRef.current = id;
-    if (entering) setStatus("open");
     setAddingId(id);
+    setPending(null);
     setSelection(null);
     if (!active.includes(id)) void reveal([id], false);
   }
@@ -226,17 +240,24 @@ export default function BrandMap({
   function clearBoard() {
     addingRef.current = null;
     setAddingId(null);
+    setPending(null);
     setActive([]);
     setSelection(null);
     setFitRequest((value) => value + 1);
   }
 
-  async function place(lat: number, lng: number) {
+  function armPlace(lat: number, lng: number, x: number, y: number) {
+    if (!addingRef.current) return;
+    setPending({ lat, lng, x, y });
+  }
+
+  async function commitPlace(status: LocationStatus) {
     const tenantId = addingRef.current;
-    if (!tenantId) return;
+    const point = pendingRef.current;
+    if (!tenantId || !point) return;
     const res = await apiFetch("/api/demand/locations", {
       method: "POST",
-      body: JSON.stringify({ tenantId, lat, lng, status }),
+      body: JSON.stringify({ tenantId, lat: point.lat, lng: point.lng, status }),
     });
     const body = await res.json().catch(() => null);
     if (!res.ok) {
@@ -246,6 +267,7 @@ export default function BrandMap({
     const store = { ...(body as Store), status: locationStatus((body as Store).status) };
     setStores((current) => ({ ...current, [tenantId]: [...(current[tenantId] || []), store] }));
     setLastPin({ id: store.id, tenantId, store });
+    setPending(null);
   }
 
   async function undo() {
@@ -316,7 +338,7 @@ export default function BrandMap({
         focus={focus}
         adding={!!addingId}
         fitRequest={fitRequest}
-        onPlace={place}
+        onPlace={armPlace}
         onSelect={(store, x, y) => setSelection(store ? { id: store.id, x, y } : null)}
       />
       {selected && selection && (
@@ -328,6 +350,14 @@ export default function BrandMap({
           onStatus={(next) => setPinStatus(selected, next)}
           onDelete={() => deletePin(selected)}
           onClose={() => setSelection(null)}
+        />
+      )}
+      {pending && addingId && (
+        <StatusPopover
+          x={pending.x}
+          y={pending.y}
+          brandName={brands.find((brand) => brand.id === addingId)?.brandName || "Location"}
+          onPick={(status) => void commitPlace(status)}
         />
       )}
       <aside className="absolute top-[5px] left-[5px] bottom-[5px] w-1/4 min-w-[220px] bg-surface border border-border rounded-card shadow-popover flex flex-col min-h-0 z-10">
@@ -370,28 +400,11 @@ export default function BrandMap({
           </Select>
           <Input small aria-label="Search" placeholder="Search" value={query} onChange={(e) => onQuery(e.target.value)} />
           {addingId && (
-            <div className="space-y-1">
-            <p className="px-1 text-xs text-text truncate">{brands.find((brand) => brand.id === addingId)?.brandName}</p>
-            <div className="flex flex-wrap items-center gap-1">
-              {LOCATION_STATUSES.map((value) => (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={status === value}
-                  onClick={() => setStatus(value)}
-                  className={cn(
-                    "h-7 px-2 rounded-control text-xs font-medium border border-border",
-                    status === value ? "bg-surface-2 text-text" : "text-text-2",
-                    FOCUS_RING
-                  )}
-                >
-                  {LOCATION_STATUS_LABEL[value]}
-                </button>
-              ))}
+            <div className="flex items-center gap-2 px-1">
+              <p className="min-w-0 flex-1 text-xs text-text truncate">{brands.find((brand) => brand.id === addingId)?.brandName}</p>
               {lastPin && (
                 <Button variant="ghost" size="sm" onClick={undo}>Undo</Button>
               )}
-            </div>
             </div>
           )}
         </div>
@@ -415,6 +428,7 @@ export default function BrandMap({
                         on={active.includes(brand.id)}
                         adding={addingId === brand.id}
                         dim={addingId != null && addingId !== brand.id}
+                        hint={locationHint(brand)}
                         onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
                         onAdd={() => selectForAdd(brand.id)}
                       />
@@ -436,6 +450,7 @@ export default function BrandMap({
                       on={active.includes(brand.id)}
                       adding={addingId === brand.id}
                       dim={addingId != null && addingId !== brand.id}
+                      hint={locationHint(brand)}
                       onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
                       onAdd={() => selectForAdd(brand.id)}
                     />
@@ -454,6 +469,7 @@ export default function BrandMap({
                     on={active.includes(brand.id)}
                     adding={addingId === brand.id}
                     dim={addingId != null && addingId !== brand.id}
+                    hint={locationHint(brand)}
                     onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
                     onAdd={() => selectForAdd(brand.id)}
                   />
@@ -488,6 +504,7 @@ function BrandRow({
   on,
   adding,
   dim,
+  hint,
   onToggle,
   onAdd,
 }: {
@@ -496,6 +513,7 @@ function BrandRow({
   on: boolean;
   adding: boolean;
   dim: boolean;
+  hint: string | null;
   onToggle: () => void;
   onAdd: () => void;
 }) {
@@ -508,7 +526,7 @@ function BrandRow({
         className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
       >
         <span className="block truncate">{brand.brandName}</span>
-        {brand.locationCount === 0 && <span className="block text-xs text-text-3 font-normal">No locations</span>}
+        {hint && <span className="block text-xs text-text-3 font-normal">{hint}</span>}
       </button>
       <button
         type="button"
@@ -519,6 +537,43 @@ function BrandRow({
       >
         <Plus size={16} strokeWidth={1.75} />
       </button>
+    </div>
+  );
+}
+
+function StatusPopover({
+  x,
+  y,
+  brandName,
+  onPick,
+}: {
+  x: number;
+  y: number;
+  brandName: string;
+  onPick: (status: LocationStatus) => void;
+}) {
+  const left = Math.max(x + 12, 16);
+  const top = Math.max(8, y - 8);
+  return (
+    <div
+      role="dialog"
+      aria-label="Location status"
+      className="absolute z-30 w-44 bg-surface border border-border rounded-card shadow-popover p-2"
+      style={{ left: `min(${left}px, calc(100% - 12rem))`, top: `min(${top}px, calc(100% - 10rem))` }}
+    >
+      <p className="px-1 pb-1 text-xs text-text-3 truncate">{brandName}</p>
+      <div className="flex flex-col gap-1">
+        {LOCATION_STATUSES.map((value) => (
+          <button
+            key={value}
+            type="button"
+            onClick={() => onPick(value)}
+            className={cn("h-7 px-2 text-left rounded-control text-xs font-medium border border-border text-text-2 hover:bg-surface-2 hover:text-text", FOCUS_RING)}
+          >
+            {LOCATION_STATUS_LABEL[value]}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
@@ -631,7 +686,7 @@ export function MapCanvas({
   focus: Focus | null;
   adding: boolean;
   fitRequest: number;
-  onPlace: (lat: number, lng: number) => void;
+  onPlace: (lat: number, lng: number, x: number, y: number) => void;
   onSelect: (store: Store | null, x: number, y: number) => void;
   /** Optional camera. The demand page leaves this unset and fits when tenants toggle. */
   view?: { lng: number; lat: number; zoom: number };
@@ -643,9 +698,6 @@ export function MapCanvas({
   const appliedBase = useRef<BaseMap | null>(null);
   const wantedBase = useRef(base);
   const snap = useRef({ stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view });
-  const fade = useRef(new Map<string, number>());
-  const cache = useRef(new Map<string, Store>());
-  const rafRef = useRef(0);
   const lastFit = useRef(0);
   wantedBase.current = base;
   snap.current = { stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view };
@@ -683,7 +735,7 @@ export function MapCanvas({
       map.on("click", (event) => {
         const current = snap.current;
         if (current.adding) {
-          current.onPlace(event.lngLat.lat, event.lngLat.lng);
+          current.onPlace(event.lngLat.lat, event.lngLat.lng, event.point.x, event.point.y);
           return;
         }
         const mapNow = mapRef.current;
@@ -697,8 +749,8 @@ export function MapCanvas({
           current.onSelect(null, event.point.x, event.point.y);
           return;
         }
-        const id = String(hit.id ?? hit.properties?.id ?? "");
-        const store = current.stores.find((item) => item.id === id) || cache.current.get(id) || null;
+        const id = String(hit.properties?.id ?? hit.id ?? "");
+        const store = current.stores.find((item) => item.id === id) || null;
         current.onSelect(store, event.point.x, event.point.y);
       });
       map.on("load", () => {
@@ -721,7 +773,6 @@ export function MapCanvas({
     return () => {
       cancelled = true;
       ready.current = false;
-      cancelAnimationFrame(rafRef.current);
       observer?.disconnect();
       map?.remove();
       mapRef.current = null;
@@ -767,7 +818,6 @@ export function MapCanvas({
   }, [adding]);
 
   function switchStyle(map: import("mapbox-gl").Map, next: BaseMap) {
-    cancelAnimationFrame(rafRef.current);
     const camera = {
       center: map.getCenter(),
       zoom: map.getZoom(),
@@ -826,49 +876,9 @@ export function MapCanvas({
 
   function reconcile(map: import("mapbox-gl").Map) {
     if (!map.getSource("pins")) return;
-    cancelAnimationFrame(rafRef.current);
     const current = snap.current;
-    const next = current.stores;
-    const nextIds = new Set(next.map((store) => store.id));
-    for (const store of next) cache.current.set(store.id, store);
-    const leaving = Array.from(fade.current.keys())
-      .filter((id) => !nextIds.has(id))
-      .map((id) => cache.current.get(id))
-      .filter((store): store is Store => !!store);
-    const combined = [...next, ...leaving];
-    ensureIcons(map, combined, current.colors);
-    writeSources(map, combined, current);
-    const from = new Map(fade.current);
-    for (const store of next) if (!from.has(store.id)) from.set(store.id, 0);
-    const instant = combined.length > 800;
-    const start = performance.now();
-    const apply = (now: number) => {
-      const t = instant ? 1 : Math.min(1, (now - start) / FADE_MS);
-      const ease = t < 0.5 ? 2 * t * t : 1 - ((-2 * t + 2) ** 2) / 2;
-      for (const store of next) {
-        const begin = from.get(store.id) ?? 0;
-        setOpacity(map, fade.current, store.id, begin + (1 - begin) * ease);
-      }
-      for (const store of leaving) {
-        const begin = from.get(store.id) ?? 1;
-        setOpacity(map, fade.current, store.id, begin * (1 - ease));
-      }
-      if (t < 1) {
-        rafRef.current = requestAnimationFrame(apply);
-        return;
-      }
-      for (const store of leaving) {
-        fade.current.delete(store.id);
-        cache.current.delete(store.id);
-      }
-      if (leaving.length) {
-        writeSources(map, next, snap.current);
-        for (const store of next) setOpacity(map, fade.current, store.id, fade.current.get(store.id) ?? 1);
-      }
-    };
-    for (const store of next) setOpacity(map, fade.current, store.id, from.get(store.id) ?? 0);
-    for (const store of leaving) setOpacity(map, fade.current, store.id, from.get(store.id) ?? 1);
-    rafRef.current = requestAnimationFrame(apply);
+    ensureIcons(map, current.stores, current.colors);
+    writeSources(map, current.stores, current);
   }
 
   return (
@@ -876,13 +886,6 @@ export function MapCanvas({
       <div ref={ref} className="h-full w-full" />
     </div>
   );
-}
-
-function setOpacity(map: import("mapbox-gl").Map, book: Map<string, number>, id: string, value: number) {
-  book.set(id, value);
-  if (!map.getSource("pins")) return;
-  map.setFeatureState({ source: "pins", id }, { opacity: value });
-  if (map.getSource("rings")) map.setFeatureState({ source: "rings", id }, { opacity: value });
 }
 
 function mount(map: import("mapbox-gl").Map) {
@@ -905,7 +908,10 @@ function mount(map: import("mapbox-gl").Map) {
       paint: {
         "line-color": RING,
         "line-width": 2,
-        "line-opacity": ["coalesce", ["feature-state", "opacity"], 0],
+        // Location ids are UUIDs. Mapbox feature-state only accepts ids that
+        // cast to integers, so a feature-state opacity defaulting to 0 left
+        // every ring (and every pin) invisible. Paint is a plain number.
+        "line-opacity": 1,
         ...(dash ? { "line-dasharray": dash } : {}),
       },
     });
@@ -933,7 +939,7 @@ function mount(map: import("mapbox-gl").Map) {
       "icon-anchor": "center",
     },
     paint: {
-      "icon-opacity": ["coalesce", ["feature-state", "opacity"], 0],
+      "icon-opacity": 1,
     },
   });
 }
