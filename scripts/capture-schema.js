@@ -52,6 +52,19 @@ const TABLES = [
   "listing_checklists",
   "listing_priorities",
   "market_intel",
+  "rep_firms",
+  "tenants",
+  "category_defaults",
+  "size_tiers",
+  "tenant_contacts",
+  "tenant_locations",
+  "tenant_relationships",
+  "tenant_size_tiers",
+  "category_size_tiers",
+  "listing_spaces",
+  "demand_overrides",
+  "demand_interest",
+  "tenant_research_log",
 ];
 
 // Grouped so the output reads in dependency order (parents before children).
@@ -66,6 +79,24 @@ const GROUPS = [
   ["Email contacts and list hygiene", ["email_contacts", "email_contact_health"]],
   ["Market intel", ["market_intel"]],
   ["Brand logo library", ["brand_logos"]],
+  [
+    "Demand — tenants, spaces, and size tiers",
+    [
+      "rep_firms",
+      "tenants",
+      "category_defaults",
+      "size_tiers",
+      "tenant_contacts",
+      "tenant_locations",
+      "tenant_relationships",
+      "tenant_size_tiers",
+      "category_size_tiers",
+      "listing_spaces",
+      "demand_overrides",
+      "demand_interest",
+      "tenant_research_log",
+    ],
+  ],
 ];
 
 // Application RPCs and trigger functions we own. Everything else in the

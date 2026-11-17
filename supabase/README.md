@@ -56,6 +56,79 @@ If you add a table, add it to the `TABLES` array in that script — it won't be
 captured otherwise. `grep -rho '\.from("[a-z_]*")' src | sort -u` lists every
 table the code actually touches, which is the list to reconcile against.
 
+## Demand
+
+`migrations/2026-11-17_demand.sql` adds the tenant-demand tables. It is not applied
+by this repo automatically. `seed/demand_example.sql` is fictional local data
+(brands prefixed `EXAMPLE —`) and is not part of the migration.
+
+Matching runs in `src/lib/demand/match.ts`. A tenant's own numbers win; blank
+fields fall back to `category_defaults`. An SF range with no acreage and no pad /
+ground lease / BTS format is treated as inline shop. Each `listing_spaces` row is
+scored on its own. Spaces that produce the same Optimal / Possible / Excluded set
+are shown as one group. `size_tiers.max_value` is exclusive, so 1.5 ac is in
+`1.5-2.5 ac`, not `0-1.5 ac`.
+
+Tables:
+
+- `tenants` — id, brand_name (unique), category, subcategory, formats (text[]),
+  sf_min, sf_max, acres_min, acres_max, drive_thru_required, az_markets (text[]),
+  spacing_miles, requirement_source, requirement_date, notes, active, created_at,
+  updated_at, plus deal flags `deal_lease`, `deal_buy`, `deal_ground_lease`,
+  `deal_bts`, `freestanding`, `inline` (boolean, null = unknown),
+  `deal_types_source`, `deal_types_confidence` (`High` | `Medium` | `Low`),
+  `research_status` (`pending` | `in_progress` | `researched` | `needs_review`),
+  `research_priority`, `last_researched`
+- `tenant_research_log` — id, tenant_id, field, old_value, new_value, source,
+  confidence, researched_at, researched_by. A manual edit writes `researched_by`
+  = `manual`. Added by `migrations/2026-11-17_tenant_research.sql` (idempotent).
+- `tenant_contacts` — id, tenant_id, contact_type (`in_house` | `broker`), firm_id,
+  name, title, email, phone, is_primary, source, confidence (`High` | `Medium` |
+  `Low`), last_verified, created_at, updated_at
+- `rep_firms` — id, name (unique), website, notes, created_at, updated_at
+- `category_defaults` — category (pk), formats, sf_min, sf_max, acres_min,
+  acres_max, drive_thru_typical, spacing_miles, updated_at
+- `size_tiers` — id, name (unique), kind (`sf` | `acres`), min_value (inclusive),
+  max_value (exclusive), sort_order, updated_at
+- `tenant_size_tiers` — tenant_id, size_tier_id
+- `category_size_tiers` — category, size_tier_id
+- `tenant_locations` — id, tenant_id, name, address, lat, lng, status, created_at
+  (left empty; the map fills it later)
+- `tenant_relationships` — id, tenant_id, related_tenant_id, relation
+  (`competitor` | `similar` | `co_tenant`), created_at
+- `listing_spaces` — id, listing_id, label, space_type (`pad` | `inline` |
+  `endcap` | `land parcel`), acres, sf, drive_thru, deal (`sale` | `lease` |
+  `both`), price_rate, status, notes, geometry (GeoJSON, optional), sort_order,
+  created_at, updated_at
+- `demand_overrides` — id, listing_id, listing_space_id, tenant_id, decision
+  (`include` | `exclude`), reason, created_by, created_at
+- `demand_interest` — id, listing_id, listing_space_id, tenant_id, status
+  (`submitted` | `interested` | `touring` | `LOI` | `passed`), notes, updated_at
+
+RLS is enabled on all of them with a service-role-only policy, same idea as
+`deal_members`. The admin API uses `SUPABASE_SERVICE_ROLE_KEY`, which bypasses RLS.
+There is no public read: these rows include phone numbers and emails. Nothing in
+Demand sends email.
+
+CSV import (Tenants tab). List columns are pipe-separated. Quote a cell that
+contains a comma (tier names do).
+
+Tenant headers:
+
+`brand_name,category,subcategory,formats,sf_min,sf_max,acres_min,acres_max,size_tiers,drive_thru_required,az_markets,spacing_miles,requirement_source,requirement_date,notes,active`
+
+Contact headers:
+
+`brand_name,contact_type,firm_name,name,title,email,phone,is_primary,source,confidence,last_verified`
+
+`contact_type` is `in_house` or `broker`. `confidence` is `High`, `Medium`, or `Low`.
+
+Environment variables, all already used by the admin (none were added for Demand):
+
+- `SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`
+- `NEXT_PUBLIC_MAPBOX_TOKEN` — the Map button. Same token as the listing and parcel maps. The map uses the CRE8 satellite style already in `ListingMapPicker`. Without the token the modal explains that, and the rest of Demand still works.
+
 ## RLS
 
 RLS is not enabled on these tables, and the baseline does not add it. The admin

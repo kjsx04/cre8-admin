@@ -10,6 +10,7 @@ import { cn, FOCUS_RING } from "@/components/ui";
 /* Module tabs — add more here as new sections are built */
 const NAV_ITEMS = [
   { label: "Listings", href: "/" },
+  { label: "Demand", href: "/demand" },
   { label: "Flow", href: "/flow" },
   { label: "Docs", href: "/docs" },
   { label: "Marketing", href: "/marketing" },
