@@ -17,7 +17,7 @@ import ContactPopover from "@/components/demand/ContactPopover";
 import DealMarks, { researchLine } from "@/components/demand/DealMarks";
 import DemandMap from "@/components/demand/DemandMap";
 import type { GroupView, ListingSummary, MatchResponse, SpaceView, TenantMatchView } from "@/lib/demand/view";
-import type { Deal, DealFlags, SpaceType } from "@/lib/demand/types";
+import { BUCKET_LABEL, type Deal, type DealFlags, type SpaceType } from "@/lib/demand/types";
 
 const INTEREST: { value: string; label: string }[] = [
   { value: "", label: "No status" },
@@ -117,7 +117,7 @@ export default function TargetsView({
       }
     }
     if (!lines.length) {
-      toast.info("No optimal contacts to copy");
+      toast.info(`No ${BUCKET_LABEL.optimal} contacts to copy`);
       return;
     }
     await navigator.clipboard.writeText(lines.join("\n"));
@@ -279,10 +279,10 @@ function GroupCard({ group, listingId, onChanged }: { group: GroupView; listingI
     <Card padding="none">
       <div className="px-4 py-3 border-b border-border">
         <h3 className="text-md font-semibold text-text">{group.title}</h3>
-        <p className="text-sm text-text-2">{group.optimal.length} optimal</p>
+        <p className="text-sm text-text-2">{group.optimal.length} {BUCKET_LABEL.optimal}</p>
       </div>
       <div className="px-4">
-        {group.optimal.length === 0 && <p className="py-4 text-sm text-text-2">No optimal tenants.</p>}
+        {group.optimal.length === 0 && <p className="py-4 text-sm text-text-2">No {BUCKET_LABEL.optimal} tenants.</p>}
         {group.optimal.map((tenant) => (
           <TenantRow key={tenant.tenantId} tenant={tenant} spaces={group.spaces} listingId={listingId} onChanged={onChanged} />
         ))}
@@ -290,15 +290,17 @@ function GroupCard({ group, listingId, onChanged }: { group: GroupView; listingI
       {rest > 0 && (
         <div className="px-4 py-2 border-t border-border">
           <Button variant="ghost" size="sm" onClick={() => setOpen((value) => !value)}>
-            {open ? "Hide possible and excluded" : `Show ${group.possible.length} possible and ${group.excluded.length} excluded`}
+            {open
+              ? `Hide ${BUCKET_LABEL.possible} and ${BUCKET_LABEL.excluded}`
+              : `Show ${group.possible.length} ${BUCKET_LABEL.possible} and ${group.excluded.length} ${BUCKET_LABEL.excluded}`}
           </Button>
           {open && (
             <div>
-              {group.possible.length > 0 && <p className="text-sm font-medium text-text mt-3">Possible</p>}
+              {group.possible.length > 0 && <p className="text-sm font-medium text-text mt-3">{BUCKET_LABEL.possible}</p>}
               {group.possible.map((tenant) => (
                 <TenantRow key={tenant.tenantId} tenant={tenant} spaces={group.spaces} listingId={listingId} onChanged={onChanged} />
               ))}
-              {group.excluded.length > 0 && <p className="text-sm font-medium text-text mt-3">Excluded</p>}
+              {group.excluded.length > 0 && <p className="text-sm font-medium text-text mt-3">{BUCKET_LABEL.excluded}</p>}
               {group.excluded.map((tenant) => (
                 <TenantRow key={tenant.tenantId} tenant={tenant} spaces={group.spaces} listingId={listingId} onChanged={onChanged} />
               ))}

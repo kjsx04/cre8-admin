@@ -1,12 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Settings } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Input, Select, Tabs, cn, FOCUS_RING, useToast } from "@/components/ui";
 import TenantTable from "@/components/demand/TenantTable";
-import BrandMap, { type BaseMap } from "@/components/demand/BrandMap";
+import type { BaseMap } from "@/components/demand/BrandMap";
 import SpacingDefaults from "@/components/demand/SpacingDefaults";
+
+const BrandMap = dynamic(() => import("@/components/demand/BrandMap"), { ssr: false });
 import type { ListingSummary, MatchResponse } from "@/lib/demand/view";
 import type { Bucket } from "@/lib/demand/types";
 
@@ -109,7 +112,7 @@ function DemandDesktop() {
     <>
       <div className="w-64">
         <Select small aria-label="Listing" value={listingId} onChange={(e) => setListingId(e.target.value)}>
-          <option value="">All tenants</option>
+          <option value="">All listings</option>
           {listings.map((listing) => (
             <option key={listing.id} value={listing.id}>{listing.name}</option>
           ))}

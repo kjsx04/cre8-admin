@@ -217,6 +217,27 @@ export interface TierAdminView {
   sortOrder: number;
 }
 
+/** One row of the Demand list. Enough to render and to save an edit without the location bundle. */
+export interface DemandListTenant {
+  id: string;
+  brandName: string;
+  category: string;
+  sfMin: number | null;
+  sfMax: number | null;
+  acresMin: number | null;
+  acresMax: number | null;
+  spacingMiles: number | null;
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: "High" | "Medium" | "Low" | null;
+  contacts: ContactView[];
+}
+
 export interface CatalogResponse {
   tenants: TenantAdminView[];
   firms: FirmView[];

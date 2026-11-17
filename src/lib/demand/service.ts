@@ -5,7 +5,7 @@ import { parseContactCsv, parseTenantCsv, toCsv } from "./csv";
 import { effectiveRequirement, groupSpaceMatches, matchSpaces, normalizeFormats, requirementText, suggestAlsoPitch } from "./match";
 import { parcelAtPoint } from "./parcels";
 import { locationStatus, type LocationStatus } from "./location-status";
-import { categoryKey, indexByCategory, lookupCategory } from "./categories";
+import { categoryKey, indexByCategory, isDemandCategory, lookupCategory } from "./categories";
 import { effectiveSpacing } from "./spacing";
 import { deriveSpaces, listingContext } from "./spaces";
 import type { ListingRow } from "./spaces";
@@ -35,6 +35,7 @@ import type {
   ListingSummary,
   MapResponse,
   MatchResponse,
+  DemandListTenant,
   ResearchLogView,
   ReverseResponse,
   SpaceView,
@@ -162,6 +163,7 @@ interface Bundle {
   locations: TenantLocation[];
   relationships: TenantRelationship[];
   contacts: Map<string, ContactView[]>;
+  firms: Row[];
 }
 
 interface PageQuery {
@@ -177,6 +179,22 @@ interface PageQuery {
  * unless we page. Order columns need to be unique together so a page boundary can't skip a row.
  * Location rows omit geom; the geography payload is large and matching only needs lat/lng.
  */
+async function fetchPage(
+  table: string,
+  columns: string,
+  orderColumns: string[],
+  from: number,
+  size: number,
+  filter?: (query: PageQuery) => PageQuery
+): Promise<Row[]> {
+  let query = supabase.from(table).select(columns) as unknown as PageQuery;
+  if (filter) query = filter(query);
+  for (const column of orderColumns) query = query.order(column, { ascending: true });
+  const { data, error } = await query.range(from, from + size - 1);
+  if (error) throw fromSupabase(error, table);
+  return data || [];
+}
+
 async function fetchAll(
   table: string,
   columns: string,
@@ -184,16 +202,25 @@ async function fetchAll(
   filter?: (query: PageQuery) => PageQuery
 ): Promise<Row[]> {
   const size = 1000;
-  const rows: Row[] = [];
-  for (let from = 0; ; from += size) {
-    let query = supabase.from(table).select(columns) as unknown as PageQuery;
-    if (filter) query = filter(query);
-    for (const column of orderColumns) query = query.order(column, { ascending: true });
-    const { data, error } = await query.range(from, from + size - 1);
-    if (error) throw fromSupabase(error, table);
-    const batch = data || [];
-    for (const row of batch) rows.push(row);
-    if (batch.length < size) return rows;
+  const first = await fetchPage(table, columns, orderColumns, 0, size, filter);
+  if (first.length < size) return first;
+  // A full page means there is more. Ask for the rest together instead of
+  // waiting on one thousand-row round trip at a time.
+  const rows = [...first];
+  const wave = 12;
+  for (let page = 1; ; page += wave) {
+    const batch = await Promise.all(
+      Array.from({ length: wave }, (_, index) => fetchPage(table, columns, orderColumns, (page + index) * size, size, filter))
+    );
+    let done = false;
+    for (const part of batch) {
+      rows.push(...part);
+      if (part.length < size) {
+        done = true;
+        break;
+      }
+    }
+    if (done) return rows;
   }
 }
 
@@ -227,7 +254,7 @@ async function readBundle(): Promise<Bundle> {
       fetchAll("category_defaults", "*", ["category"]),
       fetchAll("category_size_tiers", "*", ["category", "size_tier_id"]),
       fetchAll("tenant_size_tiers", "*", ["tenant_id", "size_tier_id"]),
-      fetchAll("tenant_locations", "id, tenant_id, name, address, lat, lng, status", ["id"]),
+      fetchAll("tenant_locations", "id, tenant_id, name, lat, lng, status", ["id"]),
       fetchAll("tenant_relationships", "*", ["id"]),
     ]);
 
@@ -341,7 +368,7 @@ async function readBundle(): Promise<Bundle> {
     id: String(row.id),
     tenantId: String(row.tenant_id),
     name: asString(row.name),
-    address: asString(row.address),
+    address: null,
     lat: asNumber(row.lat),
     lng: asNumber(row.lng),
     status: asString(row.status),
@@ -354,7 +381,7 @@ async function readBundle(): Promise<Bundle> {
     relation: (row.relation === "similar" || row.relation === "co_tenant" ? row.relation : "competitor") as Relation,
   }));
 
-  return { tenants, admin, defaults, tiers, locations, relationships, contacts };
+  return { tenants, admin, defaults, tiers, locations, relationships, contacts, firms: firmRows };
 }
 
 function contactOrder(a: ContactView, b: ContactView): number {
@@ -789,17 +816,15 @@ export async function setInterest(input: {
 
 export async function getCatalog(): Promise<CatalogResponse> {
   const bundle = await loadBundle();
-  const [firmRows, logRows] = await Promise.all([
-    fetchAll("rep_firms", "*", ["name", "id"]),
-    many(
-      supabase
-        .from("tenant_research_log")
-        .select("id, tenant_id, field, old_value, new_value, source, confidence, researched_at, researched_by")
-        .order("researched_at", { ascending: false })
-        .limit(40),
-      "research log"
-    ),
-  ]);
+  const logRows = await many(
+    supabase
+      .from("tenant_research_log")
+      .select("id, tenant_id, field, old_value, new_value, source, confidence, researched_at, researched_by")
+      .order("researched_at", { ascending: false })
+      .limit(40),
+    "research log"
+  );
+  const firmRows = bundle.firms;
   const tenants: TenantAdminView[] = bundle.tenants.map((tenant) => {
     const extra = bundle.admin.get(tenant.id);
     return {
@@ -1329,12 +1354,20 @@ export interface BrandRow {
   id: string;
   brandName: string;
   category: string;
+  /** The tenant's own spacing, or the category default when the tenant's is blank. */
   spacingMiles: number | null;
+  locationCount: number;
+}
+
+function embeddedCount(value: unknown): number {
+  if (typeof value === "number") return value;
+  const row = Array.isArray(value) ? (value[0] as Row | undefined) : (value as Row | null);
+  return asNumber(row?.count) ?? 0;
 }
 
 export async function listBrands(): Promise<BrandRow[]> {
   const [rows, defaults] = await Promise.all([
-    fetchAll("tenants", "id, brand_name, category, spacing_miles, active", ["brand_name", "id"]),
+    fetchAll("tenants", "id, brand_name, category, spacing_miles, active, tenant_locations(count)", ["brand_name", "id"]),
     fetchAll("category_defaults", "category, spacing_miles", ["category"]),
   ]);
   const byCategory = indexByCategory(
@@ -1349,6 +1382,7 @@ export async function listBrands(): Promise<BrandRow[]> {
         brandName: String(row.brand_name || "Tenant"),
         category,
         spacingMiles: effectiveSpacing(asNumber(row.spacing_miles), byCategory.get(categoryKey(category))?.spacingMiles ?? null),
+        locationCount: embeddedCount(row.tenant_locations),
       };
     });
 }
@@ -1615,5 +1649,188 @@ export async function deleteContact(tenantId: string, contactId: string): Promis
   const { data, error } = await supabase.from("tenant_contacts").delete().eq("id", contactId).eq("tenant_id", tenantId).select("id");
   if (error) throw fromSupabase(error, "delete contact");
   if (!data?.length) throw new DemandError("Contact not found.", 404);
+  invalidateBundle();
+}
+
+const TENANT_LIST_COLS =
+  "id, brand_name, category, sf_min, sf_max, acres_min, acres_max, spacing_miles, deal_lease, deal_buy, deal_ground_lease, deal_bts, freestanding, inline, deal_types_source, deal_types_confidence";
+const CONTACT_LIST_COLS = "id, tenant_id, contact_type, firm_id, name, title, email, phone, is_primary, confidence";
+
+/** The Demand list. Tenants, the contacts on them, and firm names — not the location table. */
+export async function listDemandRows(): Promise<DemandListTenant[]> {
+  const [tenants, contacts, firms] = await Promise.all([
+    fetchAll("tenants", TENANT_LIST_COLS, ["brand_name", "id"]),
+    fetchAll("tenant_contacts", CONTACT_LIST_COLS, ["id"]),
+    fetchAll("rep_firms", "id, name", ["name", "id"]),
+  ]);
+  const firmName = new Map(firms.map((row) => [String(row.id), String(row.name || "")]));
+  const byTenant = new Map<string, ContactView[]>();
+  for (const row of contacts) {
+    if (!row.tenant_id) continue;
+    const tenantId = String(row.tenant_id);
+    const view = contactFromRow(row, row.firm_id ? firmName.get(String(row.firm_id)) || null : null);
+    const list = byTenant.get(tenantId) || [];
+    list.push(view);
+    byTenant.set(tenantId, list);
+  }
+  Array.from(byTenant.values()).forEach((list) => list.sort(contactOrder));
+  return tenants.map((row) => ({
+    id: String(row.id),
+    brandName: String(row.brand_name || ""),
+    category: String(row.category || "other"),
+    sfMin: asNumber(row.sf_min),
+    sfMax: asNumber(row.sf_max),
+    acresMin: asNumber(row.acres_min),
+    acresMax: asNumber(row.acres_max),
+    spacingMiles: asNumber(row.spacing_miles),
+    dealLease: asBoolean(row.deal_lease),
+    dealBuy: asBoolean(row.deal_buy),
+    dealGroundLease: asBoolean(row.deal_ground_lease),
+    dealBts: asBoolean(row.deal_bts),
+    freestanding: asBoolean(row.freestanding),
+    inline: asBoolean(row.inline),
+    dealTypesSource: asString(row.deal_types_source),
+    dealTypesConfidence: confidenceOf(row.deal_types_confidence),
+    contacts: byTenant.get(String(row.id)) || [],
+  }));
+}
+
+export interface DemandEditContact {
+  id: string | null;
+  contactType: ContactType;
+  name: string;
+  company: string | null;
+  title: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface DemandEdit {
+  brandName: string;
+  category: string;
+  sfMin: number | null;
+  sfMax: number | null;
+  acresMin: number | null;
+  acresMax: number | null;
+  spacingMiles: number | null;
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: ResearchConfidence | null;
+  contacts: DemandEditContact[];
+}
+
+async function ensureFirm(firms: Map<string, string>, company: string | null): Promise<string | null> {
+  const name = company?.trim();
+  if (!name) return null;
+  const key = name.toLowerCase();
+  const found = firms.get(key);
+  if (found) return found;
+  const { data, error } = await supabase.from("rep_firms").insert({ name }).select("id").single();
+  if (error || !data) throw fromSupabase(error || { message: "Could not add the company." }, "firm");
+  const id = String((data as Row).id);
+  firms.set(key, id);
+  return id;
+}
+
+async function syncEditContacts(tenantId: string, contacts: DemandEditContact[]): Promise<void> {
+  const firmRows = await fetchAll("rep_firms", "id, name", ["name", "id"]);
+  const firms = new Map(firmRows.map((row) => [String(row.name).toLowerCase(), String(row.id)]));
+  const existing = await fetchAll("tenant_contacts", "id", ["id"], (query) => query.eq("tenant_id", tenantId));
+  const keep = new Set<string>();
+  for (const contact of contacts) {
+    const name = contact.name.trim();
+    if (!name) {
+      if ((contact.email || "").trim() || (contact.phone || "").trim() || (contact.company || "").trim()) {
+        throw new DemandError("Add a name for each contact.", 400);
+      }
+      continue;
+    }
+    const firmId = await ensureFirm(firms, contact.company);
+    const payload = {
+      contact_type: contact.contactType === "broker" ? "broker" : "in_house",
+      firm_id: firmId,
+      name,
+      title: contact.title,
+      email: contact.email,
+      phone: contact.phone,
+    };
+    if (contact.id && !contact.id.startsWith("new-")) {
+      const { data, error } = await supabase.from("tenant_contacts").update(payload).eq("id", contact.id).eq("tenant_id", tenantId).select("id");
+      if (error) throw fromSupabase(error, "contact");
+      if (!data?.length) throw new DemandError("Contact not found.", 404);
+      keep.add(contact.id);
+    } else {
+      const { data, error } = await supabase
+        .from("tenant_contacts")
+        .insert({ ...payload, tenant_id: tenantId, is_primary: false })
+        .select("id")
+        .single();
+      if (error || !data) throw fromSupabase(error || { message: "Could not add the contact." }, "contact");
+      keep.add(String((data as Row).id));
+    }
+  }
+  const remove = existing.map((row) => String(row.id)).filter((id) => !keep.has(id));
+  if (remove.length) {
+    const { error } = await supabase.from("tenant_contacts").delete().in("id", remove).eq("tenant_id", tenantId);
+    if (error) throw fromSupabase(error, "delete contact");
+  }
+}
+
+/** Saves the list editor. Tiers, formats, and relationships are left as they are. */
+export async function saveDemandEdit(id: string, input: DemandEdit): Promise<void> {
+  const name = input.brandName.trim();
+  const category = input.category.trim();
+  if (!name || !category) throw new DemandError("Name and category are required.", 400);
+  if (input.sfMin != null && input.sfMax != null && input.sfMin > input.sfMax) throw new DemandError("SF min cannot be above SF max.", 400);
+  if (input.acresMin != null && input.acresMax != null && input.acresMin > input.acresMax) {
+    throw new DemandError("Acres min cannot be above acres max.", 400);
+  }
+  assertConfidence(input.dealTypesConfidence);
+  const { data, error } = await supabase.from("tenants").select("id, category").eq("id", id).maybeSingle();
+  if (error) throw fromSupabase(error, "tenant");
+  if (!data) throw new DemandError("Tenant not found.", 404);
+  const currentCategory = String((data as Row).category || "");
+  if (!isDemandCategory(category) && category !== currentCategory) throw new DemandError("Unknown category.", 400);
+  const flags: DealFlags = {
+    dealLease: input.dealLease,
+    dealBuy: input.dealBuy,
+    dealGroundLease: input.dealGroundLease,
+    dealBts: input.dealBts,
+    freestanding: input.freestanding,
+    inline: input.inline,
+    dealTypesSource: input.dealTypesSource,
+    dealTypesConfidence: input.dealTypesConfidence,
+  };
+  const at = new Date().toISOString();
+  const changed = await writeResearchLog(id, flags, at);
+  const payload: Row = {
+    brand_name: name,
+    category,
+    sf_min: input.sfMin,
+    sf_max: input.sfMax,
+    acres_min: input.acresMin,
+    acres_max: input.acresMax,
+    spacing_miles: input.spacingMiles,
+    deal_lease: input.dealLease,
+    deal_buy: input.dealBuy,
+    deal_ground_lease: input.dealGroundLease,
+    deal_bts: input.dealBts,
+    freestanding: input.freestanding,
+    inline: input.inline,
+    deal_types_source: input.dealTypesSource,
+    deal_types_confidence: input.dealTypesConfidence,
+  };
+  if (changed) {
+    payload.last_researched = at;
+    payload.research_status = "researched";
+  }
+  const { error: updateError } = await supabase.from("tenants").update(payload).eq("id", id);
+  if (updateError) throw fromSupabase(updateError, "update tenant");
+  await syncEditContacts(id, input.contacts);
   invalidateBundle();
 }

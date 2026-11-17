@@ -5,7 +5,8 @@ import { Copy, Eye, EyeOff, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
-import { circlePolygon } from "@/lib/demand/geo";
+import { BUCKET_LABEL } from "@/lib/demand/types";
+import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { SHOW_ALL_TOOLTIP, showAllAllowed } from "@/lib/demand/board";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
@@ -17,6 +18,7 @@ interface Brand {
   brandName: string;
   category: string;
   spacingMiles: number | null;
+  locationCount: number;
 }
 
 interface Store {
@@ -171,7 +173,10 @@ export default function BrandMap({
     return Array.from(map.entries());
   })();
 
-  const shown = active.flatMap((id) => stores[id] || []);
+  const origin = focus?.lat != null && focus.lng != null ? { lat: focus.lat, lng: focus.lng } : null;
+  const shown = active
+    .flatMap((id) => stores[id] || [])
+    .filter((store) => withinListingRadius(origin, store.lat, store.lng));
   const spacing = new Map(brands.map((brand) => [brand.id, brand.spacingMiles]));
   const colors = new Map(brands.map((brand) => [brand.id, brandColor(brand.brandName)]));
   const boardIds = listingId ? fits.map((fit) => fit.id) : filtered.map((brand) => brand.id);
@@ -358,7 +363,7 @@ export default function BrandMap({
             </div>
           </div>
           <Select small aria-label="Listing" value={listingId} onChange={(e) => onListingId(e.target.value)}>
-            <option value="">All tenants</option>
+            <option value="">All listings</option>
             {listings.map((listing) => (
               <option key={listing.id} value={listing.id}>{listing.name}</option>
             ))}
@@ -399,7 +404,7 @@ export default function BrandMap({
                 return (
                   <div key={bucket} className="mb-2">
                     <div className="flex items-center gap-2 px-3 py-1">
-                      <span className="text-xs text-text-3">{bucket === "optimal" ? "Optimal" : "Possible"}</span>
+                      <span className="text-xs text-text-3">{BUCKET_LABEL[bucket]}</span>
                       <span className="flex-1 border-t border-border" />
                     </div>
                     {list.map((brand, index) => (
@@ -500,9 +505,10 @@ function BrandRow({
       <button
         type="button"
         onClick={onToggle}
-        className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm truncate", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
+        className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
       >
-        {brand.brandName}
+        <span className="block truncate">{brand.brandName}</span>
+        {brand.locationCount === 0 && <span className="block text-xs text-text-3 font-normal">No locations</span>}
       </button>
       <button
         type="button"
@@ -799,16 +805,18 @@ export function MapCanvas({
       count += 1;
     }
     const currentFocus = snap.current.focus;
-    if (currentFocus?.parcel) {
+    if (currentFocus?.lat != null && currentFocus.lng != null) {
+      for (const pair of circlePolygon(currentFocus.lng, currentFocus.lat, DEMAND_LISTING_RADIUS_MILES, 16)) {
+        bounds.extend(pair as [number, number]);
+        count += 1;
+      }
+    } else if (currentFocus?.parcel) {
       for (const pair of flatten(currentFocus.parcel.coordinates)) {
         if (pair.length >= 2) {
           bounds.extend([pair[0], pair[1]]);
           count += 1;
         }
       }
-    } else if (currentFocus?.lat != null && currentFocus.lng != null) {
-      bounds.extend([currentFocus.lng, currentFocus.lat]);
-      count += 1;
     }
     if (!count || bounds.isEmpty()) return;
     const width = map.getContainer().clientWidth;
@@ -883,8 +891,10 @@ function mount(map: import("mapbox-gl").Map) {
   map.addSource("rings", { type: "geojson", data: empty() });
   map.addSource("listing-dot", { type: "geojson", data: empty() });
   map.addSource("pins", { type: "geojson", data: empty() });
+  map.addSource("radius", { type: "geojson", data: empty() });
   map.addLayer({ id: "parcel-fill", type: "fill", source: "parcel", paint: { "fill-color": GREEN, "fill-opacity": 0.15 } });
   map.addLayer({ id: "parcel-line", type: "line", source: "parcel", paint: { "line-color": GREEN, "line-width": 2 } });
+  map.addLayer({ id: "listing-radius", type: "line", source: "radius", paint: { "line-color": RING, "line-width": 1.5, "line-opacity": 0.35 } });
   for (const value of LOCATION_STATUSES) {
     const dash = ringDash(value);
     map.addLayer({
@@ -937,7 +947,8 @@ function writeSources(
   const rings = map.getSource("rings") as import("mapbox-gl").GeoJSONSource | undefined;
   const dot = map.getSource("listing-dot") as import("mapbox-gl").GeoJSONSource | undefined;
   const pins = map.getSource("pins") as import("mapbox-gl").GeoJSONSource | undefined;
-  if (!parcel || !rings || !dot || !pins) return;
+  const radius = map.getSource("radius") as import("mapbox-gl").GeoJSONSource | undefined;
+  if (!parcel || !rings || !dot || !pins || !radius) return;
   const geometry = current.focus?.parcel;
   parcel.setData(geometry ? { type: "FeatureCollection", features: [{ type: "Feature", geometry: geometry as GeoJSON.Geometry, properties: {} }] } : empty());
   const point = current.focus?.lat != null && current.focus.lng != null && !geometry
@@ -947,6 +958,21 @@ function writeSources(
       }
     : empty();
   dot.setData(point);
+  const focusPoint = current.focus?.lat != null && current.focus.lng != null;
+  radius.setData(
+    focusPoint
+      ? {
+          type: "FeatureCollection",
+          features: [
+            {
+              type: "Feature",
+              geometry: { type: "Polygon", coordinates: [circlePolygon(current.focus!.lng as number, current.focus!.lat as number, DEMAND_LISTING_RADIUS_MILES)] },
+              properties: {},
+            },
+          ],
+        }
+      : empty()
+  );
   const ringFeatures: GeoJSON.Feature[] = [];
   const pinFeatures: GeoJSON.Feature[] = [];
   for (const store of stores) {

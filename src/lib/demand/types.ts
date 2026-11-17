@@ -16,6 +16,13 @@ export type SpaceType = (typeof SPACE_TYPES)[number];
 
 export type Deal = "sale" | "lease" | "both";
 export type Bucket = "optimal" | "possible" | "excluded";
+
+/** Display names for the three fit buckets. Keys stay stable if the labels change. */
+export const BUCKET_LABEL: Record<Bucket, string> = {
+  optimal: "Top",
+  possible: "Possible",
+  excluded: "Not a fit",
+};
 export type ContactType = "in_house" | "broker";
 export type Confidence = "High" | "Medium" | "Low";
 export type InterestStatus = "submitted" | "interested" | "touring" | "LOI" | "passed";

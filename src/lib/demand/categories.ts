@@ -72,6 +72,13 @@ export function isDemandCategory(value: string): value is DemandCategory {
   return (DEMAND_CATEGORIES as readonly string[]).includes(value);
 }
 
+/** Same 20 names, kept for the list editor and its tests. */
+export const CANONICAL_CATEGORIES = DEMAND_CATEGORIES;
+
+export function isCanonicalCategory(value: string): boolean {
+  return isDemandCategory(value);
+}
+
 /** Options for a tenant editor. Keeps a legacy value visible so editing doesn't blank it. */
 export function categoryOptions(current: string | null | undefined): string[] {
   const name = (current || "").trim();

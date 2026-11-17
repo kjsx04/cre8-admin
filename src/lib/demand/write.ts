@@ -1,5 +1,5 @@
 import { asBoolean, asNumber, asString, asStringList } from "./coerce";
-import type { TenantWrite } from "./service";
+import type { DemandEdit, TenantWrite } from "./service";
 import type { ContactType, DealFlags, Relation, ResearchConfidence } from "./types";
 
 function confidence(value: unknown): ResearchConfidence | null {
@@ -60,6 +60,34 @@ export function tenantWrite(body: Record<string, unknown>): TenantWrite {
       return {
         relatedTenantId: asString(row.relatedTenantId) || "",
         relation: (relation === "similar" || relation === "co_tenant" ? relation : "competitor") as Relation,
+      };
+    }),
+  };
+}
+
+/** The Demand list editor. It does not send tiers, formats, or relationships. */
+export function demandEdit(body: Record<string, unknown>): DemandEdit {
+  const contacts = Array.isArray(body.contacts) ? body.contacts : [];
+  const flags = dealFlags(body);
+  return {
+    brandName: asString(body.brandName) || "",
+    category: asString(body.category) || "",
+    sfMin: asNumber(body.sfMin),
+    sfMax: asNumber(body.sfMax),
+    acresMin: asNumber(body.acresMin),
+    acresMax: asNumber(body.acresMax),
+    spacingMiles: asNumber(body.spacingMiles),
+    ...flags,
+    contacts: contacts.map((item) => {
+      const row = item as Record<string, unknown>;
+      return {
+        id: asString(row.id),
+        contactType: (asString(row.contactType) === "in_house" ? "in_house" : "broker") as ContactType,
+        name: asString(row.name) || "",
+        company: asString(row.company) ?? asString(row.firmName),
+        title: asString(row.title),
+        email: asString(row.email),
+        phone: asString(row.phone),
       };
     }),
   };

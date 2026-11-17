@@ -231,8 +231,6 @@ const POSSIBLE_FORMATS: Record<SpaceType, Format[]> = {
   inline: ["endcap"],
 };
 
-const DEAL_UNKNOWN = "deal type unknown";
-
 type FlagResult = { status: "ok" | "unknown" | "no"; reasons: string[] };
 
 function flagPart(flags: (boolean | null)[], falseReason: string): FlagResult {
@@ -286,7 +284,7 @@ function leaseShopPath(flags: DealFlags): FlagResult {
 
 /**
  * Deal-type and freestanding/inline flags.
- * A required flag that is null keeps the tenant Possible ("deal type unknown").
+ * A required flag that is null stays unknown and does not change the bucket.
  * An explicit false excludes them. A for-sale-or-lease space accepts either path.
  */
 export function dealTypeFit(space: DemandSpace, flags: DealFlags): FlagResult {
@@ -332,20 +330,17 @@ export function classifySpace(
   const possible = new Set(POSSIBLE_FORMATS[space.spaceType]);
   const hitOptimal = requirement.formats.filter((f) => optimal.has(f));
   const hitPossible = requirement.formats.filter((f) => possible.has(f));
+  // A blank format is a fit. Only a real format that misses the space is a problem.
   let formatOk = true;
-  if (requirement.formats.length === 0) {
-    soft.push("No format on the requirement");
-    formatOk = false;
-  } else if (hitOptimal.length === 0 && hitPossible.length === 0) {
+  if (requirement.formats.length > 0 && hitOptimal.length === 0 && hitPossible.length === 0) {
     hard.push(`Wants ${requirement.formats.join(", ")}; this is ${spaceNoun(space)}`);
     formatOk = false;
-  } else if (hitOptimal.length === 0) {
+  } else if (requirement.formats.length > 0 && hitOptimal.length === 0) {
     soft.push(`Wants ${hitPossible.join(", ")}; listing reads as ${spaceNoun(space)}`);
   }
 
   const dealFit = dealTypeFit(space, tenant);
   if (dealFit.status === "no") hard.push(...dealFit.reasons);
-  else if (dealFit.status === "unknown") soft.push(DEAL_UNKNOWN);
 
   const kind = dimension(space);
   const value = kind === "acres" ? space.acres : space.sf;
@@ -359,13 +354,12 @@ export function classifySpace(
   );
   const sizeReason = describeSize(space, kind, value, requirement, size);
   if (size.fit === "outside") hard.push(sizeReason);
-  else if (size.fit === "close" || size.fit === "unknown") soft.push(sizeReason);
+  else if (size.fit === "close") soft.push(sizeReason);
   else if (size.fit === "inside") notes.push(sizeReason);
 
   if (requirement.driveThruRequired === true) {
     if (space.driveThru === false) hard.push(`Needs drive-thru; ${subject(space)} has none`);
-    else if (space.driveThru == null) soft.push("Needs drive-thru; listing doesn't say");
-    else notes.push("Drive-thru available");
+    else if (space.driveThru === true) notes.push("Drive-thru available");
   }
 
   if (requirement.azMarkets.length) {
@@ -376,7 +370,7 @@ export function classifySpace(
   const spacingReason = spacingConflict(listing, requirement.spacingMiles, locations);
   if (spacingReason) hard.push(spacingReason);
 
-  if (formatOk && space.deal === "sale" && requirement.formats.every((f) => SHOP_FORMATS.includes(f))) {
+  if (formatOk && requirement.formats.length > 0 && space.deal === "sale" && requirement.formats.every((f) => SHOP_FORMATS.includes(f))) {
     soft.push("Listed for sale; this tenant typically leases");
   }
   if (
@@ -408,7 +402,6 @@ export function classifySpace(
   let score = 100;
   if (size.fit === "inside") score += 10;
   if (size.fit === "close") score -= 12;
-  if (size.fit === "unknown") score -= 6;
   score -= soft.length * 8;
   score -= hard.length * 30;
 
@@ -473,6 +466,12 @@ export function matchSpaces(args: {
 }): SpaceMatch[] {
   const defaultsByCategory = indexByCategory(args.defaults);
   const active = args.tenants.filter((t) => t.active);
+  const locationsByTenant = new Map<string, TenantLocation[]>();
+  for (const location of args.locations) {
+    const list = locationsByTenant.get(location.tenantId);
+    if (list) list.push(location);
+    else locationsByTenant.set(location.tenantId, [location]);
+  }
   return args.spaces.map((space) => {
     const tenants = active
       .map((tenant) =>
@@ -482,7 +481,7 @@ export function matchSpaces(args: {
           tenant,
           defaultsByCategory.get(categoryKey(tenant.category)) ?? null,
           args.tiers,
-          args.locations.filter((l) => l.tenantId === tenant.id),
+          locationsByTenant.get(tenant.id) || [],
           args.overrides.find((o) => o.spaceId === space.id && o.tenantId === tenant.id) ?? null
         )
       )
