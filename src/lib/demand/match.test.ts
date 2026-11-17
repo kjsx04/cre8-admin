@@ -300,6 +300,22 @@ const notInline = classifySpace(
 assert(notInline.bucket === "excluded" && notInline.reasons.includes("Does not take inline space"), "explicit inline = no excludes a shop suite");
 assert(dealTypeFit(shopLease, { ...shopTenant, dealLease: null }).status === "unknown", "a blank lease flag is unknown");
 
+const bare = tenant({
+  id: "bare",
+  brandName: "",
+  formats: undefined as unknown as string[],
+  azMarkets: undefined as unknown as string[],
+  tierIds: undefined as unknown as string[],
+  dealLease: null,
+  dealBuy: null,
+  dealGroundLease: null,
+  dealBts: null,
+  freestanding: null,
+  inline: null,
+});
+const bareResult = classifySpace(listing, salePad, bare, null, [], [], null);
+assert(bareResult.bucket === "possible" && bareResult.reasons.includes("deal type unknown"), "blank research and empty arrays stay possible instead of throwing");
+
 const pads = ["A", "B", "C", "D"].map((letter, i) =>
   space({
     id: `pad-${letter}`,

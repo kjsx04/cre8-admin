@@ -161,17 +161,31 @@ interface Bundle {
   contacts: Map<string, ContactView[]>;
 }
 
+/** PostgREST returns at most 1,000 rows unless we page. Locations are past that, and geom is huge, so it is not selected. */
+async function fetchAll(table: string, columns: string, orderColumn: string): Promise<Row[]> {
+  const size = 1000;
+  const rows: Row[] = [];
+  for (let from = 0; ; from += size) {
+    const { data, error } = await supabase.from(table).select(columns).order(orderColumn, { ascending: true }).range(from, from + size - 1);
+    if (error) throw fromSupabase(error, table);
+    const batch = (data || []) as unknown as Row[];
+    for (const row of batch) rows.push(row);
+    if (batch.length < size) break;
+  }
+  return rows;
+}
+
 async function loadBundle(): Promise<Bundle> {
   const [tenantRows, contactRows, firmRows, tierRows, categoryRows, categoryTiers, tenantTiers, locationRows, relationshipRows] =
     await Promise.all([
-      many(supabase.from("tenants").select("*").order("brand_name"), "tenants"),
-      many(supabase.from("tenant_contacts").select("*").order("name"), "contacts"),
+      fetchAll("tenants", "*", "brand_name"),
+      fetchAll("tenant_contacts", "*", "id"),
       many(supabase.from("rep_firms").select("*").order("name"), "firms"),
       many(supabase.from("size_tiers").select("*").order("sort_order"), "tiers"),
       many(supabase.from("category_defaults").select("*").order("category"), "categories"),
       many(supabase.from("category_size_tiers").select("*"), "category tiers"),
       many(supabase.from("tenant_size_tiers").select("*"), "tenant tiers"),
-      many(supabase.from("tenant_locations").select("*"), "locations"),
+      fetchAll("tenant_locations", "id, tenant_id, name, address, lat, lng, status", "id"),
       many(supabase.from("tenant_relationships").select("*"), "relationships"),
     ]);
 
@@ -193,6 +207,7 @@ async function loadBundle(): Promise<Bundle> {
 
   const contacts = new Map<string, ContactView[]>();
   for (const row of contactRows) {
+    if (!row.tenant_id) continue;
     const tenantId = String(row.tenant_id);
     const view: ContactView = {
       id: String(row.id),

@@ -28,8 +28,8 @@ export function circlePolygon(lng: number, lat: number, miles: number, steps = 6
 
 const CLOSED = /closed|dead|former|relocated/i;
 
-export function usableLocations(locations: TenantLocation[]): TenantLocation[] {
-  return locations.filter((loc) => loc.lat != null && loc.lng != null && !CLOSED.test(loc.status || ""));
+export function usableLocations(locations: TenantLocation[] | null | undefined): TenantLocation[] {
+  return (locations || []).filter((loc) => loc != null && loc.lat != null && loc.lng != null && !CLOSED.test(loc.status || ""));
 }
 
 export interface NearestStop {

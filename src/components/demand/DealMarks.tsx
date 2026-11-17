@@ -27,7 +27,8 @@ export default function DealMarks({
   return (
     <div className="flex flex-wrap items-center gap-1.5">
       {FLAGS.map((flag) => {
-        const current = value[flag.key] as boolean | null;
+        const raw = value?.[flag.key];
+        const current = raw === true ? true : raw === false ? false : null;
         const text = current === true ? "Yes" : current === false ? "No" : "—";
         return (
           <button
@@ -80,8 +81,9 @@ export default function DealMarks({
   );
 }
 
-export function researchLine(status: string | null, researchedAt: string | null, storeCount: number): string {
-  const stores = `${storeCount.toLocaleString("en-US")} ${storeCount === 1 ? "store" : "stores"}`;
+export function researchLine(status: string | null, researchedAt: string | null, storeCount: number | null | undefined): string {
+  const count = typeof storeCount === "number" && Number.isFinite(storeCount) ? storeCount : 0;
+  const stores = `${count.toLocaleString("en-US")} ${count === 1 ? "store" : "stores"}`;
   const label =
     status === "researched" ? "Researched" : status === "in_progress" ? "Researching" : status === "needs_review" ? "Needs review" : "Not researched";
   return [stores, label, researchedAt ? shortDate(researchedAt) : ""].filter(Boolean).join(" · ");

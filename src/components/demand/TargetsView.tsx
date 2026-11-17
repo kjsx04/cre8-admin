@@ -368,11 +368,11 @@ function TenantRow({
           <p className="text-sm text-text-2 mt-0.5">
             {[tenant.category, tenant.requirement].filter(Boolean).join(" · ")}
           </p>
-          <p className="text-sm text-text-2 mt-1">{tenant.reasons.join(" · ")}</p>
+          <p className="text-sm text-text-2 mt-1">{(tenant.reasons || []).join(" · ")}</p>
           <p className="text-xs text-text-3 mt-1">{researchLine(tenant.researchStatus, tenant.lastResearched, tenant.storeCount)}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          <ContactPopover contacts={tenant.contacts} tenantName={tenant.brandName} />
+          <ContactPopover contacts={tenant.contacts || []} tenantName={tenant.brandName || "Tenant"} />
           <div className="w-32">
             <Select
               small

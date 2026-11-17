@@ -150,11 +150,11 @@ export default function TenantsAdmin() {
           <>
             <div className="mb-4">
               <h2 className="text-sm font-medium text-text mb-2">Recently updated</h2>
-              {catalog.recentResearch.length === 0 ? (
+              {(catalog.recentResearch || []).length === 0 ? (
                 <p className="text-sm text-text-2">No research updates yet.</p>
               ) : (
                 <Card padding="none">
-                  {catalog.recentResearch.map((row) => (
+                  {(catalog.recentResearch || []).map((row) => (
                     <div key={row.id} className="px-4 py-2 border-b border-border last:border-b-0 text-sm">
                       <span className="font-medium text-text">{row.brandName}</span>
                       <span className="text-text-2">

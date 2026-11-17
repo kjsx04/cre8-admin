@@ -90,9 +90,9 @@ export function effectiveRequirement(
     else acresMin = tenant.acresMin;
   }
 
-  const tierIds = tenant.tierIds.length
-    ? tenant.tierIds
-    : (category?.tierIds.length ? (inherited.push("tiers"), category.tierIds) : []);
+  const ownTiers = tenant.tierIds || [];
+  const fallbackTiers = category?.tierIds || [];
+  const tierIds = ownTiers.length ? ownTiers : fallbackTiers.length ? (inherited.push("tiers"), fallbackTiers) : [];
   const driveThruRequired = pick(tenant.driveThruRequired, category?.driveThruTypical ?? null, "driveThru", inherited);
   const spacingMiles = pick(tenant.spacingMiles, category?.spacingMiles ?? null, "spacing", inherited);
 
@@ -120,7 +120,7 @@ export function effectiveRequirement(
     acresMax,
     tierIds,
     driveThruRequired,
-    azMarkets: tenant.azMarkets.map((m) => m.trim()).filter(Boolean),
+    azMarkets: (tenant.azMarkets || []).map((m) => String(m || "").trim()).filter(Boolean),
     spacingMiles,
     treatedAsInline,
     inherited,

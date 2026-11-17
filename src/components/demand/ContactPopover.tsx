@@ -56,7 +56,7 @@ export default function ContactPopover({ contacts, tenantName }: { contacts: Con
     }
   }
 
-  const ordered = contacts.slice().sort((a, b) => {
+  const ordered = (contacts || []).slice().sort((a, b) => {
     const type = (a.contactType === "broker" ? 0 : 1) - (b.contactType === "broker" ? 0 : 1);
     if (type) return type;
     return Number(b.isPrimary) - Number(a.isPrimary) || a.name.localeCompare(b.name);
@@ -97,7 +97,7 @@ export default function ContactPopover({ contacts, tenantName }: { contacts: Con
                     <p className="text-xs text-text-3 mb-1">{contact.contactType === "broker" ? "Broker" : "In-house"}</p>
                   )}
                   <p className="text-sm font-medium text-text">
-                    {contact.name}
+                    {contact.name || "Contact"}
                     {contact.isPrimary && <span className="text-text-3 font-normal"> · Primary</span>}
                   </p>
                   <p className="text-sm text-text-2">
