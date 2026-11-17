@@ -34,7 +34,23 @@ export interface SizeTier {
   sortOrder: number;
 }
 
-export interface TenantInput {
+export type ResearchConfidence = "High" | "Medium" | "Low";
+export type ResearchStatus = "pending" | "in_progress" | "researched" | "needs_review";
+
+/** How a tenant takes space. Null means not researched yet. */
+export interface DealFlags {
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  /** Inline shop, including endcaps. */
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: ResearchConfidence | null;
+}
+
+export interface TenantInput extends DealFlags {
   id: string;
   brandName: string;
   category: string;
@@ -49,6 +65,10 @@ export interface TenantInput {
   azMarkets: string[];
   spacingMiles: number | null;
   active: boolean;
+  researchStatus: ResearchStatus | null;
+  researchPriority: number | null;
+  lastResearched: string | null;
+  storeCount: number;
 }
 
 export interface CategoryDefault {

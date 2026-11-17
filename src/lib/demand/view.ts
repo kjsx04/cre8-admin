@@ -40,6 +40,17 @@ export interface TenantMatchView {
   score: number;
   reasons: string[];
   requirement: string;
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: "High" | "Medium" | "Low" | null;
+  researchStatus: string | null;
+  lastResearched: string | null;
+  storeCount: number;
   contacts: ContactView[];
   interests: InterestView[];
   overrides: OverrideView[];
@@ -152,8 +163,33 @@ export interface TenantAdminView {
   requirementDate: string | null;
   notes: string | null;
   active: boolean;
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: "High" | "Medium" | "Low" | null;
+  researchStatus: string | null;
+  researchPriority: number | null;
+  lastResearched: string | null;
+  storeCount: number;
   contacts: ContactView[];
   relationships: { id: string; relatedTenantId: string; relation: Relation }[];
+}
+
+export interface ResearchLogView {
+  id: string;
+  tenantId: string | null;
+  brandName: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  source: string | null;
+  confidence: string | null;
+  researchedAt: string | null;
+  researchedBy: string | null;
 }
 
 export interface CategoryAdminView {
@@ -182,4 +218,5 @@ export interface CatalogResponse {
   firms: FirmView[];
   categories: CategoryAdminView[];
   tiers: TierAdminView[];
+  recentResearch: ResearchLogView[];
 }

@@ -10,10 +10,13 @@ import type {
   CategoryDefault,
   ContactType,
   Deal,
+  DealFlags,
   DemandSpace,
   InterestStatus,
   OverrideDecision,
   Relation,
+  ResearchConfidence,
+  ResearchStatus,
   SizeTier,
   SpaceOverride,
   SpaceType,
@@ -29,12 +32,27 @@ import type {
   ListingSummary,
   MapResponse,
   MatchResponse,
+  ResearchLogView,
   ReverseResponse,
   SpaceView,
   TenantAdminView,
   TenantMatchView,
   TierAdminView,
 } from "./view";
+
+function confidenceOf(value: unknown): ResearchConfidence | null {
+  return value === "High" || value === "Medium" || value === "Low" ? value : null;
+}
+
+function researchStatusOf(value: unknown): ResearchStatus | null {
+  return value === "pending" || value === "in_progress" || value === "researched" || value === "needs_review" ? value : null;
+}
+
+function triText(value: boolean | null | undefined): string {
+  if (value === true) return "true";
+  if (value === false) return "false";
+  return "unknown";
+}
 
 const LISTING_COLS =
   "id, name, slug, full_address, city_county, acres, building_sqft, list_price, listing_type, property_type, zoning, property_overview, spaces_available, latitude, longitude, status, sold";
@@ -193,6 +211,13 @@ async function loadBundle(): Promise<Bundle> {
   }
   Array.from(contacts.values()).forEach((list) => list.sort(contactOrder));
 
+  const storeCount = new Map<string, number>();
+  for (const row of locationRows) {
+    if (!row.tenant_id) continue;
+    const id = String(row.tenant_id);
+    storeCount.set(id, (storeCount.get(id) || 0) + 1);
+  }
+
   const tenants: TenantInput[] = tenantRows.map((row) => ({
     id: String(row.id),
     brandName: String(row.brand_name || ""),
@@ -208,6 +233,18 @@ async function loadBundle(): Promise<Bundle> {
     azMarkets: asStringList(row.az_markets),
     spacingMiles: asNumber(row.spacing_miles),
     active: row.active !== false,
+    dealLease: asBoolean(row.deal_lease),
+    dealBuy: asBoolean(row.deal_buy),
+    dealGroundLease: asBoolean(row.deal_ground_lease),
+    dealBts: asBoolean(row.deal_bts),
+    freestanding: asBoolean(row.freestanding),
+    inline: asBoolean(row.inline),
+    dealTypesSource: asString(row.deal_types_source),
+    dealTypesConfidence: confidenceOf(row.deal_types_confidence),
+    researchStatus: researchStatusOf(row.research_status),
+    researchPriority: asNumber(row.research_priority),
+    lastResearched: asString(row.last_researched),
+    storeCount: storeCount.get(String(row.id)) || 0,
   }));
 
   const admin = new Map(
@@ -360,6 +397,17 @@ function toGroup(group: ReturnType<typeof groupSpaceMatches>[number], bundle: Bu
       score: classified.score,
       reasons: classified.reasons,
       requirement: requirementText(classified.requirement, bundle.tiers),
+      dealLease: tenant?.dealLease ?? null,
+      dealBuy: tenant?.dealBuy ?? null,
+      dealGroundLease: tenant?.dealGroundLease ?? null,
+      dealBts: tenant?.dealBts ?? null,
+      freestanding: tenant?.freestanding ?? null,
+      inline: tenant?.inline ?? null,
+      dealTypesSource: tenant?.dealTypesSource ?? null,
+      dealTypesConfidence: tenant?.dealTypesConfidence ?? null,
+      researchStatus: tenant?.researchStatus ?? null,
+      lastResearched: tenant?.lastResearched ?? null,
+      storeCount: tenant?.storeCount ?? 0,
       contacts: bundle.contacts.get(classified.tenantId) || [],
       interests: interests.map((row) => ({ spaceId: row.spaceId, status: row.status, notes: row.notes })),
       overrides: overs.map((row) => ({ spaceId: row.spaceId, decision: row.decision, reason: row.reason })),
@@ -680,7 +728,17 @@ export async function setInterest(input: {
 
 export async function getCatalog(): Promise<CatalogResponse> {
   const bundle = await loadBundle();
-  const [firmRows] = await Promise.all([many(supabase.from("rep_firms").select("*").order("name"), "firms")]);
+  const [firmRows, logRows] = await Promise.all([
+    many(supabase.from("rep_firms").select("*").order("name"), "firms"),
+    many(
+      supabase
+        .from("tenant_research_log")
+        .select("id, tenant_id, field, old_value, new_value, source, confidence, researched_at, researched_by")
+        .order("researched_at", { ascending: false })
+        .limit(40),
+      "research log"
+    ),
+  ]);
   const tenants: TenantAdminView[] = bundle.tenants.map((tenant) => {
     const extra = bundle.admin.get(tenant.id);
     return {
@@ -722,6 +780,23 @@ export async function getCatalog(): Promise<CatalogResponse> {
       maxValue: tier.maxValue,
       sortOrder: tier.sortOrder,
     })),
+    recentResearch: logRows.map((row) => researchLogView(row, bundle.tenants)),
+  };
+}
+
+function researchLogView(row: Row, tenants: TenantInput[]): ResearchLogView {
+  const tenantId = row.tenant_id ? String(row.tenant_id) : null;
+  return {
+    id: String(row.id),
+    tenantId,
+    brandName: tenants.find((tenant) => tenant.id === tenantId)?.brandName || "Tenant",
+    field: String(row.field || ""),
+    oldValue: asString(row.old_value),
+    newValue: asString(row.new_value),
+    source: asString(row.source),
+    confidence: asString(row.confidence),
+    researchedAt: asString(row.researched_at),
+    researchedBy: asString(row.researched_by),
   };
 }
 
@@ -742,6 +817,14 @@ export interface TenantWrite {
   requirementDate: string | null;
   notes: string | null;
   active: boolean;
+  dealLease: boolean | null;
+  dealBuy: boolean | null;
+  dealGroundLease: boolean | null;
+  dealBts: boolean | null;
+  freestanding: boolean | null;
+  inline: boolean | null;
+  dealTypesSource: string | null;
+  dealTypesConfidence: ResearchConfidence | null;
   contacts: {
     contactType: ContactType;
     firmName: string | null;
@@ -777,7 +860,68 @@ function tenantPayload(input: TenantWrite) {
     requirement_date: input.requirementDate,
     notes: input.notes,
     active: input.active,
+    deal_lease: input.dealLease,
+    deal_buy: input.dealBuy,
+    deal_ground_lease: input.dealGroundLease,
+    deal_bts: input.dealBts,
+    freestanding: input.freestanding,
+    inline: input.inline,
+    deal_types_source: input.dealTypesSource,
+    deal_types_confidence: input.dealTypesConfidence,
   };
+}
+
+const RESEARCH_COLUMNS: { column: string; key: keyof DealFlags; tri: boolean }[] = [
+  { column: "deal_lease", key: "dealLease", tri: true },
+  { column: "deal_buy", key: "dealBuy", tri: true },
+  { column: "deal_ground_lease", key: "dealGroundLease", tri: true },
+  { column: "deal_bts", key: "dealBts", tri: true },
+  { column: "freestanding", key: "freestanding", tri: true },
+  { column: "inline", key: "inline", tri: true },
+  { column: "deal_types_source", key: "dealTypesSource", tri: false },
+  { column: "deal_types_confidence", key: "dealTypesConfidence", tri: false },
+];
+
+function researchValue(row: Row, column: string, tri: boolean): string {
+  if (!tri) return asString(row[column]) || "";
+  return triText(asBoolean(row[column]));
+}
+
+function nextResearchValue(input: DealFlags, key: keyof DealFlags, tri: boolean): string {
+  const value = input[key];
+  if (!tri) return typeof value === "string" ? value : "";
+  return triText(value as boolean | null);
+}
+
+async function writeResearchLog(tenantId: string, input: DealFlags, at: string): Promise<boolean> {
+  const { data, error } = await supabase
+    .from("tenants")
+    .select("deal_lease, deal_buy, deal_ground_lease, deal_bts, freestanding, inline, deal_types_source, deal_types_confidence")
+    .eq("id", tenantId)
+    .maybeSingle();
+  if (error) throw fromSupabase(error, "read research");
+  if (!data) throw new DemandError("Tenant not found.", 404);
+  const current = data as Row;
+  const changes = RESEARCH_COLUMNS.flatMap((field) => {
+    const oldValue = researchValue(current, field.column, field.tri);
+    const newValue = nextResearchValue(input, field.key, field.tri);
+    return oldValue === newValue ? [] : [{ field: field.column, old_value: oldValue, new_value: newValue }];
+  });
+  if (!changes.length) return false;
+  const { error: logError } = await supabase.from("tenant_research_log").insert(
+    changes.map((change) => ({
+      tenant_id: tenantId,
+      field: change.field,
+      old_value: change.old_value,
+      new_value: change.new_value,
+      source: input.dealTypesSource,
+      confidence: input.dealTypesConfidence,
+      researched_by: "manual",
+      researched_at: at,
+    }))
+  );
+  if (logError) throw fromSupabase(logError, "research log");
+  return true;
 }
 
 async function replaceTenantChildren(tenantId: string, input: TenantWrite): Promise<void> {
@@ -822,18 +966,74 @@ async function replaceTenantChildren(tenantId: string, input: TenantWrite): Prom
   }
 }
 
+function assertConfidence(value: ResearchConfidence | null): void {
+  if (value && value !== "High" && value !== "Medium" && value !== "Low") {
+    throw new DemandError("Confidence must be High, Medium, or Low.", 400);
+  }
+}
+
 export async function createTenant(input: TenantWrite): Promise<string> {
-  const { data, error } = await supabase.from("tenants").insert(tenantPayload(input)).select("id").single();
+  assertConfidence(input.dealTypesConfidence);
+  const at = new Date().toISOString();
+  const changes = RESEARCH_COLUMNS.flatMap((field) => {
+    const newValue = nextResearchValue(input, field.key, field.tri);
+    const oldValue = field.tri ? "unknown" : "";
+    return newValue === oldValue ? [] : [{ field: field.column, old_value: oldValue, new_value: newValue }];
+  });
+  const payload = changes.length ? { ...tenantPayload(input), last_researched: at, research_status: "researched" } : tenantPayload(input);
+  const { data, error } = await supabase.from("tenants").insert(payload).select("id").single();
   if (error || !data) throw fromSupabase(error || { message: "Insert failed" }, "create tenant");
   const id = String((data as Row).id);
+  if (changes.length) {
+    const { error: logError } = await supabase.from("tenant_research_log").insert(
+      changes.map((change) => ({
+        tenant_id: id,
+        field: change.field,
+        old_value: change.old_value,
+        new_value: change.new_value,
+        source: input.dealTypesSource,
+        confidence: input.dealTypesConfidence,
+        researched_by: "manual",
+        researched_at: at,
+      }))
+    );
+    if (logError) throw fromSupabase(logError, "research log");
+  }
   await replaceTenantChildren(id, input);
   return id;
 }
 
 export async function updateTenant(id: string, input: TenantWrite): Promise<void> {
-  const { error } = await supabase.from("tenants").update(tenantPayload(input)).eq("id", id);
+  assertConfidence(input.dealTypesConfidence);
+  const at = new Date().toISOString();
+  const changed = await writeResearchLog(id, input, at);
+  const payload = changed ? { ...tenantPayload(input), last_researched: at, research_status: "researched" } : tenantPayload(input);
+  const { error } = await supabase.from("tenants").update(payload).eq("id", id);
   if (error) throw fromSupabase(error, "update tenant");
   await replaceTenantChildren(id, input);
+}
+
+export async function saveDealResearch(id: string, input: DealFlags): Promise<void> {
+  assertConfidence(input.dealTypesConfidence);
+  const at = new Date().toISOString();
+  const changed = await writeResearchLog(id, input, at);
+  if (!changed) return;
+  const { error } = await supabase
+    .from("tenants")
+    .update({
+      deal_lease: input.dealLease,
+      deal_buy: input.dealBuy,
+      deal_ground_lease: input.dealGroundLease,
+      deal_bts: input.dealBts,
+      freestanding: input.freestanding,
+      inline: input.inline,
+      deal_types_source: input.dealTypesSource,
+      deal_types_confidence: input.dealTypesConfidence,
+      last_researched: at,
+      research_status: "researched",
+    })
+    .eq("id", id);
+  if (error) throw fromSupabase(error, "save research");
 }
 
 export async function deleteTenant(id: string): Promise<void> {

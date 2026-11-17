@@ -64,6 +64,7 @@ const TABLES = [
   "listing_spaces",
   "demand_overrides",
   "demand_interest",
+  "tenant_research_log",
 ];
 
 // Grouped so the output reads in dependency order (parents before children).
@@ -93,6 +94,7 @@ const GROUPS = [
       "listing_spaces",
       "demand_overrides",
       "demand_interest",
+      "tenant_research_log",
     ],
   ],
 ];

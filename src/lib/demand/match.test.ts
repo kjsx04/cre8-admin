@@ -8,7 +8,7 @@ import { circlePolygon, haversineMiles, spacingCue } from "./geo";
 import { deriveSpaces, parseSpacesHtml } from "./spaces";
 import { groupTitle } from "./format";
 import { CONTACT_CSV_HEADERS, TENANT_CSV_HEADERS, parseContactCsv, parseTenantCsv } from "./csv";
-import { classifySpace, effectiveRequirement, groupSpaceMatches, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
+import { classifySpace, dealTypeFit, effectiveRequirement, groupSpaceMatches, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
 import type { CategoryDefault, DemandSpace, ListingContext, SizeTier, TenantInput, TenantLocation } from "./types";
 
 let failed = 0;
@@ -73,6 +73,18 @@ function tenant(partial: Partial<TenantInput> & Pick<TenantInput, "id" | "brandN
     azMarkets: [],
     spacingMiles: null,
     active: true,
+    dealLease: true,
+    dealBuy: true,
+    dealGroundLease: true,
+    dealBts: true,
+    freestanding: true,
+    inline: true,
+    dealTypesSource: null,
+    dealTypesConfidence: null,
+    researchStatus: null,
+    researchPriority: null,
+    lastResearched: null,
+    storeCount: 0,
     ...partial,
   };
 }
@@ -196,6 +208,97 @@ const noStores = classifySpace(
   null
 );
 assert(noStores.bucket === "optimal", "spacing is skipped when the tenant has no locations");
+
+const salePad = space({ id: "sale-pad", label: "Pad A", spaceType: "pad", acres: 1.1, driveThru: true, deal: "sale" });
+const buyer = tenant({
+  id: "buyer",
+  brandName: "Buyer",
+  formats: ["pad"],
+  acresMin: 0.8,
+  acresMax: 1.5,
+  azMarkets: ["Mesa"],
+  dealLease: false,
+  dealGroundLease: false,
+  dealBts: false,
+  inline: false,
+});
+assert(classifySpace(listing, salePad, buyer, null, tiers, [], null).bucket === "optimal", "a buyer of freestanding pads is optimal on a pad for sale");
+
+const unknownDeal = tenant({
+  id: "unknown",
+  brandName: "Unknown",
+  formats: ["pad"],
+  acresMin: 0.8,
+  acresMax: 1.5,
+  azMarkets: ["Mesa"],
+  dealBuy: null,
+  dealGroundLease: null,
+  dealBts: null,
+});
+const unknownResult = classifySpace(listing, salePad, unknownDeal, null, tiers, [], null);
+assert(unknownResult.bucket === "possible" && unknownResult.reasons.includes("deal type unknown"), "unknown deal type is possible, not optimal");
+
+const inlineOnly = tenant({
+  id: "inline-only",
+  brandName: "Inline only",
+  formats: ["pad", "inline"],
+  acresMin: 0.8,
+  acresMax: 1.5,
+  azMarkets: ["Mesa"],
+  dealBuy: false,
+  dealGroundLease: false,
+  dealBts: false,
+  freestanding: true,
+  inline: true,
+  dealLease: true,
+});
+const inlineOnlyResult = classifySpace(listing, salePad, inlineOnly, null, tiers, [], null);
+assert(
+  inlineOnlyResult.bucket === "excluded" && inlineOnlyResult.reasons.includes("Leases inline only; does not buy pads"),
+  "an inline lessee is excluded from a pad for sale"
+);
+
+const groundPad = space({ id: "gl-pad", label: "Pad A", spaceType: "pad", acres: 1.1, driveThru: true, deal: "lease" });
+const groundTenant = tenant({
+  id: "gl",
+  brandName: "Ground",
+  formats: ["ground lease"],
+  acresMin: 0.8,
+  acresMax: 1.5,
+  azMarkets: ["Mesa"],
+  dealBuy: false,
+  dealLease: false,
+  dealBts: false,
+});
+assert(classifySpace(listing, groundPad, groundTenant, null, tiers, [], null).bucket === "optimal", "a ground-lease tenant fits a pad for lease");
+const noGround = classifySpace(listing, groundPad, { ...groundTenant, dealGroundLease: false }, null, tiers, [], null);
+assert(noGround.bucket === "excluded" && noGround.reasons.includes("Does not ground lease"), "a tenant who does not ground lease is excluded from a lease pad");
+
+const shopLease = space({ id: "shop-lease", label: "Suite 100", spaceType: "inline", sf: 2400, deal: "lease" });
+const shopTenant = tenant({
+  id: "shopper",
+  brandName: "Shopper",
+  formats: ["inline"],
+  sfMin: 2000,
+  sfMax: 4000,
+  azMarkets: ["Mesa"],
+  freestanding: false,
+  dealBuy: false,
+  dealGroundLease: false,
+  dealBts: false,
+});
+assert(classifySpace({ ...listing, propertyFamily: "retail", propertyType: "Retail" }, shopLease, shopTenant, null, tiers, [], null).bucket === "optimal", "an inline lessee is optimal on a lease suite");
+const notInline = classifySpace(
+  { ...listing, propertyFamily: "retail", propertyType: "Retail" },
+  shopLease,
+  { ...shopTenant, inline: false },
+  null,
+  tiers,
+  [],
+  null
+);
+assert(notInline.bucket === "excluded" && notInline.reasons.includes("Does not take inline space"), "explicit inline = no excludes a shop suite");
+assert(dealTypeFit(shopLease, { ...shopTenant, dealLease: null }).status === "unknown", "a blank lease flag is unknown");
 
 const pads = ["A", "B", "C", "D"].map((letter, i) =>
   space({
@@ -332,6 +435,12 @@ for (const name of ["0-1.5 ac", "1.5-2.5 ac", "2.5-5 ac", "5-10 ac", "10+ ac", "
   assert(sql.includes(`'${name}'`), `migration seeds ${name}`);
 }
 assert(!sql.includes("0-2 ac") && !sql.includes("15+ ac") && !sql.includes("5-15 ac"), "the old acreage tiers are not seeded");
+
+const researchSql = readFileSync("supabase/migrations/2026-11-17_tenant_research.sql", "utf8");
+for (const column of ["deal_lease", "deal_buy", "deal_ground_lease", "deal_bts", "freestanding", "inline", "deal_types_source", "deal_types_confidence", "research_status", "research_priority", "last_researched", "tenant_research_log"]) {
+  assert(researchSql.includes(column), `research migration includes ${column}`);
+}
+assert(researchSql.includes("add column if not exists") && researchSql.includes("create table if not exists"), "research migration is idempotent");
 
 if (failed) {
   console.error(`\n${failed} failed`);

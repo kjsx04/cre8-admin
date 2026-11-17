@@ -14,9 +14,10 @@ import {
   useToast,
 } from "@/components/ui";
 import ContactPopover from "@/components/demand/ContactPopover";
+import DealMarks, { researchLine } from "@/components/demand/DealMarks";
 import DemandMap from "@/components/demand/DemandMap";
 import type { GroupView, ListingSummary, MatchResponse, SpaceView, TenantMatchView } from "@/lib/demand/view";
-import type { Deal, SpaceType } from "@/lib/demand/types";
+import type { Deal, DealFlags, SpaceType } from "@/lib/demand/types";
 
 const INTEREST: { value: string; label: string }[] = [
   { value: "", label: "No status" },
@@ -316,6 +317,9 @@ function TenantRow({
   const [reason, setReason] = useState(tenant.overrides[0]?.reason || "");
   const [decision, setDecision] = useState(sharedDecision(tenant, spaces));
   const [perSpace, setPerSpace] = useState(false);
+  const [deals, setDeals] = useState<DealFlags>(dealFlagsOf(tenant));
+  const [savingDeals, setSavingDeals] = useState(false);
+  const dealsDirty = JSON.stringify(deals) !== JSON.stringify(dealFlagsOf(tenant));
   const interest = sharedInterest(tenant, spaces);
 
   async function saveInterest(spaceIds: string[], status: string) {
@@ -365,6 +369,7 @@ function TenantRow({
             {[tenant.category, tenant.requirement].filter(Boolean).join(" · ")}
           </p>
           <p className="text-sm text-text-2 mt-1">{tenant.reasons.join(" · ")}</p>
+          <p className="text-xs text-text-3 mt-1">{researchLine(tenant.researchStatus, tenant.lastResearched, tenant.storeCount)}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <ContactPopover contacts={tenant.contacts} tenantName={tenant.brandName} />
@@ -427,6 +432,34 @@ function TenantRow({
           })}
         </div>
       )}
+      <div className="mt-2">
+        <DealMarks
+          value={deals}
+          onChange={setDeals}
+          saving={savingDeals}
+          onSave={
+            dealsDirty
+              ? async () => {
+            setSavingDeals(true);
+            try {
+              const res = await apiFetch(`/api/demand/tenants/${tenant.tenantId}/research`, {
+                method: "POST",
+                body: JSON.stringify(deals),
+              });
+              const body = await res.json().catch(() => null);
+              if (!res.ok) throw new Error(body?.error || "Could not save");
+              toast.success("Saved");
+              onChanged();
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Could not save");
+            } finally {
+              setSavingDeals(false);
+            }
+          }
+              : undefined
+          }
+        />
+      </div>
       {tenant.alsoPitch.length > 0 && (
         <p className="text-sm text-text-2 mt-2">
           Also pitch {tenant.alsoPitch.map((item) => `${item.brandName} (${item.why.toLowerCase()})`).join(", ")}.
@@ -434,6 +467,19 @@ function TenantRow({
       )}
     </div>
   );
+}
+
+function dealFlagsOf(tenant: TenantMatchView): DealFlags {
+  return {
+    dealLease: tenant.dealLease,
+    dealBuy: tenant.dealBuy,
+    dealGroundLease: tenant.dealGroundLease,
+    dealBts: tenant.dealBts,
+    freestanding: tenant.freestanding,
+    inline: tenant.inline,
+    dealTypesSource: tenant.dealTypesSource,
+    dealTypesConfidence: tenant.dealTypesConfidence,
+  };
 }
 
 function sharedInterest(tenant: TenantMatchView, spaces: SpaceView[]): string {

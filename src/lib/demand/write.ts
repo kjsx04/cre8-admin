@@ -1,6 +1,23 @@
 import { asBoolean, asNumber, asString, asStringList } from "./coerce";
 import type { TenantWrite } from "./service";
-import type { ContactType, Relation } from "./types";
+import type { ContactType, DealFlags, Relation, ResearchConfidence } from "./types";
+
+function confidence(value: unknown): ResearchConfidence | null {
+  return value === "High" || value === "Medium" || value === "Low" ? value : null;
+}
+
+export function dealFlags(body: Record<string, unknown>): DealFlags {
+  return {
+    dealLease: asBoolean(body.dealLease),
+    dealBuy: asBoolean(body.dealBuy),
+    dealGroundLease: asBoolean(body.dealGroundLease),
+    dealBts: asBoolean(body.dealBts),
+    freestanding: asBoolean(body.freestanding),
+    inline: asBoolean(body.inline),
+    dealTypesSource: asString(body.dealTypesSource),
+    dealTypesConfidence: confidence(body.dealTypesConfidence),
+  };
+}
 
 /** Turns the tenant editor payload into the shape the service saves. */
 export function tenantWrite(body: Record<string, unknown>): TenantWrite {
@@ -23,6 +40,7 @@ export function tenantWrite(body: Record<string, unknown>): TenantWrite {
     requirementDate: asString(body.requirementDate),
     notes: asString(body.notes),
     active: body.active !== false,
+    ...dealFlags(body),
     contacts: contacts.map((item) => {
       const row = item as Record<string, unknown>;
       return {

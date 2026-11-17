@@ -74,7 +74,14 @@ Tables:
 - `tenants` — id, brand_name (unique), category, subcategory, formats (text[]),
   sf_min, sf_max, acres_min, acres_max, drive_thru_required, az_markets (text[]),
   spacing_miles, requirement_source, requirement_date, notes, active, created_at,
-  updated_at
+  updated_at, plus deal flags `deal_lease`, `deal_buy`, `deal_ground_lease`,
+  `deal_bts`, `freestanding`, `inline` (boolean, null = unknown),
+  `deal_types_source`, `deal_types_confidence` (`High` | `Medium` | `Low`),
+  `research_status` (`pending` | `in_progress` | `researched` | `needs_review`),
+  `research_priority`, `last_researched`
+- `tenant_research_log` — id, tenant_id, field, old_value, new_value, source,
+  confidence, researched_at, researched_by. A manual edit writes `researched_by`
+  = `manual`. Added by `migrations/2026-11-17_tenant_research.sql` (idempotent).
 - `tenant_contacts` — id, tenant_id, contact_type (`in_house` | `broker`), firm_id,
   name, title, email, phone, is_primary, source, confidence (`High` | `Medium` |
   `Low`), last_verified, created_at, updated_at

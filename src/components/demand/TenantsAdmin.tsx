@@ -18,6 +18,7 @@ import {
   FOCUS_RING,
 } from "@/components/ui";
 import { FORMATS } from "@/lib/demand/types";
+import DealMarks, { researchFieldLabel, researchLine, researchValueLabel, shortDate } from "@/components/demand/DealMarks";
 import type { CatalogResponse, CategoryAdminView, TenantAdminView, TierAdminView } from "@/lib/demand/view";
 
 type AdminTab = "tenants" | "firms" | "categories" | "tiers" | "import";
@@ -40,6 +41,18 @@ const EMPTY_TENANT: TenantAdminView = {
   requirementDate: null,
   notes: null,
   active: true,
+  dealLease: null,
+  dealBuy: null,
+  dealGroundLease: null,
+  dealBts: null,
+  freestanding: null,
+  inline: null,
+  dealTypesSource: null,
+  dealTypesConfidence: null,
+  researchStatus: "pending",
+  researchPriority: null,
+  lastResearched: null,
+  storeCount: 0,
   contacts: [],
   relationships: [],
 };
@@ -135,6 +148,25 @@ export default function TenantsAdmin() {
       <div className="mt-4">
         {tab === "tenants" && catalog && (
           <>
+            <div className="mb-4">
+              <h2 className="text-sm font-medium text-text mb-2">Recently updated</h2>
+              {catalog.recentResearch.length === 0 ? (
+                <p className="text-sm text-text-2">No research updates yet.</p>
+              ) : (
+                <Card padding="none">
+                  {catalog.recentResearch.map((row) => (
+                    <div key={row.id} className="px-4 py-2 border-b border-border last:border-b-0 text-sm">
+                      <span className="font-medium text-text">{row.brandName}</span>
+                      <span className="text-text-2">
+                        {" "}
+                        {researchFieldLabel(row.field)} {researchValueLabel(row.oldValue)} → {researchValueLabel(row.newValue)}
+                      </span>
+                      <span className="text-text-3">{row.researchedAt ? ` · ${shortDate(row.researchedAt)}` : ""}</span>
+                    </div>
+                  ))}
+                </Card>
+              )}
+            </div>
             <div className="flex items-center gap-2 mb-3">
               <div className="w-64">
                 <Input small value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search tenants" aria-label="Search tenants" />
@@ -150,7 +182,12 @@ export default function TenantsAdmin() {
                   className={cn("w-full text-left px-4 py-2.5 border-b border-border last:border-b-0 hover:bg-surface-2/60", FOCUS_RING)}
                 >
                   <p className="text-sm font-medium text-text">{tenant.brandName}</p>
-                  <p className="text-xs text-text-3">{tenant.category}{tenant.active ? "" : " · inactive"}</p>
+                  <p className="text-xs text-text-3">
+                    {tenant.category}
+                    {tenant.active ? "" : " · inactive"}
+                    {" · "}
+                    {researchLine(tenant.researchStatus, tenant.lastResearched, tenant.storeCount)}
+                  </p>
                 </button>
               ))}
             </Card>
@@ -254,6 +291,24 @@ function TenantForm({
         <Input value={tenant.azMarkets.join(", ")} onChange={(e) => set({ azMarkets: splitList(e.target.value) })} />
       </Field>
       <Field label="Spacing (miles)"><Input type="number" step="0.1" value={tenant.spacingMiles ?? ""} onChange={(e) => set({ spacingMiles: num(e.target.value) })} /></Field>
+      <Field label="Deal type">
+        <DealMarks
+          value={tenant}
+          onChange={(next) =>
+            set({
+              dealLease: next.dealLease,
+              dealBuy: next.dealBuy,
+              dealGroundLease: next.dealGroundLease,
+              dealBts: next.dealBts,
+              freestanding: next.freestanding,
+              inline: next.inline,
+              dealTypesSource: next.dealTypesSource,
+              dealTypesConfidence: next.dealTypesConfidence,
+            })
+          }
+        />
+      </Field>
+      <p className="text-xs text-text-3">{researchLine(tenant.researchStatus, tenant.lastResearched, tenant.storeCount)}</p>
       <Field label="Notes"><Textarea value={tenant.notes || ""} onChange={(e) => set({ notes: e.target.value || null })} /></Field>
       <label className="flex items-center gap-2 text-sm text-text">
         <input type="checkbox" checked={tenant.active} onChange={(e) => set({ active: e.target.checked })} />

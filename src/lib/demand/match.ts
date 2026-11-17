@@ -2,6 +2,7 @@ import type {
   Bucket,
   CategoryDefault,
   ClassifiedTenant,
+  DealFlags,
   DemandSpace,
   EffectiveRequirement,
   Format,
@@ -229,6 +230,80 @@ const POSSIBLE_FORMATS: Record<SpaceType, Format[]> = {
   inline: ["endcap"],
 };
 
+const DEAL_UNKNOWN = "deal type unknown";
+
+type FlagResult = { status: "ok" | "unknown" | "no"; reasons: string[] };
+
+function flagPart(flags: (boolean | null)[], falseReason: string): FlagResult {
+  if (flags.some((flag) => flag === true)) return { status: "ok", reasons: [] };
+  if (flags.every((flag) => flag === false)) return { status: "no", reasons: [falseReason] };
+  return { status: "unknown", reasons: [] };
+}
+
+function andParts(parts: FlagResult[]): FlagResult {
+  const blocked = parts.filter((part) => part.status === "no");
+  if (blocked.length) return { status: "no", reasons: blocked.flatMap((part) => part.reasons) };
+  if (parts.some((part) => part.status === "unknown")) return { status: "unknown", reasons: [] };
+  return { status: "ok", reasons: [] };
+}
+
+function orPaths(paths: FlagResult[]): FlagResult {
+  if (paths.some((path) => path.status === "ok")) return { status: "ok", reasons: [] };
+  if (paths.some((path) => path.status === "unknown")) return { status: "unknown", reasons: [] };
+  const reasons: string[] = [];
+  for (const path of paths) {
+    for (const reason of path.reasons) if (!reasons.includes(reason)) reasons.push(reason);
+  }
+  return { status: "no", reasons };
+}
+
+function buyPadsReason(flags: DealFlags): string {
+  if (flags.dealLease === true && flags.inline === true) return "Leases inline only; does not buy pads";
+  return "Does not buy pads";
+}
+
+function saleLandPath(flags: DealFlags): FlagResult {
+  return andParts([
+    flagPart([flags.freestanding], "Does not take freestanding sites"),
+    flagPart([flags.dealBuy, flags.dealGroundLease, flags.dealBts], buyPadsReason(flags)),
+  ]);
+}
+
+function groundLeasePath(flags: DealFlags): FlagResult {
+  return andParts([
+    flagPart([flags.freestanding], "Does not take freestanding sites"),
+    flagPart([flags.dealGroundLease, flags.dealBts], "Does not ground lease"),
+  ]);
+}
+
+function leaseShopPath(flags: DealFlags): FlagResult {
+  return andParts([
+    flagPart([flags.inline], "Does not take inline space"),
+    flagPart([flags.dealLease], "Does not lease shop space"),
+  ]);
+}
+
+/**
+ * Deal-type and freestanding/inline flags.
+ * A required flag that is null keeps the tenant Possible ("deal type unknown").
+ * An explicit false excludes them. A for-sale-or-lease space accepts either path.
+ */
+export function dealTypeFit(space: DemandSpace, flags: DealFlags): FlagResult {
+  const land = space.spaceType === "pad" || space.spaceType === "land parcel";
+  const shop = space.spaceType === "inline" || space.spaceType === "endcap";
+  if (land && space.deal === "sale") return saleLandPath(flags);
+  if (land && space.deal === "lease") return groundLeasePath(flags);
+  if (land) return orPaths([saleLandPath(flags), groundLeasePath(flags)]);
+  if (shop && space.deal === "sale") {
+    return andParts([
+      flagPart([flags.inline], "Does not take inline space"),
+      flagPart([flags.dealBuy], flags.dealLease === true ? "Leases only; this suite is for sale" : "Does not buy shop space"),
+    ]);
+  }
+  if (shop) return leaseShopPath(flags);
+  return { status: "ok", reasons: [] };
+}
+
 function spaceNoun(space: DemandSpace): string {
   if (space.spaceType === "pad") return "a pad";
   if (space.spaceType === "land parcel") return "land";
@@ -266,6 +341,10 @@ export function classifySpace(
   } else if (hitOptimal.length === 0) {
     soft.push(`Wants ${hitPossible.join(", ")}; listing reads as ${spaceNoun(space)}`);
   }
+
+  const dealFit = dealTypeFit(space, tenant);
+  if (dealFit.status === "no") hard.push(...dealFit.reasons);
+  else if (dealFit.status === "unknown") soft.push(DEAL_UNKNOWN);
 
   const kind = dimension(space);
   const value = kind === "acres" ? space.acres : space.sf;
