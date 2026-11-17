@@ -20,6 +20,7 @@ import type {
 import { LAND_FORMATS, SHOP_FORMATS } from "./types";
 import { taggedTierDistance, tierForValue, tiersOfKind } from "./tiers";
 import { formatAc, formatSf, groupTitle, isFormat, rangeText, requirementLabel, sharedTierName } from "./format";
+import { categoryKey, indexByCategory, isMedicalDental, sameCategory } from "./categories";
 import { formatMiles, haversineMiles, usableLocations } from "./geo";
 
 const FORMAT_ALIASES: Record<string, Format> = {
@@ -383,8 +384,8 @@ export function classifySpace(
   }
 
   if (formatOk && listing.propertyFamily === "industrial") soft.push("Property type is Industrial");
-  if (formatOk && listing.propertyFamily === "office" && tenant.category !== "medical/dental") soft.push("Property type is Office");
-  if (formatOk && listing.propertyFamily === "medical" && tenant.category !== "medical/dental") soft.push("Property type is Medical");
+  if (formatOk && listing.propertyFamily === "office" && !isMedicalDental(tenant.category)) soft.push("Property type is Office");
+  if (formatOk && listing.propertyFamily === "medical" && !isMedicalDental(tenant.category)) soft.push("Property type is Medical");
 
   let bucket: Bucket = hard.length ? "excluded" : soft.length ? "possible" : "optimal";
   if (override?.decision === "exclude") {
@@ -463,7 +464,7 @@ export function matchSpaces(args: {
   locations: TenantLocation[];
   overrides: SpaceOverride[];
 }): SpaceMatch[] {
-  const defaultsByCategory = new Map(args.defaults.map((d) => [d.category, d]));
+  const defaultsByCategory = indexByCategory(args.defaults);
   const active = args.tenants.filter((t) => t.active);
   const locationsByTenant = new Map<string, TenantLocation[]>();
   for (const location of args.locations) {
@@ -478,7 +479,7 @@ export function matchSpaces(args: {
           args.listing,
           space,
           tenant,
-          defaultsByCategory.get(tenant.category) ?? null,
+          defaultsByCategory.get(categoryKey(tenant.category)) ?? null,
           args.tiers,
           locationsByTenant.get(tenant.id) || [],
           args.overrides.find((o) => o.spaceId === space.id && o.tenantId === tenant.id) ?? null
@@ -563,7 +564,7 @@ export function suggestAlsoPitch(args: {
 }): PitchSuggestion[] {
   const self = args.tenants.find((t) => t.id === args.tenantId);
   if (!self) return [];
-  const defaults = new Map(args.defaults.map((d) => [d.category, d]));
+  const defaults = indexByCategory(args.defaults);
   const active = args.tenants.filter((t) => t.active && t.id !== self.id);
   const linked = new Map<string, string>();
   for (const rel of args.relationships) {
@@ -575,7 +576,7 @@ export function suggestAlsoPitch(args: {
   const rows = linked.size
     ? active.filter((t) => linked.has(t.id)).map((t) => ({ tenant: t, why: linked.get(t.id) as string }))
     : active
-        .filter((t) => t.category === self.category)
+        .filter((t) => sameCategory(t.category, self.category))
         .filter((t) => formatsOverlap(t, self, defaults, args.tiers, args.space))
         .map((t) => ({ tenant: t, why: "Same category, compatible format" }));
 
@@ -604,10 +605,10 @@ function formatsOverlap(
   tiers: SizeTier[],
   space: DemandSpace
 ): boolean {
-  const formats = effectiveRequirement(candidate, defaults.get(candidate.category) ?? null, tiers).formats;
+  const formats = effectiveRequirement(candidate, defaults.get(categoryKey(candidate.category)) ?? null, tiers).formats;
   const optimal = new Set(OPTIMAL_FORMATS[space.spaceType]);
   const possible = new Set(POSSIBLE_FORMATS[space.spaceType]);
-  const selfFormats = effectiveRequirement(self, defaults.get(self.category) ?? null, tiers).formats;
+  const selfFormats = effectiveRequirement(self, defaults.get(categoryKey(self.category)) ?? null, tiers).formats;
   return formats.some((f) => (optimal.has(f) || possible.has(f)) && selfFormats.includes(f));
 }
 

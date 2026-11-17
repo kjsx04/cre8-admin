@@ -92,7 +92,7 @@ function tenant(partial: Partial<TenantInput> & Pick<TenantInput, "id" | "brandN
 }
 
 const qsrDefault: CategoryDefault = {
-  category: "QSR w/ drive-thru",
+  category: "QSR",
   formats: ["pad", "ground lease", "BTS"],
   sfMin: 1800,
   sfMax: 3200,
@@ -103,7 +103,7 @@ const qsrDefault: CategoryDefault = {
   spacingMiles: 1,
 };
 
-const blank = tenant({ id: "blank", brandName: "Blank", category: "QSR w/ drive-thru" });
+const blank = tenant({ id: "blank", brandName: "Blank", category: "QSR" });
 const inherited = effectiveRequirement(blank, qsrDefault, tiers);
 assert(inherited.formats.includes("pad") && inherited.acresMin === 0.7, "null fields fall back to the category");
 assert(inherited.driveThruRequired === true, "drive-thru falls back to the category typical");
@@ -290,6 +290,13 @@ const shopTenant = tenant({
   dealBts: false,
 });
 assert(classifySpace({ ...listing, propertyFamily: "retail", propertyType: "Retail" }, shopLease, shopTenant, null, tiers, [], null).bucket === "optimal", "an inline lessee is optimal on a lease suite");
+const officeListing = { ...listing, propertyFamily: "office" as const, propertyType: "Office" };
+const dentalOnOffice = classifySpace(officeListing, shopLease, { ...shopTenant, category: "Medical/Dental" }, null, tiers, [], null);
+assert(!dentalOnOffice.reasons.includes("Property type is Office"), "Medical/Dental is not a mismatch on an office listing");
+const oldDentalOnOffice = classifySpace(officeListing, shopLease, { ...shopTenant, category: "medical/dental" }, null, tiers, [], null);
+assert(!oldDentalOnOffice.reasons.includes("Property type is Office"), "the old medical/dental label is still medical");
+const groceryOnOffice = classifySpace(officeListing, shopLease, { ...shopTenant, category: "Grocery" }, null, tiers, [], null);
+assert(groceryOnOffice.reasons.includes("Property type is Office"), "Grocery on an office listing is called out");
 const notInline = classifySpace(
   { ...listing, propertyFamily: "retail", propertyType: "Retail" },
   shopLease,
@@ -585,11 +592,11 @@ const cue = spacingCue(
 assert(cue.tone === "close", "the map cue flags a listing inside a ring");
 assert(spacingCue({ lat: 33.45, lng: -112 }, [{ brandName: "Burger", spacingMiles: 1, locations: [] }]).tone === "no-locations", "no stored locations is called out");
 
-const chicken = tenant({ id: "chicken", brandName: "Chicken", category: "QSR w/ drive-thru", formats: ["pad"], tierIds: [tier("0-1.5 ac").id] });
-const wash = tenant({ id: "wash", brandName: "Wash", category: "car wash", formats: ["pad"], tierIds: [tier("0-1.5 ac").id] });
+const chicken = tenant({ id: "chicken", brandName: "Chicken", category: "QSR", formats: ["pad"], tierIds: [tier("0-1.5 ac").id] });
+const wash = tenant({ id: "wash", brandName: "Wash", category: "Car Wash", formats: ["pad"], tierIds: [tier("0-1.5 ac").id] });
 const pitches = suggestAlsoPitch({
   tenantId: "tiered",
-  tenants: [{ ...tierTenant, category: "QSR w/ drive-thru" }, chicken, wash],
+  tenants: [{ ...tierTenant, category: "QSR" }, chicken, wash],
   defaults: [],
   tiers,
   relationships: [{ id: "r", tenantId: "tiered", relatedTenantId: "chicken", relation: "competitor" }],
@@ -610,10 +617,10 @@ const sameCategory = suggestAlsoPitch({
   space: pads[0],
   buckets: new Map([["chicken", "possible"]]),
 });
-assert(sameCategory[0]?.why === "Same category, compatible format", "with no relationships, pitch the same category");
+assert(sameCategory[0]?.why === "Same category, compatible format", "QSR and the old QSR label still pitch together");
 
 const tenantCsv = parseTenantCsv(
-  `${TENANT_CSV_HEADERS.join(",")}\nEXAMPLE — Bowl,fast casual,,inline|endcap,2000,4000,,,"1,500-3,000 SF|3,000-6,000 SF",,Mesa|Chandler,,Broker call,2026-01-15,"Quoted, keep",true\n`
+  `${TENANT_CSV_HEADERS.join(",")}\nEXAMPLE — Bowl,Fast Casual,,inline|endcap,2000,4000,,,"1,500-3,000 SF|3,000-6,000 SF",,Mesa|Chandler,,Broker call,2026-01-15,"Quoted, keep",true\n`
 );
 assert(tenantCsv.errors.length === 0 && tenantCsv.rows[0].formats[0] === "inline", "tenant CSV reads pipe-separated formats");
 assert(tenantCsv.rows[0].sizeTiers.length === 2 && tenantCsv.rows[0].azMarkets[1] === "Chandler", "tenant CSV reads tiers and markets");

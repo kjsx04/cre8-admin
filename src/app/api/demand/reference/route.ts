@@ -2,8 +2,34 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
 import { asBoolean, asNumber, asString, asStringList, DemandError } from "@/lib/demand/coerce";
 import { jsonError, readJson } from "@/lib/demand/http";
-import { saveCategories, saveTiers } from "@/lib/demand/service";
+import { listCategorySpacing, saveCategories, saveCategorySpacing, saveTiers } from "@/lib/demand/service";
 import type { CategoryAdminView, TierAdminView } from "@/lib/demand/view";
+
+export async function GET(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  try {
+    return NextResponse.json(await listCategorySpacing());
+  } catch (err) {
+    return jsonError(err);
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = requireUser(request);
+  if (auth.response) return auth.response;
+  try {
+    const body = await readJson(request);
+    const category = asString(body.category) || "";
+    if (!Object.prototype.hasOwnProperty.call(body, "spacingMiles")) {
+      throw new DemandError("spacingMiles is required.", 400);
+    }
+    await saveCategorySpacing(category, asNumber(body.spacingMiles));
+    return NextResponse.json({ ok: true });
+  } catch (err) {
+    return jsonError(err);
+  }
+}
 
 export async function PUT(request: NextRequest) {
   const auth = requireUser(request);

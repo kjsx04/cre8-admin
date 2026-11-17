@@ -52,9 +52,16 @@ function personContact(contacts: ContactView[], type: "in_house" | "broker"): Co
 
 const RANK: Record<Bucket, number> = { optimal: 0, possible: 1, excluded: 2 };
 
-export default function TenantTable({ query, listingId }: { query: string; listingId: string }) {
+export default function TenantTable({
+  query,
+  listingId,
+  match,
+}: {
+  query: string;
+  listingId: string;
+  match: MatchResponse | null;
+}) {
   const [catalog, setCatalog] = useState<DemandListTenant[] | null>(null);
-  const [match, setMatch] = useState<MatchResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -81,29 +88,6 @@ export default function TenantTable({ query, listingId }: { query: string; listi
       cancelled = true;
     };
   }, [refresh]);
-
-  useEffect(() => {
-    if (!listingId) {
-      setMatch(null);
-      return;
-    }
-    let cancelled = false;
-    const load = apiFetch(`/api/demand/match?listingId=${listingId}`).then(async (res) => {
-      const body = await res.json().catch(() => null);
-      if (!res.ok) throw new Error(body?.error || "Could not match tenants");
-      return body;
-    });
-    load
-      .then((body) => {
-        if (!cancelled) setMatch(body as MatchResponse);
-      })
-      .catch((err) => {
-        if (!cancelled) setError(err instanceof Error ? err.message : "Could not match tenants");
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [listingId]);
 
   const items = useMemo(() => buildItems(catalog || [], match, listingId, q, showAll), [catalog, match, listingId, q, showAll]);
   const editing = catalog?.find((tenant) => tenant.id === editingId) || null;

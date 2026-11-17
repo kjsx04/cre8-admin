@@ -63,7 +63,13 @@ by this repo automatically. `seed/demand_example.sql` is fictional local data
 (brands prefixed `EXAMPLE —`) and is not part of the migration.
 
 Matching runs in `src/lib/demand/match.ts`. A tenant's own numbers win; blank
-fields fall back to `category_defaults`. An SF range with no acreage and no pad /
+fields fall back to `category_defaults`. The map rings use the same rule:
+`tenants.spacing_miles` when it is set, otherwise `category_defaults.spacing_miles`.
+`migrations/2026-11-17_spacing_defaults.sql` fills categories that have no
+spacing yet and does not overwrite a number that is already stored, except the
+original 1-mile placeholders for `QSR w/ drive-thru` (now 1.5) and `c-store/fuel`
+(now 2) while those cells are still exactly 1. The full list is in that file.
+An SF range with no acreage and no pad /
 ground lease / BTS format is treated as inline shop. Each `listing_spaces` row is
 scored on its own. Spaces that produce the same Optimal / Possible / Excluded set
 are shown as one group. `size_tiers.max_value` is exclusive, so 1.5 ac is in

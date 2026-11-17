@@ -5,7 +5,8 @@ import { parseContactCsv, parseTenantCsv, toCsv } from "./csv";
 import { effectiveRequirement, groupSpaceMatches, matchSpaces, normalizeFormats, requirementText, suggestAlsoPitch } from "./match";
 import { parcelAtPoint } from "./parcels";
 import { locationStatus, type LocationStatus } from "./location-status";
-import { isCanonicalCategory } from "./categories";
+import { categoryKey, indexByCategory, isDemandCategory, lookupCategory } from "./categories";
+import { effectiveSpacing } from "./spacing";
 import { deriveSpaces, listingContext } from "./spaces";
 import type { ListingRow } from "./spaces";
 import type {
@@ -224,6 +225,9 @@ async function fetchAll(
 }
 
 let bundleCache: { at: number; value: Promise<Bundle> } | null = null;
+// Contact and location writes call invalidateBundle(). The list still updates
+// the saved row in memory, because a refetch inside this window can be stale
+// if a write forgot to invalidate.
 const BUNDLE_MS = 30_000;
 
 function invalidateBundle(): void {
@@ -562,7 +566,7 @@ export async function getReverse(tenantId: string): Promise<ReverseResponse> {
       id: tenant.id,
       brandName: tenant.brandName,
       category: tenant.category,
-      requirement: requirementText(effectiveRequirement(tenant, bundle.defaults.find((d) => d.category === tenant.category) ?? null, bundle.tiers), bundle.tiers),
+      requirement: requirementText(effectiveRequirement(tenant, lookupCategory(bundle.defaults, tenant.category), bundle.tiers), bundle.tiers),
     },
     optimal: [],
     possible: [],
@@ -618,7 +622,7 @@ export async function getMap(listingId: string): Promise<MapResponse> {
       seen.add(view.tenantId);
       const tenant = bundle.tenants.find((item) => item.id === view.tenantId);
       const requirement = tenant
-        ? effectiveRequirement(tenant, bundle.defaults.find((item) => item.category === tenant.category) ?? null, bundle.tiers)
+        ? effectiveRequirement(tenant, lookupCategory(bundle.defaults, tenant.category), bundle.tiers)
         : null;
       tenants.push({
         id: view.tenantId,
@@ -1362,11 +1366,13 @@ function embeddedCount(value: unknown): number {
 }
 
 export async function listBrands(): Promise<BrandRow[]> {
-  const [rows, categories] = await Promise.all([
+  const [rows, defaults] = await Promise.all([
     fetchAll("tenants", "id, brand_name, category, spacing_miles, active, tenant_locations(count)", ["brand_name", "id"]),
     fetchAll("category_defaults", "category, spacing_miles", ["category"]),
   ]);
-  const spacingByCategory = new Map(categories.map((row) => [String(row.category), asNumber(row.spacing_miles)]));
+  const byCategory = indexByCategory(
+    defaults.map((row) => ({ category: String(row.category), spacingMiles: asNumber(row.spacing_miles) }))
+  );
   return rows
     .filter((row) => row.active !== false)
     .map((row) => {
@@ -1375,10 +1381,48 @@ export async function listBrands(): Promise<BrandRow[]> {
         id: String(row.id),
         brandName: String(row.brand_name || "Tenant"),
         category,
-        spacingMiles: asNumber(row.spacing_miles) ?? spacingByCategory.get(category) ?? null,
+        spacingMiles: effectiveSpacing(asNumber(row.spacing_miles), byCategory.get(categoryKey(category))?.spacingMiles ?? null),
         locationCount: embeddedCount(row.tenant_locations),
       };
     });
+}
+
+export interface CategorySpacing {
+  category: string;
+  spacingMiles: number | null;
+}
+
+/** Every category on file, plus any tenant category that does not have a row yet. */
+export async function listCategorySpacing(): Promise<CategorySpacing[]> {
+  const [defaults, tenants] = await Promise.all([
+    fetchAll("category_defaults", "category, spacing_miles", ["category"]),
+    fetchAll("tenants", "category", ["category"]),
+  ]);
+  const map = new Map<string, number | null>();
+  for (const row of defaults) map.set(String(row.category), asNumber(row.spacing_miles));
+  for (const row of tenants) {
+    const category = String(row.category || "").trim();
+    if (category && !map.has(category)) map.set(category, null);
+  }
+  return Array.from(map.entries())
+    .map(([category, spacingMiles]) => ({ category, spacingMiles }))
+    .sort((a, b) => a.category.localeCompare(b.category));
+}
+
+/** Writes spacing only. Other category columns stay as they are. */
+export async function saveCategorySpacing(category: string, spacingMiles: number | null): Promise<void> {
+  const name = category.trim();
+  if (!name) throw new DemandError("Category is required.", 400);
+  if (spacingMiles != null && (!Number.isFinite(spacingMiles) || spacingMiles < 0)) {
+    throw new DemandError("Spacing must be zero or more.", 400);
+  }
+  const { data: existing, error: readError } = await supabase.from("category_defaults").select("category").eq("category", name).maybeSingle();
+  if (readError) throw fromSupabase(readError, "category");
+  const { error } = existing
+    ? await supabase.from("category_defaults").update({ spacing_miles: spacingMiles }).eq("category", name)
+    : await supabase.from("category_defaults").insert({ category: name, spacing_miles: spacingMiles });
+  if (error) throw fromSupabase(error, "category spacing");
+  invalidateBundle();
 }
 
 export interface StoreLocation {
@@ -1470,9 +1514,25 @@ export async function createLocation(input: {
 }
 
 export async function deleteLocation(id: string): Promise<void> {
-  const { error } = await supabase.from("tenant_locations").delete().eq("id", id);
+  const { data, error } = await supabase.from("tenant_locations").delete().eq("id", id).select("id");
   if (error) throw fromSupabase(error, "delete location");
+  if (!data?.length) throw new DemandError("Location not found.", 404);
   invalidateBundle();
+}
+
+export async function updateLocationStatus(id: string, status: LocationStatus): Promise<StoreLocation> {
+  const { data, error } = await supabase
+    .from("tenant_locations")
+    .update({ status })
+    .eq("id", id)
+    .select("id, tenant_id, name, address, lat, lng, status")
+    .maybeSingle();
+  if (error) throw fromSupabase(error, "update location");
+  if (!data) throw new DemandError("Location not found.", 404);
+  invalidateBundle();
+  const store = storeFrom(data as Row);
+  if (!store) throw new DemandError("Could not update the location.", 500);
+  return store;
 }
 
 export async function listingFocus(id: string): Promise<{
@@ -1735,7 +1795,7 @@ export async function saveDemandEdit(id: string, input: DemandEdit): Promise<voi
   if (error) throw fromSupabase(error, "tenant");
   if (!data) throw new DemandError("Tenant not found.", 404);
   const currentCategory = String((data as Row).category || "");
-  if (!isCanonicalCategory(category) && category !== currentCategory) throw new DemandError("Unknown category.", 400);
+  if (!isDemandCategory(category) && category !== currentCategory) throw new DemandError("Unknown category.", 400);
   const flags: DealFlags = {
     dealLease: input.dealLease,
     dealBuy: input.dealBuy,
