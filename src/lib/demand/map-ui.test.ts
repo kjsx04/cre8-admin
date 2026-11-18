@@ -54,15 +54,26 @@ assert(map.includes('"icon-opacity": 1'), "store pins are drawn at full opacity"
 assert(map.includes("None within 10 mi"), "a tenant with nothing nearby says so");
 assert(map.includes("No locations"), "a tenant with no stores says so");
 assert(map.includes("Location status"), "a new pin asks for its status on the map");
-assert(map.includes("partitionTenants"), "active tenants are split out of the search results");
-assert(map.includes('aria-label="Active tenants"'), "active tenants sit in their own section");
-assert(map.includes("Clear all"), "the active section can be cleared");
-assert(map.includes("stageRowFlip"), "a chosen tenant slides between the list and the active section");
-assert(map.includes("from the map"), "an active tenant can be removed from the map");
-const listingEffects = map.split("useEffect(").filter((block) => block.includes("}, [listingId]"));
+assert(map.includes("groupMapCategories"), "tenants are grouped by category");
+assert(map.includes("Expand"), "a category header expands");
+assert(map.includes("ring-black"), "a tenant on the map has a black outline");
+assert(map.includes("text-warning-fg"), "Top tenants keep the gold highlight");
+assert(!map.includes(">Showing<") && !map.includes(">Active<"), "there is no pinned Active or Showing section");
+assert(map.includes('aria-label="Clear map"'), "the map can be cleared");
+assert(map.includes(">Done<"), "add location switches to a Done button");
+assert(map.includes("stopAdding"), "Done and Esc leave add mode");
+assert(map.includes("fitOnFirstShow"), "only the first tenant on the map moves the camera");
+assert(map.includes('requestFit("tenant")'), "that first tenant is framed on its locations");
+assert(map.includes('requestFit("listing")'), "choosing a listing still fits the map");
+const deactivate = map.slice(map.indexOf("function deactivate"), map.indexOf("async function activate"));
+assert(deactivate.length > 0 && !deactivate.includes("requestFit") && !deactivate.includes("setFitRequest"), "removing a tenant does not move the camera");
+const clear = map.slice(map.indexOf("function clearMap"), map.indexOf("function armPlace"));
+assert(clear.length > 0 && !clear.includes("requestFit") && !clear.includes("setFitRequest"), "Clear map does not move the camera");
+assert(!map.includes("stageRowFlip"), "rows stay where they are");
+const listingEffects = map.split("useEffect(").filter((block) => block.includes("[listingId]"));
 assert(
   listingEffects.length > 0 && listingEffects.every((block) => !block.includes("setActive")),
-  "changing the listing keeps the active tenants"
+  "changing the listing keeps tenants on the map"
 );
 
 const sql = readFileSync("supabase/migrations/2026-11-17_spacing_defaults.sql", "utf8");

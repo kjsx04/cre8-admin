@@ -1,16 +1,14 @@
 "use client";
 
-import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Copy, Eye, EyeOff, Plus, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Copy, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
-import { BUCKET_LABEL } from "@/lib/demand/types";
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
-import { SHOW_ALL_TOOLTIP, showAllAllowed } from "@/lib/demand/board";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
-import { partitionTenants, tenantMatchesQuery } from "@/lib/demand/active-tenants";
+import { fitOnFirstShow, groupMapCategories, type MapFit } from "@/lib/demand/active-tenants";
 
 export type BaseMap = "light" | "dark" | "satellite";
 
@@ -50,149 +48,6 @@ interface LastPin {
 
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
-const FLIP_MS = 420;
-const FLIP_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
-const MAX_FLY = 12;
-
-type RowSnap = { rect: DOMRect; zone: string };
-
-function stageRowFlip(
-  nodes: Map<string, HTMLDivElement>,
-  prev: Map<string, RowSnap>,
-  activeScroller: HTMLElement | null,
-  clones: HTMLElement[]
-): { play: () => void; cancel: () => void } {
-  const noop = { play() {}, cancel() {} };
-  for (const clone of [...clones]) clone.remove();
-  clones.length = 0;
-  for (const el of Array.from(nodes.values())) {
-    if (!el.isConnected) continue;
-    el.style.transition = "none";
-    el.style.transform = "";
-    el.style.visibility = "";
-  }
-  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return noop;
-
-  for (const [id, el] of Array.from(nodes.entries())) {
-    if (!el.isConnected) nodes.delete(id);
-  }
-
-  const moves: { el: HTMLDivElement; before: RowSnap; zoneChanged: boolean }[] = [];
-  for (const [id, el] of Array.from(nodes.entries())) {
-    const before = prev.get(id);
-    if (!before) continue;
-    moves.push({ el, before, zoneChanged: before.zone !== (el.dataset.zone || "") });
-  }
-  const zoneChanges = moves.filter((move) => move.zoneChanged).length;
-  if (zoneChanges > MAX_FLY) return noop;
-
-  const firstActive = activeScroller?.querySelector("[data-zone='active']");
-  let pinToTop = false;
-  let revealed = false;
-  for (const move of moves) {
-    if (!move.zoneChanged) continue;
-    if (move.el.dataset.zone === "active" && move.el === firstActive) pinToTop = true;
-    if (!revealed && move.el.dataset.zone === "list" && move.before.zone === "active") {
-      revealRow(move.el);
-      revealed = true;
-    }
-  }
-  if (pinToTop && activeScroller) activeScroller.scrollTop = 0;
-
-  const plays: Array<() => void> = [];
-  const cancels: Array<() => void> = [];
-
-  for (const move of moves) {
-    const to = move.el.getBoundingClientRect();
-    const dx = move.before.rect.left - to.left;
-    const dy = move.before.rect.top - to.top;
-    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
-    if (move.zoneChanged) {
-      const clone = move.el.cloneNode(true) as HTMLDivElement;
-      clone.setAttribute("aria-hidden", "true");
-      clone.setAttribute("inert", "");
-      clone.style.position = "fixed";
-      clone.style.margin = "0";
-      clone.style.left = `${move.before.rect.left}px`;
-      clone.style.top = `${move.before.rect.top}px`;
-      clone.style.width = `${move.before.rect.width}px`;
-      clone.style.height = `${move.before.rect.height}px`;
-      clone.style.zIndex = "40";
-      clone.style.pointerEvents = "none";
-      clone.style.transition = "none";
-      clone.style.transform = "translate(0px, 0px)";
-      clone.style.boxSizing = "border-box";
-      const bg = getComputedStyle(move.el).backgroundColor;
-      clone.style.backgroundColor = bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)" ? bg : "#ffffff";
-      clone.classList.add("shadow-popover");
-      document.body.appendChild(clone);
-      clones.push(clone);
-      move.el.style.visibility = "hidden";
-      const el = move.el;
-      const targetX = to.left - move.before.rect.left;
-      const targetY = to.top - move.before.rect.top;
-      plays.push(() => {
-        clone.style.transition = `transform ${FLIP_MS}ms ${FLIP_EASE}, width ${FLIP_MS}ms ${FLIP_EASE}, height ${FLIP_MS}ms ${FLIP_EASE}`;
-        clone.style.transform = `translate(${targetX}px, ${targetY}px)`;
-        clone.style.width = `${to.width}px`;
-        clone.style.height = `${to.height}px`;
-        const timer = window.setTimeout(finish, FLIP_MS + 60);
-        function finish() {
-          window.clearTimeout(timer);
-          if (!clone.isConnected) return;
-          clone.remove();
-          const index = clones.indexOf(clone);
-          if (index >= 0) clones.splice(index, 1);
-          if (el.isConnected) el.style.visibility = "";
-        }
-      });
-      cancels.push(() => {
-        clone.remove();
-        const index = clones.indexOf(clone);
-        if (index >= 0) clones.splice(index, 1);
-        if (el.isConnected) el.style.visibility = "";
-      });
-    } else {
-      const el = move.el;
-      el.style.transition = "none";
-      el.style.transform = `translate(${dx}px, ${dy}px)`;
-      plays.push(() => {
-        el.style.transition = `transform ${FLIP_MS}ms ${FLIP_EASE}`;
-        el.style.transform = "";
-        el.addEventListener(
-          "transitionend",
-          () => {
-            el.style.transition = "";
-          },
-          { once: true }
-        );
-      });
-      cancels.push(() => {
-        el.style.transition = "";
-        el.style.transform = "";
-      });
-    }
-  }
-
-  return {
-    play() {
-      if (plays.length) document.body.getBoundingClientRect();
-      for (const run of plays) run();
-    },
-    cancel() {
-      for (const run of cancels) run();
-    },
-  };
-}
-
-function revealRow(el: HTMLElement) {
-  const scroller = el.closest("[data-brand-scroll]");
-  if (!(scroller instanceof HTMLElement)) return;
-  const row = el.getBoundingClientRect();
-  const box = scroller.getBoundingClientRect();
-  if (row.top < box.top) scroller.scrollTop -= box.top - row.top;
-  else if (row.bottom > box.bottom) scroller.scrollTop += row.bottom - box.bottom;
-}
 
 export default function BrandMap({
   listings,
@@ -220,20 +75,28 @@ export default function BrandMap({
   const [pending, setPending] = useState<{ lat: number; lng: number; x: number; y: number } | null>(null);
   const [stores, setStores] = useState<Record<string, Store[]>>({});
   const [lastPin, setLastPin] = useState<LastPin | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [focus, setFocus] = useState<Focus | null>(null);
   const [fitRequest, setFitRequest] = useState(0);
+  const [fitScope, setFitScope] = useState<"listing" | "tenant">("listing");
   const [selection, setSelection] = useState<{ id: string; x: number; y: number } | null>(null);
   const storesRef = useRef(stores);
   const addingRef = useRef(addingId);
   const pendingRef = useRef(pending);
-  const rowNodes = useRef(new Map<string, HTMLDivElement>());
-  const flipPrev = useRef<Map<string, RowSnap> | null>(null);
-  const flipClones = useRef<HTMLElement[]>([]);
-  const activeScroll = useRef<HTMLDivElement>(null);
   storesRef.current = stores;
   addingRef.current = addingId;
   pendingRef.current = pending;
+
+  const requestFit = useCallback((scope: "listing" | "tenant") => {
+    setFitScope(scope);
+    setFitRequest((value) => value + 1);
+  }, []);
+
+  const stopAdding = useCallback(() => {
+    addingRef.current = null;
+    setAddingId(null);
+    setPending(null);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -268,7 +131,7 @@ export default function BrandMap({
       .then((body) => {
         if (cancelled) return;
         setFocus(body as Focus);
-        if (!addingRef.current) setFitRequest((value) => value + 1);
+        if (!addingRef.current) requestFit("listing");
       })
       .catch(() => {
         if (!cancelled) setFocus(null);
@@ -276,15 +139,15 @@ export default function BrandMap({
     return () => {
       cancelled = true;
     };
-  }, [listingId]);
+  }, [listingId, requestFit]);
 
-  // Pin placement is tied to the current map click. The active set stays,
-  // so switching listings does not take tenants off the map.
+  // Pin placement is tied to the current map click. Tenants stay on the map
+  // when the listing changes. Category disclosure starts over.
   useEffect(() => {
     addingRef.current = null;
     setAddingId(null);
     setPending(null);
-    setShowAll(false);
+    setOpened({});
     setSelection(null);
     setLastPin(null);
   }, [listingId]);
@@ -292,69 +155,25 @@ export default function BrandMap({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      if (pendingRef.current) {
-        setPending(null);
-        return;
-      }
-      if (addingRef.current) {
-        addingRef.current = null;
-        setAddingId(null);
+      if (addingRef.current || pendingRef.current) {
+        stopAdding();
         return;
       }
       setSelection(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [stopAdding]);
 
-  useLayoutEffect(() => {
-    const prev = flipPrev.current;
-    if (!prev) return;
-    const staged = stageRowFlip(rowNodes.current, prev, activeScroll.current, flipClones.current);
-    let played = false;
-    let raf1 = 0;
-    let raf2 = 0;
-    raf1 = requestAnimationFrame(() => {
-      raf2 = requestAnimationFrame(() => {
-        played = true;
-        flipPrev.current = null;
-        staged.play();
-      });
-    });
-    return () => {
-      cancelAnimationFrame(raf1);
-      cancelAnimationFrame(raf2);
-      if (!played) staged.cancel();
-    };
-  });
-
-  useEffect(() => {
-    const clones = flipClones.current;
-    return () => {
-      for (const clone of clones) clone.remove();
-      clones.length = 0;
-    };
-  }, []);
-
-  const { active: activeBrands, list: filtered } = partitionTenants(brands, active, query);
-  const fitById = new Map(fits.map((fit) => [fit.id, fit]));
-  const fitting = listingId
-    ? filtered
-        .filter((brand) => fitById.has(brand.id))
-        .sort((a, b) => (fitById.get(a.id)!.bucket === fitById.get(b.id)!.bucket
-          ? fitById.get(b.id)!.score - fitById.get(a.id)!.score
-          : fitById.get(a.id)!.bucket === "optimal" ? -1 : 1) || a.brandName.localeCompare(b.brandName))
-    : [];
-  const rest = listingId ? filtered.filter((brand) => !fitById.has(brand.id)) : [];
-  const categories = (() => {
-    const map = new Map<string, Brand[]>();
-    for (const brand of filtered.slice().sort((a, b) => a.brandName.localeCompare(b.brandName))) {
-      const list = map.get(brand.category) || [];
-      list.push(brand);
-      map.set(brand.category, list);
-    }
-    return Array.from(map.entries());
-  })();
+  const fitById = useMemo(() => {
+    const map = new Map<string, MapFit>();
+    for (const fit of fits) map.set(fit.id, { bucket: fit.bucket, score: fit.score });
+    return map;
+  }, [fits]);
+  const groups = useMemo(
+    () => groupMapCategories(brands, query, listingId ? fitById : null),
+    [brands, query, listingId, fitById]
+  );
 
   const origin = focus?.lat != null && focus.lng != null ? { lat: focus.lat, lng: focus.lng } : null;
   const shown = active
@@ -362,12 +181,8 @@ export default function BrandMap({
     .filter((store) => withinListingRadius(origin, store.lat, store.lng));
   const spacing = new Map(brands.map((brand) => [brand.id, brand.spacingMiles]));
   const colors = new Map(brands.map((brand) => [brand.id, brandColor(brand.brandName)]));
-  const boardIds = listingId
-    ? fits.map((fit) => fit.id)
-    : brands.filter((brand) => tenantMatchesQuery(brand, query)).map((brand) => brand.id);
-  const showing = active.length > 0;
-  const showBlocked = !showing && !showAllAllowed(boardIds.length);
   const selected = selection ? shown.find((store) => store.id === selection.id) || null : null;
+  const searching = query.trim().length > 0;
 
   function locationHint(brand: Brand): string | null {
     const loaded = stores[brand.id];
@@ -378,30 +193,23 @@ export default function BrandMap({
     return near.length === 0 ? "None within 10 mi" : null;
   }
 
-  function bindRow(id: string, node: HTMLDivElement | null) {
-    if (node) {
-      rowNodes.current.set(id, node);
-      return;
-    }
-    const current = rowNodes.current.get(id);
-    if (current && !current.isConnected) rowNodes.current.delete(id);
+  function categoryOpen(category: string): boolean {
+    if (searching) return true;
+    if (category in opened) return opened[category];
+    return !listingId;
   }
 
-  function armFlip() {
-    const snap = new Map<string, RowSnap>();
-    for (const [id, el] of Array.from(rowNodes.current.entries())) {
-      if (!el.isConnected) continue;
-      snap.set(id, { rect: el.getBoundingClientRect(), zone: el.dataset.zone || "" });
-    }
-    flipPrev.current = snap;
+  function toggleCategory(category: string) {
+    if (searching) return;
+    const open = categoryOpen(category);
+    setOpened((current) => ({ ...current, [category]: !open }));
   }
 
-  function addActive(ids: string[], place: "start" | "end"): boolean {
+  function addToMap(ids: string[]): boolean {
     const have = new Set(active);
     const fresh = ids.filter((id) => !have.has(id));
     if (!fresh.length) return false;
-    armFlip();
-    setActive(place === "start" ? [...fresh, ...active] : [...active, ...fresh]);
+    setActive((current) => [...current, ...fresh]);
     return true;
   }
 
@@ -423,33 +231,22 @@ export default function BrandMap({
     setStores((current) => ({ ...current, ...grouped }));
   }
 
-  async function reveal(ids: string[], fit: boolean) {
-    addActive(ids, "end");
-    await loadStores(ids);
-    if (fit && !addingRef.current) setFitRequest((value) => value + 1);
-  }
-
   function deactivate(id: string) {
     if (!active.includes(id)) return;
-    if (addingRef.current === id) {
-      addingRef.current = null;
-      setAddingId(null);
-      setPending(null);
-    }
-    armFlip();
+    if (addingRef.current === id) stopAdding();
     setActive(active.filter((item) => item !== id));
     setSelection((current) => {
       if (!current) return null;
       const owns = (storesRef.current[id] || []).some((store) => store.id === current.id);
       return owns ? null : current;
     });
-    if (!addingRef.current) setFitRequest((value) => value + 1);
   }
 
   async function activate(id: string) {
-    if (!addActive([id], "start")) return;
+    const shownBefore = active.length;
+    if (!addToMap([id])) return;
     await loadStores([id]);
-    if (!addingRef.current) setFitRequest((value) => value + 1);
+    if (fitOnFirstShow(shownBefore) && !addingRef.current) requestFit("tenant");
   }
 
   function selectForAdd(id: string) {
@@ -458,19 +255,15 @@ export default function BrandMap({
     setPending(null);
     setSelection(null);
     if (!active.includes(id)) {
-      addActive([id], "start");
+      addToMap([id]);
       void loadStores([id]);
     }
   }
 
-  function clearBoard() {
-    if (active.length) armFlip();
-    addingRef.current = null;
-    setAddingId(null);
-    setPending(null);
+  function clearMap() {
+    stopAdding();
     setActive([]);
     setSelection(null);
-    setFitRequest((value) => value + 1);
   }
 
   function armPlace(lat: number, lng: number, x: number, y: number) {
@@ -555,30 +348,25 @@ export default function BrandMap({
     }
   }
 
-  function renderBrand(brand: Brand, zone: "active" | "list", rank?: number) {
-    const pinned = zone === "active";
+  function renderBrand(brand: Brand) {
+    const onMap = active.includes(brand.id);
+    const top = Boolean(listingId && fitById.get(brand.id)?.bucket === "optimal");
     return (
       <BrandRow
         key={brand.id}
-        ref={(node) => bindRow(brand.id, node)}
-        zone={zone}
         brand={brand}
-        rank={pinned ? undefined : rank}
-        color={pinned ? colors.get(brand.id) || brandColor(brand.brandName) : undefined}
-        on={pinned}
+        color={onMap ? colors.get(brand.id) || brandColor(brand.brandName) : undefined}
+        on={onMap}
+        top={top}
         adding={addingId === brand.id}
         dim={addingId != null && addingId !== brand.id}
         hint={locationHint(brand)}
         onToggle={() => {
-          if (pinned) {
-            deactivate(brand.id);
-            return;
-          }
-          if (addingId) selectForAdd(brand.id);
+          if (onMap) deactivate(brand.id);
           else void activate(brand.id);
         }}
         onAdd={() => selectForAdd(brand.id)}
-        onRemove={pinned ? () => deactivate(brand.id) : undefined}
+        onDone={stopAdding}
       />
     );
   }
@@ -593,6 +381,7 @@ export default function BrandMap({
         focus={focus}
         adding={!!addingId}
         fitRequest={fitRequest}
+        fitScope={fitScope}
         onPlace={armPlace}
         onSelect={(store, x, y) => setSelection(store ? { id: store.id, x, y } : null)}
       />
@@ -617,36 +406,6 @@ export default function BrandMap({
       )}
       <aside className="absolute top-[5px] left-[5px] bottom-[5px] w-1/4 min-w-[220px] bg-surface border border-border rounded-card shadow-popover flex flex-col min-h-0 z-10">
         <div className="p-2 space-y-2 border-b border-border">
-          <div className="flex justify-end">
-            <div className="relative group">
-              <button
-                type="button"
-                aria-label={showing ? "Hide" : "Show all"}
-                aria-disabled={showBlocked}
-                title={showBlocked ? SHOW_ALL_TOOLTIP : undefined}
-                onClick={() => {
-                  if (showing) clearBoard();
-                  else if (!showBlocked) void reveal(boardIds, true);
-                }}
-                className={cn(
-                  "relative w-7 h-7 inline-flex items-center justify-center",
-                  showBlocked ? "text-text-3 cursor-not-allowed" : "text-text-2 hover:text-text",
-                  FOCUS_RING
-                )}
-              >
-                <Eye size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", showing ? "opacity-100" : "opacity-0")} />
-                <EyeOff size={16} strokeWidth={1.75} className={cn("absolute transition-opacity duration-200 ease-in-out", showing ? "opacity-0" : "opacity-100")} />
-              </button>
-              {showBlocked && (
-                <span
-                  role="tooltip"
-                  className="pointer-events-none absolute right-0 top-full z-20 mt-1 whitespace-nowrap rounded-control bg-ink px-2 py-1 text-xs text-white opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100"
-                >
-                  {SHOW_ALL_TOOLTIP}
-                </span>
-              )}
-            </div>
-          </div>
           <Select small aria-label="Listing" value={listingId} onChange={(e) => onListingId(e.target.value)}>
             <option value="">All listings</option>
             {listings.map((listing) => (
@@ -654,6 +413,13 @@ export default function BrandMap({
             ))}
           </Select>
           <Input small aria-label="Search" placeholder="Search" value={query} onChange={(e) => onQuery(e.target.value)} />
+          {active.length > 0 && (
+            <div className="flex justify-end">
+              <button type="button" aria-label="Clear map" onClick={clearMap} className={cn("text-xs text-text-2 hover:text-text", FOCUS_RING)}>
+                Clear map
+              </button>
+            </div>
+          )}
           {addingId && (
             <div className="flex items-center gap-2 px-1">
               <p className="min-w-0 flex-1 text-xs text-text truncate">{brands.find((brand) => brand.id === addingId)?.brandName}</p>
@@ -663,112 +429,61 @@ export default function BrandMap({
             </div>
           )}
         </div>
-        {activeBrands.length > 0 && (
-          <section
-            aria-label="Active tenants"
-            ref={activeScroll}
-            className="shrink-0 max-h-48 overflow-y-auto overscroll-contain border-b border-border bg-surface"
-          >
-            <div className="sticky top-0 z-10 flex items-center gap-2 bg-surface px-3 py-1">
-              <span className="text-xs text-text-3">Active</span>
-              <span className="text-xs tabular-nums text-text-3">{activeBrands.length}</span>
-              <span className="flex-1 border-t border-border" />
-              <button
-                type="button"
-                onClick={clearBoard}
-                className={cn("shrink-0 text-xs text-text-2 hover:text-text", FOCUS_RING)}
-              >
-                Clear all
-              </button>
-            </div>
-            <div role="list" className="pb-1">
-              {activeBrands.map((brand) => renderBrand(brand, "active"))}
-            </div>
-          </section>
-        )}
-        <div data-brand-scroll="" className="min-h-0 flex-1 overflow-y-auto py-2">
-          {listingId ? (
-            <>
-              {(["optimal", "possible"] as const).map((bucket) => {
-                const list = fitting.filter((brand) => fitById.get(brand.id)?.bucket === bucket);
-                if (!list.length) return null;
-                return (
-                  <div key={bucket} className="mb-2">
-                    <div className="flex items-center gap-2 px-3 py-1">
-                      <span className="text-xs text-text-3">{BUCKET_LABEL[bucket]}</span>
-                      <span className="flex-1 border-t border-border" />
-                    </div>
-                    <div role="list">
-                      {list.map((brand, index) => renderBrand(brand, "list", index + 1))}
-                    </div>
-                  </div>
-                );
-              })}
-              <div className="px-3 py-2">
-                <button type="button" className="text-sm text-text-2 hover:text-text" onClick={() => setShowAll((value) => !value)}>
-                  {showAll ? "Hide" : "Show all"}
+        <div className="min-h-0 flex-1 overflow-y-auto py-2">
+          {groups.map((group) => {
+            const open = categoryOpen(group.category);
+            const rows = open ? group.all : listingId ? group.shown : [];
+            return (
+              <section key={group.category} className="mb-2" aria-label={group.category}>
+                <button
+                  type="button"
+                  aria-expanded={open}
+                  aria-label={`${open ? "Collapse" : "Expand"} ${group.category}, ${group.count}`}
+                  onClick={() => toggleCategory(group.category)}
+                  className={cn("flex w-full items-center gap-1 px-2 py-1 text-left", FOCUS_RING)}
+                >
+                  {open ? <ChevronDown size={14} className="shrink-0 text-text-3" /> : <ChevronRight size={14} className="shrink-0 text-text-3" />}
+                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">{group.category}</span>
+                  <span className="text-xs tabular-nums text-text-3">{group.count}</span>
                 </button>
-              </div>
-              <div className={cn("grid transition-[grid-template-rows,opacity] duration-300 ease-in-out", showAll ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
-                <Collapsed inert={!showAll}>
-                  <div role="list">
-                    {rest.map((brand) => renderBrand(brand, "list"))}
-                  </div>
-                </Collapsed>
-              </div>
-            </>
-          ) : (
-            categories.map(([category, list]) => (
-              <div key={category} className="px-2 mb-2">
-                <p className="px-2 py-1 text-xs text-text-3">{category}</p>
-                <div role="list">
-                  {list.map((brand) => renderBrand(brand, "list"))}
-                </div>
-              </div>
-            ))
-          )}
+                {rows.length > 0 && <div role="list">{rows.map((brand) => renderBrand(brand))}</div>}
+              </section>
+            );
+          })}
         </div>
       </aside>
     </div>
   );
 }
 
-function Collapsed({ inert, children }: { inert: boolean; children: ReactNode }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const node = ref.current;
-    if (!node) return;
-    if (inert) node.setAttribute("inert", "");
-    else node.removeAttribute("inert");
-  }, [inert]);
-  return (
-    <div ref={ref} className={cn("overflow-hidden", inert && "pointer-events-none")}>
-      {children}
-    </div>
-  );
-}
-
-const BrandRow = forwardRef<HTMLDivElement, {
+function BrandRow({
+  brand,
+  color,
+  on,
+  top,
+  adding,
+  dim,
+  hint,
+  onToggle,
+  onAdd,
+  onDone,
+}: {
   brand: Brand;
-  zone: "active" | "list";
-  rank?: number;
   color?: string;
   on: boolean;
+  top: boolean;
   adding: boolean;
   dim: boolean;
   hint: string | null;
   onToggle: () => void;
   onAdd: () => void;
-  onRemove?: () => void;
-}>(function BrandRow({ brand, zone, rank, color, on, adding, dim, hint, onToggle, onAdd, onRemove }, ref) {
+  onDone: () => void;
+}) {
   return (
     <div
-      ref={ref}
-      data-zone={zone}
       role="listitem"
-      className={cn("flex items-center rounded-control mx-1", (on || adding) && !dim && "bg-surface-2")}
+      className={cn("mx-1 flex items-center rounded-control", on && "ring-2 ring-inset ring-black", adding && !dim && !on && "bg-surface-2")}
     >
-      {rank != null && <span className="w-5 text-right text-xs text-text-3 tabular-nums">{rank}</span>}
       {color && (
         <span className="flex w-5 shrink-0 justify-center" aria-hidden>
           <span
@@ -781,33 +496,30 @@ const BrandRow = forwardRef<HTMLDivElement, {
         type="button"
         aria-pressed={on}
         onClick={onToggle}
-        className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
+        className={cn(
+          "flex-1 min-w-0 text-left px-2 py-1.5 text-sm",
+          dim ? "text-text-3" : top ? "font-medium text-warning-fg" : "text-text",
+          FOCUS_RING
+        )}
       >
         <span className="block truncate">{brand.brandName}</span>
-        {hint && <span className="block text-xs text-text-3 font-normal">{hint}</span>}
+        {hint && <span className="block text-xs font-normal text-text-3">{hint}</span>}
       </button>
-      <button
-        type="button"
-        aria-label={`Add a location for ${brand.brandName}`}
-        aria-pressed={adding}
-        onClick={onAdd}
-        className={cn("shrink-0 px-2 py-1 text-text-2 hover:text-text", dim && "text-text-3", FOCUS_RING)}
-      >
-        <Plus size={16} strokeWidth={1.75} />
-      </button>
-      {onRemove && (
+      {adding ? (
+        <button type="button" onClick={onDone} className={cn("shrink-0 px-2 py-1 text-sm text-text", FOCUS_RING)}>Done</button>
+      ) : (
         <button
           type="button"
-          aria-label={`Remove ${brand.brandName} from the map`}
-          onClick={onRemove}
-          className={cn("shrink-0 px-1.5 py-1 text-text-3 hover:text-text", FOCUS_RING)}
+          aria-label={`Add a location for ${brand.brandName}`}
+          onClick={onAdd}
+          className={cn("shrink-0 px-2 py-1 text-text-2 hover:text-text", dim && "text-text-3", FOCUS_RING)}
         >
-          <X size={14} strokeWidth={1.75} />
+          <Plus size={16} strokeWidth={1.75} />
         </button>
       )}
     </div>
   );
-});
+}
 
 function StatusPopover({
   x,
@@ -943,6 +655,7 @@ export function MapCanvas({
   focus,
   adding,
   fitRequest,
+  fitScope,
   onPlace,
   onSelect,
   view,
@@ -954,9 +667,11 @@ export function MapCanvas({
   focus: Focus | null;
   adding: boolean;
   fitRequest: number;
+  /** "listing" keeps the listing fit. "tenant" frames only the locations just shown. */
+  fitScope: "listing" | "tenant";
   onPlace: (lat: number, lng: number, x: number, y: number) => void;
   onSelect: (store: Store | null, x: number, y: number) => void;
-  /** Optional camera. The demand page leaves this unset and fits when tenants toggle. */
+  /** Optional camera. The demand page leaves this unset. */
   view?: { lng: number; lat: number; zoom: number };
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -965,10 +680,10 @@ export function MapCanvas({
   const ready = useRef(false);
   const appliedBase = useRef<BaseMap | null>(null);
   const wantedBase = useRef(base);
-  const snap = useRef({ stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view });
+  const snap = useRef({ stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, fitScope, view });
   const lastFit = useRef(0);
   wantedBase.current = base;
-  snap.current = { stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, view };
+  snap.current = { stores, spacing, colors, focus, onPlace, onSelect, adding, fitRequest, fitScope, view };
 
   const dataSig = [
     stores.map((store) => `${store.id}:${store.status}:${store.lat}:${store.lng}:${store.tenantId}`).join(","),
@@ -1122,17 +837,21 @@ export function MapCanvas({
       bounds.extend([store.lng, store.lat]);
       count += 1;
     }
-    const currentFocus = snap.current.focus;
-    if (currentFocus?.lat != null && currentFocus.lng != null) {
-      for (const pair of circlePolygon(currentFocus.lng, currentFocus.lat, DEMAND_LISTING_RADIUS_MILES, 16)) {
-        bounds.extend(pair as [number, number]);
-        count += 1;
-      }
-    } else if (currentFocus?.parcel) {
-      for (const pair of flatten(currentFocus.parcel.coordinates)) {
-        if (pair.length >= 2) {
-          bounds.extend([pair[0], pair[1]]);
+    // The first tenant on an empty map is framed on its locations.
+    // Listing selection still includes the listing, as before.
+    if (snap.current.fitScope !== "tenant") {
+      const currentFocus = snap.current.focus;
+      if (currentFocus?.lat != null && currentFocus.lng != null) {
+        for (const pair of circlePolygon(currentFocus.lng, currentFocus.lat, DEMAND_LISTING_RADIUS_MILES, 16)) {
+          bounds.extend(pair as [number, number]);
           count += 1;
+        }
+      } else if (currentFocus?.parcel) {
+        for (const pair of flatten(currentFocus.parcel.coordinates)) {
+          if (pair.length >= 2) {
+            bounds.extend([pair[0], pair[1]]);
+            count += 1;
+          }
         }
       }
     }

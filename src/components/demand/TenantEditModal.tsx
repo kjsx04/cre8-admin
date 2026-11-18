@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { Button, Field, Input, Modal, Select, useToast } from "@/components/ui";
-import DealMarks from "@/components/demand/DealMarks";
 import { CANONICAL_CATEGORIES, isCanonicalCategory } from "@/lib/demand/categories";
+import { DEAL_TYPE_FIELDS, FORMAT_FLAG_FIELDS, type DealFlagKey } from "@/lib/demand/deals";
 import type { DealFlags } from "@/lib/demand/types";
 import type { ContactType } from "@/lib/demand/types";
 import type { ContactView, DemandListTenant } from "@/lib/demand/view";
@@ -36,6 +36,31 @@ function draftFrom(contact: ContactView): ContactDraft {
     email: contact.email || "",
     phone: contact.phone || "",
   };
+}
+
+function FlagChecks({
+  fields,
+  value,
+  onChange,
+}: {
+  fields: { key: DealFlagKey; label: string }[];
+  value: DealFlags;
+  onChange: (next: DealFlags) => void;
+}) {
+  return (
+    <div className="grid grid-cols-2 gap-1">
+      {fields.map((field) => (
+        <label key={field.key} className="flex items-center gap-2 text-sm text-text">
+          <input
+            type="checkbox"
+            checked={value[field.key] === true}
+            onChange={(event) => onChange({ ...value, [field.key]: event.target.checked })}
+          />
+          {field.label}
+        </label>
+      ))}
+    </div>
+  );
 }
 
 function flagsOf(tenant: DemandListTenant): DealFlags {
@@ -164,7 +189,10 @@ export default function TenantEditModal({
             </div>
           </Field>
           <Field label="Deal types">
-            <DealMarks compact value={flags} onChange={setFlags} />
+            <FlagChecks fields={DEAL_TYPE_FIELDS} value={flags} onChange={setFlags} />
+          </Field>
+          <Field label="Formats">
+            <FlagChecks fields={FORMAT_FLAG_FIELDS} value={flags} onChange={setFlags} />
           </Field>
           <Field label="Site spacing" hint="Miles between stores.">
             <Input aria-label="Site spacing" placeholder="Miles" value={spacing} onChange={(event) => setSpacing(event.target.value)} />

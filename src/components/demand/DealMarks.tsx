@@ -96,8 +96,8 @@ export function shortDate(iso: string): string {
 
 const FIELD_LABEL: Record<string, string> = {
   deal_lease: "Rent",
-  deal_buy: "Buy",
-  deal_ground_lease: "Ground lease",
+  deal_buy: "Purchase",
+  deal_ground_lease: "Ground Lease",
   deal_bts: "BTS",
   freestanding: "Freestanding",
   inline: "Inline",

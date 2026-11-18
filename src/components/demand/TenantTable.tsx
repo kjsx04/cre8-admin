@@ -192,7 +192,7 @@ function TierLine({ label }: { label: string }) {
 
 const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { kind: "row" }>; onEdit: (id: string) => void }) {
   const { row, rank } = item;
-  const labels = yesDealLabels(flagsOf(row.tenant));
+  const deals = yesDealLabels(flagsOf(row.tenant)).join(", ");
   return (
     <div className={`grid ${COLS} items-center border-b border-border min-h-11`}>
       <div className="px-3 text-xs text-text-3 tabular-nums">{rank ?? ""}</div>
@@ -203,14 +203,8 @@ const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { 
       </div>
       <div className="px-3 text-sm text-text">{row.tenant.category}</div>
       <div className="px-3 text-sm text-text whitespace-nowrap">{sizeOf(row.tenant)}</div>
-      <div className="px-3 py-1.5">
-        <div className="flex flex-wrap items-center gap-1.5">
-          {labels.map((label) => (
-            <span key={label} className="h-7 px-2 inline-flex items-center rounded-control text-xs border border-border bg-surface-2 text-text">
-              {label}
-            </span>
-          ))}
-        </div>
+      <div className="px-3 min-w-0 text-sm text-text truncate" title={deals || undefined}>
+        {deals}
       </div>
       <div className="px-3 min-w-0">
         <PersonHover contact={personContact(row.tenant.contacts, "in_house")} />
