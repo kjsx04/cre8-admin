@@ -19,6 +19,12 @@ assert(categoryKey("coffee drive-thru") === categoryKey("Coffee"), "coffee drive
 assert(categoryKey("bank") === categoryKey("Bank/Credit Union"), "bank is Bank/Credit Union");
 assert(categoryKey("daycare") === categoryKey("Childcare"), "daycare is Childcare");
 assert(categoryKey("Fuel/C-store jobber") === categoryKey("C-Store/Fuel"), "the jobber label is C-Store/Fuel");
+assert(categoryLabel("medical/dental") === "Medical/Dental", "a lowercase category displays in title case");
+assert(categoryLabel("Medical/Dental") === "Medical/Dental", "the canonical name stays as written");
+assert(categoryLabel("c-store/fuel") === "C-Store/Fuel", "c-store fuel displays as the canonical name");
+assert(categoryLabel("QSR") === "QSR", "an acronym is not recased");
+assert(categoryLabel("  ") === "Other", "a blank category is Other");
+assert(categoryLabel("dessert shop") === "Dessert Shop", "an unknown category is title case");
 assert(sameCategory(" Auto Service ", "auto service"), "spacing and case still match");
 assert(isMedicalDental("Medical/Dental") && isMedicalDental("medical/dental") && isMedicalDental("medical"), "medical labels count as dental");
 assert(!isMedicalDental("Grocery"), "grocery is not medical");

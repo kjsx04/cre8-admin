@@ -1497,6 +1497,7 @@ export async function createLocation(input: {
       lng: input.lng,
       status: input.status,
       address,
+      // Check constraint allows only osm, google, confirmed, and manual.
       source: "manual",
     })
     .select("id, tenant_id, name, address, lat, lng, status")

@@ -1,7 +1,7 @@
 /**
  * Run: npx tsx src/lib/demand/active-tenants.test.ts
  */
-import { fitOnFirstShow, groupMapCategories, tenantMatchesQuery, withMapLocations } from "./active-tenants";
+import { categoryIsOpen, categoryRows, fitOnFirstShow, groupMapCategories, tenantMatchesQuery, withMapLocations } from "./active-tenants";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -71,6 +71,19 @@ assert(onMap.map((brand) => brand.id).join() === "has", "a tenant with no locati
 const mapGroups = groupMapCategories(onMap, "", null);
 assert(mapGroups.length === 1 && mapGroups[0].category === "C-Store/Fuel", "a category with only empty tenants disappears");
 assert(mapGroups[0].shown.length === 1 && mapGroups[0].count === 1, "the default list and the count skip tenants with no locations");
+
+const openAll = categoryIsOpen("QSR", {}, false, false);
+const closedListing = categoryIsOpen("QSR", {}, false, true);
+const remembered = categoryIsOpen("QSR", { QSR: true }, false, true);
+const searching = categoryIsOpen("QSR", { QSR: false }, true, true);
+assert(openAll === true, "with no listing a category starts open");
+assert(closedListing === false, "with a listing a category starts collapsed");
+assert(remembered === true, "a click is remembered");
+assert(searching === true, "search opens a category even after it was collapsed");
+const sample = groupMapCategories(brands, "", fits).find((group) => group.category === "QSR");
+assert(sample != null && categoryRows(sample, false, true).map((brand) => brand.id).join() === "e,c", "a collapsed listing category still shows Top");
+assert(sample != null && categoryRows(sample, true, true).map((brand) => brand.id).join() === "e,c,d", "an expanded category shows Top first, then the rest");
+assert(sample != null && categoryRows(sample, false, false).length === 0, "a collapsed category with no listing shows no rows");
 
 assert(fitOnFirstShow(0) === true, "the first tenant on the map fits to its locations");
 assert(fitOnFirstShow(1) === false, "a tenant added while another is on the map does not move the camera");

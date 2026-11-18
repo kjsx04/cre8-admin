@@ -9,6 +9,7 @@ import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from 
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
 import { fitOnFirstShow, groupMapCategories, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
+import { applyStoreEdits, type StoreEdit } from "@/lib/demand/store-edits";
 
 export type BaseMap = "light" | "dark" | "satellite";
 
@@ -84,6 +85,8 @@ export default function BrandMap({
   const [fitScope, setFitScope] = useState<"listing" | "tenant">("listing");
   const [selection, setSelection] = useState<{ id: string; x: number; y: number } | null>(null);
   const storesRef = useRef(stores);
+  const edits = useRef<Record<string, StoreEdit<Store>[]>>({});
+  const editN = useRef(0);
   const addingRef = useRef(addingId);
   const pendingRef = useRef(pending);
   storesRef.current = stores;
@@ -216,22 +219,43 @@ export default function BrandMap({
     return true;
   }
 
+  function pushEdit(tenantId: string, edit: { op: "add"; store: Store } | { op: "remove"; id: string } | { op: "patch"; id: string; patch: Partial<Store> }) {
+    const n = ++editN.current;
+    const list = edits.current[tenantId] || [];
+    const next: StoreEdit<Store> =
+      edit.op === "add"
+        ? { n, op: "add", store: edit.store }
+        : edit.op === "remove"
+          ? { n, op: "remove", id: edit.id }
+          : { n, op: "patch", id: edit.id, patch: edit.patch };
+    list.push(next);
+    edits.current[tenantId] = list;
+  }
+
   async function loadStores(ids: string[]) {
     const missing = ids.filter((id) => !storesRef.current[id]);
     if (!missing.length) return;
-    const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      toast.error(body?.error || "Could not load");
-      return;
+    try {
+      const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(body?.error || "Could not load");
+        return;
+      }
+      const grouped: Record<string, Store[]> = {};
+      for (const id of missing) grouped[id] = [];
+      for (const store of body as Store[]) {
+        const row = { ...store, status: locationStatus(store.status) };
+        (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
+      }
+      setStores((current) => {
+        const next = { ...current };
+        for (const id of missing) next[id] = applyStoreEdits(grouped[id] || [], edits.current[id] || []);
+        return next;
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not load");
     }
-    const grouped: Record<string, Store[]> = {};
-    for (const id of missing) grouped[id] = [];
-    for (const store of body as Store[]) {
-      const row = { ...store, status: locationStatus(store.status) };
-      (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
-    }
-    setStores((current) => ({ ...current, ...grouped }));
   }
 
   function deactivate(id: string) {
@@ -278,54 +302,88 @@ export default function BrandMap({
     const tenantId = addingRef.current;
     const point = pendingRef.current;
     if (!tenantId || !point) return;
-    const res = await apiFetch("/api/demand/locations", {
-      method: "POST",
-      body: JSON.stringify({ tenantId, lat: point.lat, lng: point.lng, status }),
-    });
-    const body = await res.json().catch(() => null);
-    if (!res.ok) {
-      toast.error(body?.error || "Could not save");
-      return;
+    try {
+      const res = await apiFetch("/api/demand/locations", {
+        method: "POST",
+        body: JSON.stringify({ tenantId, lat: point.lat, lng: point.lng, status }),
+      });
+      const body = await res.json().catch(() => null);
+      if (!res.ok) {
+        toast.error(body?.error || "Could not save the location.");
+        return;
+      }
+      const saved = body as Store;
+      if (!saved?.id || saved.lat == null || saved.lng == null) {
+        toast.error("Could not save the location.");
+        return;
+      }
+      const store = { ...saved, status: locationStatus(saved.status) };
+      pushEdit(tenantId, { op: "add", store });
+      setStores((current) => ({
+        ...current,
+        [tenantId]: [...(current[tenantId] || []).filter((item) => item.id !== store.id), store],
+      }));
+      bumpLocations(tenantId, 1);
+      setLastPin({ id: store.id, tenantId, store });
+      setPending(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not save the location.");
     }
-    const store = { ...(body as Store), status: locationStatus((body as Store).status) };
-    setStores((current) => ({ ...current, [tenantId]: [...(current[tenantId] || []), store] }));
-    bumpLocations(tenantId, 1);
-    setLastPin({ id: store.id, tenantId, store });
-    setPending(null);
   }
 
   async function undo() {
     const pin = lastPin;
     if (!pin) return;
     setLastPin(null);
+    pushEdit(pin.tenantId, { op: "remove", id: pin.id });
     setStores((current) => ({
       ...current,
       [pin.tenantId]: (current[pin.tenantId] || []).filter((store) => store.id !== pin.id),
     }));
-    const res = await apiFetch(`/api/demand/locations/${pin.id}`, { method: "DELETE" });
-    if (res.ok) bumpLocations(pin.tenantId, -1);
-    if (!res.ok) {
+    try {
+      const res = await apiFetch(`/api/demand/locations/${pin.id}`, { method: "DELETE" });
+      if (res.ok) {
+        bumpLocations(pin.tenantId, -1);
+        return;
+      }
       const body = await res.json().catch(() => null);
+      pushEdit(pin.tenantId, { op: "add", store: pin.store });
       setStores((current) => ({
         ...current,
         [pin.tenantId]: [...(current[pin.tenantId] || []).filter((store) => store.id !== pin.id), pin.store],
       }));
       setLastPin(pin);
       toast.error(body?.error || "Could not remove the pin");
+    } catch (err) {
+      pushEdit(pin.tenantId, { op: "add", store: pin.store });
+      setStores((current) => ({
+        ...current,
+        [pin.tenantId]: [...(current[pin.tenantId] || []).filter((store) => store.id !== pin.id), pin.store],
+      }));
+      setLastPin(pin);
+      toast.error(err instanceof Error ? err.message : "Could not remove the pin");
     }
   }
 
   async function setPinStatus(store: Store, next: LocationStatus) {
     const previous = store.status;
+    pushEdit(store.tenantId, { op: "patch", id: store.id, patch: { status: next } });
     patchStore(store.tenantId, store.id, { status: next });
-    const res = await apiFetch(`/api/demand/locations/${store.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: next }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
+    try {
+      const res = await apiFetch(`/api/demand/locations/${store.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: next }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        pushEdit(store.tenantId, { op: "patch", id: store.id, patch: { status: previous } });
+        patchStore(store.tenantId, store.id, { status: previous });
+        toast.error(body?.error || "Could not save the location.");
+      }
+    } catch (err) {
+      pushEdit(store.tenantId, { op: "patch", id: store.id, patch: { status: previous } });
       patchStore(store.tenantId, store.id, { status: previous });
-      toast.error(body?.error || "Could not save");
+      toast.error(err instanceof Error ? err.message : "Could not save the location.");
     }
   }
 
@@ -346,19 +404,31 @@ export default function BrandMap({
 
   async function deletePin(store: Store) {
     setSelection(null);
+    pushEdit(store.tenantId, { op: "remove", id: store.id });
     setStores((current) => ({
       ...current,
       [store.tenantId]: (current[store.tenantId] || []).filter((item) => item.id !== store.id),
     }));
-    const res = await apiFetch(`/api/demand/locations/${store.id}`, { method: "DELETE" });
-    if (res.ok) bumpLocations(store.tenantId, -1);
-    if (!res.ok) {
+    try {
+      const res = await apiFetch(`/api/demand/locations/${store.id}`, { method: "DELETE" });
+      if (res.ok) {
+        bumpLocations(store.tenantId, -1);
+        return;
+      }
       const body = await res.json().catch(() => null);
+      pushEdit(store.tenantId, { op: "add", store });
       setStores((current) => ({
         ...current,
         [store.tenantId]: [...(current[store.tenantId] || []).filter((item) => item.id !== store.id), store],
       }));
-      toast.error(body?.error || "Could not delete");
+      toast.error(body?.error || "Could not delete the location.");
+    } catch (err) {
+      pushEdit(store.tenantId, { op: "add", store });
+      setStores((current) => ({
+        ...current,
+        [store.tenantId]: [...(current[store.tenantId] || []).filter((item) => item.id !== store.id), store],
+      }));
+      toast.error(err instanceof Error ? err.message : "Could not delete the location.");
     }
   }
 
@@ -500,7 +570,7 @@ function BrandRow({
       role="listitem"
       className={cn(
         "group flex w-full items-center pl-4",
-        top && "bg-warning-bg",
+        top && "bg-accent-soft",
         on && "ring-2 ring-inset ring-black",
         adding && !dim && !on && !top && "bg-surface-2"
       )}

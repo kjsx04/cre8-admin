@@ -1,8 +1,8 @@
 /**
- * The map's left column groups tenants by category.
+ * The map's left column and the Demand list group tenants by category.
  * Search narrows every category. Who is on the map is tracked separately.
- * Case variants of one category share a header. Tenants with no stored
- * locations are left out before grouping, so an empty category disappears.
+ * Case variants and retired labels share one header via categoryKey.
+ * The map drops tenants with no stored locations before grouping.
  */
 
 import { categoryKey, categoryLabel } from "./categories";
@@ -71,6 +71,24 @@ export function groupMapCategories<T extends TenantListItem>(
       const shown = fits ? all.filter((brand) => fits.get(brand.id)?.bucket === "optimal") : all;
       return { category: label, count: all.length, shown, all };
     });
+}
+
+/** Search forces a category open. Otherwise a click wins, and a listing starts collapsed. */
+export function categoryIsOpen(
+  category: string,
+  opened: Readonly<Record<string, boolean>>,
+  searching: boolean,
+  listingSelected: boolean
+): boolean {
+  if (searching) return true;
+  if (Object.prototype.hasOwnProperty.call(opened, category)) return Boolean(opened[category]);
+  return !listingSelected;
+}
+
+/** Collapsed with a listing still shows Top. Collapsed with no listing shows nothing. */
+export function categoryRows<T extends TenantListItem>(group: MapCategory<T>, open: boolean, listingSelected: boolean): T[] {
+  if (open) return group.all;
+  return listingSelected ? group.shown : [];
 }
 
 function compareTenants(a: TenantListItem, b: TenantListItem, fits: Map<string, MapFit> | null): number {
