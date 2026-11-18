@@ -80,6 +80,7 @@ export const LOI_BUILDING_VARIABLES: VariableDef[] = [
   { token: "seller_broker_email", label: "Seller Broker Email", source: "cms_teams", flag: false },
   { token: "property_address", label: "Property Address", source: "cms_listing", flag: false },
   { token: "parcel_number", label: "Parcel Number(s)", source: "user_input", flag: true },
+  { token: "zoning", label: "Zoning", source: "user_input", flag: false },
   { token: "seller_entity", label: "Seller Entity", source: "user_input", flag: true },
   { token: "buyer_entity", label: "Buyer Entity", source: "user_input", flag: true },
   { token: "purchase_price", label: "Purchase Price ($)", source: "user_input", flag: true, numberField: true },
@@ -119,6 +120,7 @@ export const LOI_LAND_VARIABLES: VariableDef[] = [
   { token: "property_address", label: "Property Address", source: "cms_listing", flag: false },
   { token: "parcel_number", label: "Parcel Number(s)", source: "user_input", flag: true },
   { token: "acreage", label: "Acreage", source: "user_input", flag: false },
+  { token: "zoning", label: "Zoning", source: "user_input", flag: false },
   { token: "seller_entity", label: "Seller Entity", source: "user_input", flag: true },
   { token: "buyer_entity", label: "Buyer Entity", source: "user_input", flag: true },
   { token: "purchase_price", label: "Total Purchase Price ($)", source: "user_input", flag: true, numberField: true },
@@ -244,6 +246,7 @@ export const LOI_BUILDING_SECTIONS: FieldSection[] = [
     tokens: [
       "property_address",
       "parcel_number",
+      "zoning",
     ],
   },
   {
@@ -321,6 +324,7 @@ export const LOI_LAND_SECTIONS: FieldSection[] = [
       "property_address",
       "parcel_number",
       "acreage",
+      "zoning",
     ],
   },
   {

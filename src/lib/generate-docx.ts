@@ -4,6 +4,7 @@ import fs from "fs";
 import path from "path";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
 import { embedLoiLetterhead, isLoiDocType } from "@/lib/loi-letterhead";
+import { applyLoiSectionsToZip, bindingCarveout, includedSectionIds } from "@/lib/loi-sections";
 import { applyLoiDerived } from "@/lib/loi-wording";
 import { polishLoiDocument } from "@/lib/loi-polish";
 
@@ -143,6 +144,9 @@ export function generateDocxBuffer(input: GenerateDocxInput): Buffer {
   const data: Record<string, string> = isLoiDocType(docType)
     ? applyLoiDerived(variables)
     : { ...variables };
+  if (isLoiDocType(docType)) {
+    data.binding_carveout = bindingCarveout(includedSectionIds(docType, clauses));
+  }
 
   // Handle clause insertion markers
   if (clauses && Array.isArray(clauses)) {
@@ -193,6 +197,7 @@ export function generateDocxBuffer(input: GenerateDocxInput): Buffer {
   // Embed after render so token replacement cannot drop the media part.
   // Polish is LOI-only: listing agreements keep their own templates and fonts.
   if (isLoiDocType(docType)) {
+    applyLoiSectionsToZip(doc.getZip(), docType, clauses, data);
     polishLoiDocument(doc.getZip(), data);
     embedLoiLetterhead(doc.getZip());
   }

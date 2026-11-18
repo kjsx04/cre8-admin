@@ -104,6 +104,8 @@ export function applyLoiDerived(
     "seller_disclosures_days",
     "dd_period",
     "rent_commencement_days",
+    "alta_days",
+    "offer_expiration_days",
   ]) {
     if (!filled(v[`${key}_written`]) && filled(v[key])) {
       v[`${key}_written`] = numberToWritten(filled(v[key]));
@@ -121,6 +123,14 @@ export function applyLoiDerived(
     Number.isFinite(extensionCount) && extensionCount > 1 ? "extensions" : "extension";
   // Intro still names someone when the buyer field is blank ("the Buyer and/or assignee").
   v.buyer_party = filled(v.buyer_entity) || "the Buyer";
+  if (!filled(v.alta_days)) v.alta_days = "30";
+  if (!filled(v.alta_days_written)) v.alta_days_written = numberToWritten(v.alta_days);
+  if (!filled(v.offer_expiration_days)) v.offer_expiration_days = "10";
+  if (!filled(v.offer_expiration_days_written)) {
+    v.offer_expiration_days_written = numberToWritten(v.offer_expiration_days);
+  }
+  const zoning = filled(v.zoning);
+  v.zoning_clause = zoning ? ` (zoned ${zoning})` : "";
   v.seller_broker_email_line = email ? `Email: ${email}` : "";
   v.broker_names_suffix = broker ? ` (${broker})` : "";
   v.landlord_contact_line = contact ? `${contact}:` : "";

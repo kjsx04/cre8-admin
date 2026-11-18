@@ -54,6 +54,14 @@ export function numberToWritten(input: string): string {
   return numberToWordsRaw(n);
 }
 
+/** "90" → "ninety (90)". Pass a unit for "ninety (90) days". */
+export function countPhrase(input: string, unit?: string): string {
+  const n = parseInt(String(input).replace(/[^0-9-]/g, ""), 10);
+  if (!Number.isFinite(n)) return input;
+  const phrase = `${numberToWritten(String(n))} (${n})`;
+  return unit ? `${phrase} ${unit}` : phrase;
+}
+
 /**
  * For dollar amount fields: "50000" → "fifty thousand and 00/100 dollars"
  * Input can be a raw number or "$50,000" / "$50,000.50".

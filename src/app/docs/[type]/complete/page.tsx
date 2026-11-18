@@ -35,6 +35,8 @@ import SharePointBreadcrumb from "@/components/SharePointBreadcrumb";
 import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
+import LoiSectionList from "@/components/LoiSectionList";
+import { defaultLoiClauses, type LoiClauseInput } from "@/lib/loi-sections";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
 const ParcelPickerModal = dynamic(() => import("@/components/ParcelPickerModal"), {
@@ -501,6 +503,9 @@ function FieldSidebar({
   hasParcelMapImage,
   includeParcelMap,
   onToggleParcelMap,
+  ownerWarning,
+  clauses,
+  onClausesChange,
 }: {
   docTypeId: string;
   sections: FieldSection[];
@@ -537,6 +542,9 @@ function FieldSidebar({
   includeParcelMap?: boolean;
   /** Toggle handler for including the parcel map in the document */
   onToggleParcelMap?: () => void;
+  ownerWarning?: string;
+  clauses?: LoiClauseInput[];
+  onClausesChange?: (next: LoiClauseInput[]) => void;
 }) {
   return (
     <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
@@ -569,6 +577,14 @@ function FieldSidebar({
       <h2 className="font-bebas text-lg tracking-wide text-medium-gray mb-1">
         EDIT FIELDS
       </h2>
+      {ownerWarning && (
+        <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+          {ownerWarning}
+        </p>
+      )}
+      {onClausesChange && clauses && (
+        <LoiSectionList docTypeId={docTypeId} clauses={clauses} onChange={onClausesChange} />
+      )}
 
       {/* Field sections — inject helpers before Property and Date & Brokers sections */}
       {sections.map((section) => (
@@ -673,9 +689,7 @@ export default function CompletePage() {
 
   // Field editing state
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [clausePayload, setClausePayload] = useState<
-    { id: string; included: boolean; variables: Record<string, string>; customText?: string }[]
-  >([]);
+  const [clausePayload, setClausePayload] = useState<LoiClauseInput[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isExporting] = useState(false); // Kept for button disabled state (always false now — parcel map downloads separately)
   const [showMapPreview, setShowMapPreview] = useState(false); // Parcel map preview modal
@@ -707,6 +721,8 @@ export default function CompletePage() {
 
   // Debounce timer ref
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const regenSeq = useRef(0);
+  const [ownerWarning, setOwnerWarning] = useState("");
 
   // Track if initial generation has been triggered
   const initialGenTriggered = useRef(false);
@@ -880,30 +896,35 @@ export default function CompletePage() {
       setFileName(parsedDoc.fileName);
       setFieldValues(parsedPayload.variables || {});
       fieldValuesRef.current = parsedPayload.variables || {};
-      setClausePayload(parsedPayload.clauses || []);
+      const restoredClauses = parsedPayload.clauses?.length
+        ? parsedPayload.clauses
+        : defaultLoiClauses(docType.id);
+      setClausePayload(restoredClauses);
       // Generate a clean preview (no parcel map image) from the restored values
       if (!initialGenTriggered.current) {
         initialGenTriggered.current = true;
-        generateInitialPreview(parsedPayload.variables || {}, parsedPayload.clauses || []);
+        generateInitialPreview(parsedPayload.variables || {}, restoredClauses);
       }
     } else {
       // Fresh visit — build defaults and generate initial preview
       const defaults = buildDefaultValues();
+      const clauses = defaultLoiClauses(docType.id);
       setFieldValues(defaults);
       fieldValuesRef.current = defaults;
+      setClausePayload(clauses);
       setFileName(buildFileName(defaults));
 
       // Generate the initial preview with defaults
       if (!initialGenTriggered.current) {
         initialGenTriggered.current = true;
-        generateInitialPreview(defaults);
+        generateInitialPreview(defaults, clauses);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType]);
 
   // ── Generate the first preview on mount ──
-  async function generateInitialPreview(defaults: Record<string, string>, clauses: { id: string; title: string; text: string }[] = []) {
+  async function generateInitialPreview(defaults: Record<string, string>, clauses: { id: string; included?: boolean; variables?: Record<string, string>; customText?: string }[] = []) {
     if (!docType) return;
 
     try {
@@ -1050,6 +1071,7 @@ export default function CompletePage() {
   // effect on clausePayload below. There is no second preview path.
   const regenerateDocument = useCallback(async () => {
     if (!docType) return;
+    const seq = ++regenSeq.current;
     setIsRegenerating(true);
 
     try {
@@ -1075,6 +1097,8 @@ export default function CompletePage() {
           if (varDef.writtenVariant) {
             currentValues[varDef.writtenVariant] = dollarToWritten(raw);
           }
+        } else if (varDef.numberField && varDef.writtenVariant && currentValues[varDef.token]) {
+          currentValues[varDef.writtenVariant] = numberToWritten(currentValues[varDef.token]);
         }
       }
 
@@ -1124,8 +1148,10 @@ export default function CompletePage() {
 
       // Convert the response blob to base64 for DocPreview
       const blob = await res.blob();
+      if (seq !== regenSeq.current) return;
       const reader = new FileReader();
       reader.onload = () => {
+        if (seq !== regenSeq.current) return;
         const base64 = reader.result as string;
         setFileBase64(base64);
         setIsRegenerating(false);
@@ -1151,7 +1177,7 @@ export default function CompletePage() {
       reader.readAsDataURL(blob);
     } catch (err) {
       console.error("Regeneration error:", err);
-      setIsRegenerating(false);
+      if (seq === regenSeq.current) setIsRegenerating(false);
     }
   }, [docType, clausePayload, buildFileName, varDefs]);
 
@@ -1182,7 +1208,7 @@ export default function CompletePage() {
     }
     debounceRef.current = setTimeout(() => {
       regenerateDocument();
-    }, 1500);
+    }, 400);
   }, [regenerateDocument]);
 
   // Checking or editing a clause updates clausePayload. After the first
@@ -1530,9 +1556,15 @@ export default function CompletePage() {
           }
         }
         if (selection.acreage) updated.acreage = selection.acreage;
+        if (!isListingDoc && selection.zoning) updated.zoning = selection.zoning;
         fieldValuesRef.current = updated;
         return updated;
       });
+      if (!isListingDoc && selection.ownersDiffer) {
+        setOwnerWarning("These parcels have different owners. Each owner is listed on the seller line.");
+      } else {
+        setOwnerWarning("");
+      }
       // Trigger doc regeneration so the preview updates immediately
       triggerDebouncedRegen();
     },
@@ -2049,9 +2081,6 @@ export default function CompletePage() {
           )}
 
           {/* Preview background note */}
-          <p className="text-medium-gray text-xs mt-2 hidden lg:block">
-            Template backgrounds will appear in the downloaded file.
-          </p>
 
           {/* File name below preview */}
           {fileName && (
@@ -2100,6 +2129,9 @@ export default function CompletePage() {
               setIncludeParcelMap(newVal);
               // No regen needed — parcel map downloads as a separate .jpg file.
             }}
+            ownerWarning={ownerWarning}
+            clauses={clausePayload}
+            onClausesChange={setClausePayload}
           />
         </div>
       </div>
@@ -2176,6 +2208,7 @@ export default function CompletePage() {
           onConfirm={handleParcelConfirm}
           onClose={() => setShowParcelPicker(false)}
           includeAcreage={docType.id === "loi_land" || docType.id === "listing_sale" || docType.id === "listing_sale_lease"}
+          combineParcels={docType.id === "loi_land" || docType.id === "loi_building" || docType.id === "loi_lease"}
           mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
           initialParcels={storedParcels.length > 0 ? storedParcels : undefined}
         />
