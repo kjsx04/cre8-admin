@@ -3,7 +3,11 @@ const nextConfig = {
   // Include template .docx files in Vercel serverless function bundle
   experimental: {
     outputFileTracingIncludes: {
-      "/api/docs/generate": ["./src/templates/tokenized/**/*"],
+      "/api/docs/generate": [
+        "./src/templates/tokenized/**/*",
+        // Letterhead PNG read from disk while embedding the LOI watermark.
+        "./src/templates/assets/**/*",
+      ],
     },
   },
   // pdfjs-dist optionally requires 'canvas' (Node-only). Stub it out for the browser build.
