@@ -8,7 +8,7 @@ import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
-import { fitOnFirstShow, groupMapCategories, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
+import { categoryIsOpen, categoryRows, fitOnFirstShow, groupMapCategories, toggleCategoryDisclosure, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
 import { applyStoreEdits, type StoreEdit } from "@/lib/demand/store-edits";
 
 export type BaseMap = "light" | "dark" | "satellite";
@@ -199,16 +199,9 @@ export default function BrandMap({
     return near.length === 0 ? "None within 10 mi" : null;
   }
 
-  function categoryOpen(category: string): boolean {
-    if (searching) return true;
-    if (category in opened) return opened[category];
-    return !listingId;
-  }
-
   function toggleCategory(category: string) {
-    if (searching) return;
-    const open = categoryOpen(category);
-    setOpened((current) => ({ ...current, [category]: !open }));
+    const topCount = groups.find((group) => group.category === category)?.shown.length ?? 0;
+    setOpened((current) => toggleCategoryDisclosure(category, current, searching, Boolean(listingId), topCount));
   }
 
   function addToMap(ids: string[]): boolean {
@@ -515,8 +508,9 @@ export default function BrandMap({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto py-2">
           {groups.map((group) => {
-            const open = categoryOpen(group.category);
-            const rows = open ? group.all : listingId ? group.shown : [];
+            const listingSelected = Boolean(listingId);
+            const open = categoryIsOpen(group.category, opened, searching, listingSelected, group.shown.length);
+            const rows = categoryRows(group, opened, searching, listingSelected);
             return (
               <section key={group.category} className="mt-1 first:mt-0" aria-label={group.category}>
                 <button
@@ -527,7 +521,7 @@ export default function BrandMap({
                   className={cn("flex w-full items-center gap-1.5 border-y border-border px-3 py-1.5 text-left", FOCUS_RING)}
                 >
                   <span className="min-w-0 truncate text-base font-semibold text-text">{group.category}</span>
-                  <span className="shrink-0 text-xs tabular-nums text-text-3">{group.count}</span>
+                  <span className="shrink-0 text-xs font-normal tabular-nums text-text-3">{group.count}</span>
                   <span className="ml-auto inline-flex shrink-0 text-text-3">
                     {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </span>
