@@ -5,6 +5,8 @@ import type {
   DealFlags,
   DemandSpace,
   EffectiveRequirement,
+  FitCheck,
+  FitCheckStatus,
   Format,
   ListingContext,
   SizeFit,
@@ -20,6 +22,7 @@ import type {
 import { LAND_FORMATS, SHOP_FORMATS } from "./types";
 import { taggedTierDistance, tierForValue, tiersOfKind } from "./tiers";
 import { formatAc, formatSf, groupTitle, isFormat, rangeText, requirementLabel, sharedTierName } from "./format";
+import { yesDealLabels } from "./deals";
 import { categoryKey, indexByCategory, isMedicalDental, sameCategory } from "./categories";
 import { formatMiles, haversineMiles, usableLocations } from "./geo";
 
@@ -187,6 +190,41 @@ function norm(value: string): string {
   return value.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim();
 }
 
+const STATEWIDE_EXACT = new Set([
+  "az",
+  "arizona",
+  "statewide",
+  "arizona statewide",
+  "statewide arizona",
+  "az statewide",
+  "statewide az",
+  "state of arizona",
+  "arizona state",
+  "all arizona",
+  "all of arizona",
+  "entire state",
+  "entire state of arizona",
+]);
+
+/** Punctuation and parentheses become spaces so "Arizona (statewide)" still reads as the state. */
+function statewideKey(value: string): string {
+  return norm(value).replace(/[^a-z]+/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Statewide Arizona tags match every listing. A city or county tag does not.
+ * "Arizona statewide (incl. Tucson)" is the state. "Statewide interstates" is a corridor.
+ */
+export function isStatewideMarket(market: string): boolean {
+  const key = statewideKey(market);
+  if (!key) return false;
+  if (STATEWIDE_EXACT.has(key)) return true;
+  if (key.startsWith("arizona statewide") || key.startsWith("statewide arizona")) return true;
+  if (key.startsWith("az statewide") || key.startsWith("statewide az")) return true;
+  // "Arizona (national program)" names the state, not a city.
+  return key.startsWith("arizona ") && /^(national program)\b/.test(key.slice("arizona ".length));
+}
+
 export function marketMatches(markets: string[], city: string | null, county: string | null): boolean {
   if (markets.length === 0) return true;
   const cityKey = city ? norm(city) : "";
@@ -194,6 +232,7 @@ export function marketMatches(markets: string[], city: string | null, county: st
   return markets.some((market) => {
     const key = norm(market);
     if (!key) return false;
+    if (isStatewideMarket(market)) return true;
     if (["phoenix metro", "metro phoenix", "phoenix msa", "phoenix valley", "the valley", "valley"].includes(key)) {
       return METRO.has(cityKey);
     }
@@ -332,15 +371,25 @@ export function classifySpace(
   const hitPossible = requirement.formats.filter((f) => possible.has(f));
   // A blank format is a fit. Only a real format that misses the space is a problem.
   let formatOk = true;
+  let formatStatus: FitCheckStatus = "pass";
+  const formatRequirement = requirement.formats.length ? requirement.formats.join(", ") : "Any format";
+  let formatValue = spaceKindLabel(space);
   if (requirement.formats.length > 0 && hitOptimal.length === 0 && hitPossible.length === 0) {
     hard.push(`Wants ${requirement.formats.join(", ")}; this is ${spaceNoun(space)}`);
     formatOk = false;
+    formatStatus = "fail";
   } else if (requirement.formats.length > 0 && hitOptimal.length === 0) {
     soft.push(`Wants ${hitPossible.join(", ")}; listing reads as ${spaceNoun(space)}`);
+    formatStatus = "soft";
   }
 
   const dealFit = dealTypeFit(space, tenant);
-  if (dealFit.status === "no") hard.push(...dealFit.reasons);
+  let dealStatus: FitCheckStatus = dealFit.status === "no" ? "fail" : dealFit.status === "unknown" ? "unknown" : "pass";
+  let dealValue = spaceDealValue(space);
+  if (dealFit.status === "no") {
+    hard.push(...dealFit.reasons);
+    if (dealFit.reasons.length) dealValue = `${dealValue} · ${dealFit.reasons.join("; ")}`;
+  }
 
   const kind = dimension(space);
   const value = kind === "acres" ? space.acres : space.sf;
@@ -356,22 +405,60 @@ export function classifySpace(
   if (size.fit === "outside") hard.push(sizeReason);
   else if (size.fit === "close") soft.push(sizeReason);
   else if (size.fit === "inside") notes.push(sizeReason);
+  const sizeStatus = sizeCheckStatus(kind, value, requirement, size);
 
+  let driveStatus: FitCheckStatus = "pass";
+  let driveRequirement = "Not required";
+  let driveValue = driveThruValue(space.driveThru);
   if (requirement.driveThruRequired === true) {
-    if (space.driveThru === false) hard.push(`Needs drive-thru; ${subject(space)} has none`);
-    else if (space.driveThru === true) notes.push("Drive-thru available");
+    driveRequirement = "Required";
+    if (space.driveThru === false) {
+      hard.push(`Needs drive-thru; ${subject(space)} has none`);
+      driveStatus = "fail";
+      driveValue = "No";
+    } else if (space.driveThru === true) {
+      notes.push("Drive-thru available");
+      driveStatus = "pass";
+      driveValue = "Yes";
+    } else {
+      driveStatus = "unknown";
+      driveValue = "Unknown";
+    }
+  } else if (requirement.driveThruRequired == null) {
+    driveStatus = "unknown";
+    driveRequirement = "Not specified";
+    driveValue = driveThruValue(space.driveThru);
   }
 
+  const marketRequirement = requirement.azMarkets.length ? requirement.azMarkets.join(", ") : "Any market";
+  const marketValue = marketPlace(listing);
+  let marketStatus: FitCheckStatus = "pass";
   if (requirement.azMarkets.length) {
-    if (!marketMatches(requirement.azMarkets, listing.city, listing.county)) hard.push("Not in this market");
-    else if (listing.city) notes.push(`In this market (${listing.city})`);
+    if (!marketMatches(requirement.azMarkets, listing.city, listing.county)) {
+      hard.push("Not in this market");
+      marketStatus = "fail";
+    } else if (listing.city) notes.push(`In this market (${listing.city})`);
   }
 
-  const spacingReason = spacingConflict(listing, requirement.spacingMiles, locations);
-  if (spacingReason) hard.push(spacingReason);
+  const nearest = nearestMiles(listing, locations);
+  const hasSpacing = requirement.spacingMiles != null && requirement.spacingMiles > 0;
+  const spacingRequirement = hasSpacing ? `${formatMiles(requirement.spacingMiles as number)} mi` : "None";
+  let spacingStatus: FitCheckStatus = "pass";
+  let spacingValue = "No stores on file";
+  if (listing.lat == null || listing.lng == null) spacingValue = "No listing coordinates";
+  else if (nearest != null) spacingValue = `Nearest store ${formatMiles(nearest)} mi`;
+  if (hasSpacing && nearest == null) spacingStatus = "unknown";
+  else if (hasSpacing && nearest != null && nearest < (requirement.spacingMiles as number)) {
+    spacingStatus = "fail";
+    hard.push(`Existing store ${formatMiles(nearest)} mi away; spacing ${formatMiles(requirement.spacingMiles as number)} mi`);
+  }
 
   if (formatOk && requirement.formats.length > 0 && space.deal === "sale" && requirement.formats.every((f) => SHOP_FORMATS.includes(f))) {
     soft.push("Listed for sale; this tenant typically leases");
+    if (dealStatus === "pass") {
+      dealStatus = "soft";
+      dealValue = `${dealValue} · typically leases`;
+    }
   }
   if (
     formatOk &&
@@ -381,11 +468,27 @@ export function classifySpace(
     !requirement.formats.includes("ground lease")
   ) {
     soft.push("Listed for lease; build-to-suit usually buys the land");
+    if (dealStatus === "pass") {
+      dealStatus = "soft";
+      dealValue = `${dealValue} · BTS usually buys the land`;
+    }
   }
 
-  if (formatOk && listing.propertyFamily === "industrial") soft.push("Property type is Industrial");
-  if (formatOk && listing.propertyFamily === "office" && !isMedicalDental(tenant.category)) soft.push("Property type is Office");
-  if (formatOk && listing.propertyFamily === "medical" && !isMedicalDental(tenant.category)) soft.push("Property type is Medical");
+  if (formatOk && listing.propertyFamily === "industrial") {
+    soft.push("Property type is Industrial");
+    if (formatStatus === "pass") formatStatus = "soft";
+    formatValue = `${formatValue} · Industrial`;
+  }
+  if (formatOk && listing.propertyFamily === "office" && !isMedicalDental(tenant.category)) {
+    soft.push("Property type is Office");
+    if (formatStatus === "pass") formatStatus = "soft";
+    formatValue = `${formatValue} · Office`;
+  }
+  if (formatOk && listing.propertyFamily === "medical" && !isMedicalDental(tenant.category)) {
+    soft.push("Property type is Medical");
+    if (formatStatus === "pass") formatStatus = "soft";
+    formatValue = `${formatValue} · Medical`;
+  }
 
   // storeCount is the per-tenant total from one grouped count, not a scan of
   // every location row. Zero locations can never be Top. A hard miss still excludes.
@@ -410,7 +513,108 @@ export function classifySpace(
   score -= soft.length * 8;
   score -= hard.length * 30;
 
-  return { tenantId: tenant.id, bucket, score, reasons, requirement };
+  const checks: FitCheck[] = [
+    { id: "market", label: "Market", status: marketStatus, requirement: marketRequirement, value: marketValue },
+    { id: "format", label: "Format", status: formatStatus, requirement: formatRequirement, value: formatValue },
+    { id: "deal", label: "Deal type", status: dealStatus, requirement: dealRequirement(tenant), value: dealValue },
+    {
+      id: "size",
+      label: "Size",
+      status: sizeStatus,
+      requirement: sizeRequirement(kind, requirement, size),
+      value: value == null ? "Unknown" : valueText(value, kind),
+    },
+    { id: "driveThru", label: "Drive-thru", status: driveStatus, requirement: driveRequirement, value: driveValue },
+    { id: "spacing", label: "Spacing", status: spacingStatus, requirement: spacingRequirement, value: spacingValue },
+    {
+      id: "locations",
+      label: "Locations",
+      status: tenant.storeCount <= 0 ? "soft" : "pass",
+      requirement: "At least 1 location",
+      value: tenant.storeCount <= 0 ? "No locations" : `${tenant.storeCount} ${tenant.storeCount === 1 ? "location" : "locations"}`,
+    },
+    overrideCheck(override),
+  ];
+
+  return { tenantId: tenant.id, bucket, score, reasons, requirement, checks };
+}
+
+function sizeCheckStatus(
+  kind: "acres" | "sf",
+  value: number | null,
+  requirement: EffectiveRequirement,
+  size: SizeResult
+): FitCheckStatus {
+  const min = kind === "acres" ? requirement.acresMin : requirement.sfMin;
+  const max = kind === "acres" ? requirement.acresMax : requirement.sfMax;
+  const hasRule = min != null || max != null || Boolean(size.against);
+  if (!hasRule) return value == null ? "unknown" : "pass";
+  if (value == null || size.fit === "unknown") return "unknown";
+  if (size.fit === "inside") return "pass";
+  if (size.fit === "close") return "soft";
+  return "fail";
+}
+
+function sizeRequirement(kind: "acres" | "sf", requirement: EffectiveRequirement, size: SizeResult): string {
+  const min = kind === "acres" ? requirement.acresMin : requirement.sfMin;
+  const max = kind === "acres" ? requirement.acresMax : requirement.sfMax;
+  const single = min != null && max != null && min === max ? (kind === "acres" ? formatAc(min) : formatSf(min)) : null;
+  const range = single ?? rangeText(min, max, kind === "acres" ? "ac" : "sf");
+  if (range && size.against) return `${range} · ${size.against}`;
+  return range || size.against || "Any size";
+}
+
+function spaceKindLabel(space: DemandSpace): string {
+  if (space.spaceType === "pad") return "Pad";
+  if (space.spaceType === "land parcel") return "Land";
+  if (space.spaceType === "endcap") return "Endcap";
+  return "Shop";
+}
+
+function spaceDealValue(space: DemandSpace): string {
+  const deal = space.deal === "sale" ? "Sale" : space.deal === "lease" ? "Lease" : "Sale or lease";
+  return `${deal} ${spaceKindLabel(space).toLowerCase()}`;
+}
+
+function dealRequirement(flags: DealFlags): string {
+  const parts = [...yesDealLabels(flags)];
+  if (flags.freestanding === false) parts.push("no freestanding");
+  if (flags.inline === false) parts.push("no inline");
+  return parts.length ? parts.join(", ") : "Not specified";
+}
+
+function driveThruValue(value: boolean | null): string {
+  if (value === true) return "Yes";
+  if (value === false) return "No";
+  return "Unknown";
+}
+
+function marketPlace(listing: ListingContext): string {
+  const county = listing.county ? (/\bcounty$/i.test(listing.county) ? listing.county : `${listing.county} County`) : null;
+  const place = [listing.city, county].filter(Boolean);
+  return place.join(", ") || "Unknown";
+}
+
+function overrideCheck(override: SpaceOverride | null): FitCheck {
+  if (override?.decision === "exclude") {
+    return {
+      id: "override",
+      label: "Override",
+      status: "fail",
+      requirement: "Exclude",
+      value: override.reason?.trim() || "Excluded",
+    };
+  }
+  if (override?.decision === "include") {
+    return {
+      id: "override",
+      label: "Override",
+      status: "pass",
+      requirement: "Include",
+      value: override.reason?.trim() || "Included",
+    };
+  }
+  return { id: "override", label: "Override", status: "pass", requirement: "None", value: "—" };
 }
 
 function describeSize(
@@ -445,8 +649,7 @@ function describeSize(
   return `${noun} is ${shown}`;
 }
 
-function spacingConflict(listing: ListingContext, spacingMiles: number | null, locations: TenantLocation[]): string | null {
-  if (spacingMiles == null || spacingMiles <= 0) return null;
+function nearestMiles(listing: ListingContext, locations: TenantLocation[]): number | null {
   if (listing.lat == null || listing.lng == null) return null;
   const usable = usableLocations(locations);
   if (usable.length === 0) return null;
@@ -454,10 +657,7 @@ function spacingConflict(listing: ListingContext, spacingMiles: number | null, l
   for (const loc of usable) {
     nearest = Math.min(nearest, haversineMiles(listing.lat, listing.lng, loc.lat as number, loc.lng as number));
   }
-  if (nearest < spacingMiles) {
-    return `Existing store ${formatMiles(nearest)} mi away; spacing ${formatMiles(spacingMiles)} mi`;
-  }
-  return null;
+  return nearest;
 }
 
 export function matchSpaces(args: {
@@ -532,21 +732,43 @@ export function groupSpaceMatches(matches: SpaceMatch[], tiers: SizeTier[]): Spa
     group.spaces.sort((a, b) => a.sortOrder - b.sortOrder || a.label.localeCompare(b.label));
     group.tierName = sharedTierName(group.spaces, tiers);
     group.title = groupTitle(group.spaces, group.tierName);
-    if (group.spaces.length > 1) group.tenants = generalize(group.tenants, group.tierName);
+    if (group.spaces.length > 1) group.tenants = generalize(group.tenants, group.tierName, group.spaces);
   }
   groups.sort((a, b) => a.spaces[0].sortOrder - b.spaces[0].sortOrder);
   return groups;
 }
 
-function generalize(tenants: ClassifiedTenant[], tierName: string | null): ClassifiedTenant[] {
-  if (!tierName) return tenants;
+function groupedSizeValue(spaces: DemandSpace[]): string | null {
+  if (spaces.length < 2) return null;
+  const kindOf = (space: DemandSpace): "sf" | "acres" =>
+    space.spaceType === "inline" || space.spaceType === "endcap" ? "sf" : "acres";
+  const kind = kindOf(spaces[0]);
+  if (spaces.some((space) => kindOf(space) !== kind)) return null;
+  const nums = spaces.map((space) => (kind === "sf" ? space.sf : space.acres));
+  if (nums.some((value) => value == null)) return null;
+  const values = nums as number[];
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  if (min === max) return null;
+  if (kind === "sf") return `${formatSf(min).replace(/ SF$/, "")}-${formatSf(max)}`;
+  return `${formatAc(min).replace(/ ac$/, "")}-${formatAc(max)}`;
+}
+
+function generalize(tenants: ClassifiedTenant[], tierName: string | null, spaces: DemandSpace[]): ClassifiedTenant[] {
+  const sizeValue = groupedSizeValue(spaces);
+  if (!tierName && !sizeValue) return tenants;
   return tenants.map((tenant) => ({
     ...tenant,
-    reasons: tenant.reasons.map((reason) =>
-      / is in | is outside | is next to |Needs .+; (pad|site|suite) is /.test(reason) && tenant.bucket !== "excluded"
-        ? `In the ${tierName} tier`
-        : reason
-    ),
+    reasons: tierName
+      ? tenant.reasons.map((reason) =>
+          / is in | is outside | is next to |Needs .+; (pad|site|suite) is /.test(reason) && tenant.bucket !== "excluded"
+            ? `In the ${tierName} tier`
+            : reason
+        )
+      : tenant.reasons,
+    checks: sizeValue
+      ? tenant.checks.map((check) => (check.id === "size" ? { ...check, value: sizeValue } : check))
+      : tenant.checks,
   }));
 }
 

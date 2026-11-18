@@ -1,4 +1,4 @@
-import type { Bucket, Deal, InterestStatus, OverrideDecision, Relation, SpaceType, TierKind } from "./types";
+import type { Bucket, Deal, FitCheck, InterestStatus, OverrideDecision, Relation, SpaceType, TierKind } from "./types";
 
 export interface ContactView {
   id: string;
@@ -39,6 +39,8 @@ export interface TenantMatchView {
   bucket: Bucket;
   score: number;
   reasons: string[];
+  /** Every criterion, including ones that passed. `reasons` still keeps the sentences for the bucket. */
+  checks: FitCheck[];
   requirement: string;
   sfMin: number | null;
   sfMax: number | null;
@@ -106,6 +108,15 @@ export interface MatchResponse {
   listing: ListingSummary;
   spacesSeeded: boolean;
   groups: GroupView[];
+}
+
+/** Best space for one tenant on the selected listing, including tenants who are not a fit. */
+export interface ListingFit {
+  id: string;
+  bucket: Bucket;
+  score: number;
+  space: string;
+  checks: FitCheck[];
 }
 
 export interface ReverseHit {

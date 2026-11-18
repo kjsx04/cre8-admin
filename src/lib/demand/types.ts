@@ -161,12 +161,37 @@ export interface EffectiveRequirement {
 
 export type SizeFit = "inside" | "close" | "outside" | "unknown";
 
+export type FitCheckId =
+  | "market"
+  | "format"
+  | "deal"
+  | "size"
+  | "driveThru"
+  | "spacing"
+  | "locations"
+  | "override";
+
+/** pass meets the rule. soft is close enough to stay Possible. fail misses. unknown is not on file. */
+export type FitCheckStatus = "pass" | "soft" | "fail" | "unknown";
+
+/** One requirement compared with the listing. Kept for passes, misses, and unknowns. */
+export interface FitCheck {
+  id: FitCheckId;
+  label: string;
+  status: FitCheckStatus;
+  /** What the tenant requires. */
+  requirement: string;
+  /** What this listing or space offers. */
+  value: string;
+}
+
 export interface ClassifiedTenant {
   tenantId: string;
   bucket: Bucket;
   score: number;
   reasons: string[];
   requirement: EffectiveRequirement;
+  checks: FitCheck[];
 }
 
 export interface SpaceMatch {
