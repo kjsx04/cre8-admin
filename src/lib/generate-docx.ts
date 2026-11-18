@@ -4,6 +4,8 @@ import fs from "fs";
 import path from "path";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
 import { embedLoiLetterhead, isLoiDocType } from "@/lib/loi-letterhead";
+import { applyLoiDerived } from "@/lib/loi-wording";
+import { polishLoiDocument } from "@/lib/loi-polish";
 
 /**
  * Clean split XML tokens in .docx
@@ -135,8 +137,12 @@ export function generateDocxBuffer(input: GenerateDocxInput): Buffer {
     nullGetter: () => "",
   });
 
-  // Build the data object for token replacement
-  const data: Record<string, string> = { ...variables };
+  // Build the data object for token replacement.
+  // LOI templates use a few derived sentences (PSA drafter, extension plural,
+  // optional lines that disappear when the field is blank).
+  const data: Record<string, string> = isLoiDocType(docType)
+    ? applyLoiDerived(variables)
+    : { ...variables };
 
   // Handle clause insertion markers
   if (clauses && Array.isArray(clauses)) {
@@ -181,7 +187,9 @@ export function generateDocxBuffer(input: GenerateDocxInput): Buffer {
   doc.render(data);
 
   // Embed after render so token replacement cannot drop the media part.
+  // Polish is LOI-only: listing agreements keep their own templates and fonts.
   if (isLoiDocType(docType)) {
+    polishLoiDocument(doc.getZip(), data);
     embedLoiLetterhead(doc.getZip());
   }
 
