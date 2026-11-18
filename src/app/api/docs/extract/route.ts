@@ -57,7 +57,7 @@ Rules:
 - Confidence score (0.0–1.0) on every field
 - Missing fields: value "" confidence 0.0
 - Dollar amounts: $ with commas, e.g. "$50,000"
-- earnest_money_written: spelled out in words, e.g. "fifty thousand and 00/100 dollars"
+- earnest_money_written: spelled out in words, e.g. "fifty thousand dollars"
 - Entity names: preserve exact capitalization and spelling
 - Dates: format as "February 18, 2026"
 - Percentages: include % sign, e.g. "3%"

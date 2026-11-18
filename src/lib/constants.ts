@@ -87,7 +87,6 @@ export const LOI_BUILDING_VARIABLES: VariableDef[] = [
   { token: "earnest_money_written", label: "Earnest Money (written)", source: "auto", flag: true },
   { token: "emd_days", label: "Days to Deposit EMD", source: "user_input", flag: false, defaultValue: "3", numberField: true, writtenVariant: "emd_days_written" },
   { token: "emd_days_written", label: "Days to Deposit EMD (written)", source: "auto", flag: false },
-  { token: "psa_drafted_by", label: "PSA Drafted By", source: "user_input", flag: false, defaultValue: "Seller" },
   { token: "title_company", label: "Title Company", source: "default", flag: false, defaultValue: "Fidelity National Title" },
   { token: "title_agent", label: "Title Agent", source: "default", flag: false, defaultValue: "Kristina Gooding" },
   { token: "psa_draft_days", label: "PSA Draft Days", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "psa_draft_days_written" },
@@ -129,7 +128,6 @@ export const LOI_LAND_VARIABLES: VariableDef[] = [
   { token: "earnest_money_written", label: "Earnest Money (written)", source: "auto", flag: true },
   { token: "emd_days", label: "Days to Deposit EMD", source: "user_input", flag: false, defaultValue: "3", numberField: true, writtenVariant: "emd_days_written" },
   { token: "emd_days_written", label: "Days to Deposit EMD (written)", source: "auto", flag: false },
-  { token: "psa_drafted_by", label: "PSA Drafted By", source: "user_input", flag: false, defaultValue: "Seller" },
   { token: "title_company", label: "Title Company", source: "default", flag: false, defaultValue: "Fidelity National Title" },
   { token: "title_agent", label: "Title Agent", source: "default", flag: false, defaultValue: "Kristina Gooding" },
   { token: "psa_draft_days", label: "PSA Draft Days", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "psa_draft_days_written" },
@@ -277,7 +275,6 @@ export const LOI_BUILDING_SECTIONS: FieldSection[] = [
   {
     title: "Title & PSA",
     tokens: [
-      "psa_drafted_by",
       "title_company",
       "title_agent",
       "psa_draft_days",
@@ -356,7 +353,6 @@ export const LOI_LAND_SECTIONS: FieldSection[] = [
   {
     title: "Title & PSA",
     tokens: [
-      "psa_drafted_by",
       "title_company",
       "title_agent",
       "psa_draft_days",

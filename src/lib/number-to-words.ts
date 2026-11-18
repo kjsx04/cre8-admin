@@ -1,7 +1,6 @@
-// Converts numbers to written form for LOI tokens.
-// 3 → "three"
-// 45 → "forty-five"
-// 50000 → "fifty thousand and 00/100 dollars"
+// Converts numbers to written form for LOI tokens
+// 3 → "three (3)"
+// 50000 → "fifty thousand dollars" (for money)
 
 const ones = [
   "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
@@ -32,10 +31,8 @@ function numberToWordsRaw(n: number): string {
     n %= 100;
   }
   if (n >= 20) {
-    const ten = Math.floor(n / 10);
-    const one = n % 10;
-    result += one > 0 ? `${tens[ten]}-${ones[one]} ` : `${tens[ten]} `;
-    n = 0;
+    result += tens[Math.floor(n / 10)] + " ";
+    n %= 10;
   }
   if (n > 0) {
     result += ones[n] + " ";
@@ -45,8 +42,8 @@ function numberToWordsRaw(n: number): string {
 }
 
 /**
- * For day/count fields: "45" → "forty-five"
- * Just the word — the template already has ({{number}}) next to it.
+ * For day/count fields: "3" → "three"
+ * Just the word — the template already has ({{number}}) next to it
  */
 export function numberToWritten(input: string): string {
   const n = parseInt(input, 10);
@@ -55,23 +52,15 @@ export function numberToWritten(input: string): string {
 }
 
 /**
- * For dollar amount fields: "50000" → "fifty thousand and 00/100 dollars"
- * Input can be a raw number or "$50,000" / "$50,000.50".
+ * For dollar amount fields: "50000" → "fifty thousand dollars"
+ * Input can be raw number or "$50,000" format
  */
 export function dollarToWritten(input: string): string {
+  // Strip $ and commas to get raw number
   const cleaned = input.replace(/[$,]/g, "").trim();
-  const n = Number(cleaned);
-  if (!Number.isFinite(n)) return input;
-  const sign = n < 0 ? "negative " : "";
-  const abs = Math.abs(n);
-  let dollars = Math.floor(abs + 1e-8);
-  let cents = Math.round((abs - dollars) * 100);
-  if (cents === 100) {
-    dollars += 1;
-    cents = 0;
-  }
-  const centText = String(cents).padStart(2, "0");
-  return `${sign}${numberToWordsRaw(dollars)} and ${centText}/100 dollars`;
+  const n = parseInt(cleaned, 10);
+  if (isNaN(n)) return input;
+  return numberToWordsRaw(n) + " dollars";
 }
 
 /**
