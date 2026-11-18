@@ -57,15 +57,16 @@ assert(map.includes("Location status"), "a new pin asks for its status on the ma
 assert(map.includes("groupMapCategories"), "tenants are grouped by category");
 assert(map.includes("Expand"), "a category header expands");
 assert(map.includes("ring-black"), "a tenant on the map has a black outline");
-assert(map.includes("bg-warning-bg"), "Top rows use a soft gold fill");
-assert(!map.includes("text-warning-fg"), "Top names stay black");
+assert(map.includes("bg-accent-soft"), "Top rows use the soft CRE8 green fill");
+assert(!map.includes("text-warning-fg") && !map.includes("bg-warning"), "Top names stay black, not gold");
 assert(map.includes("ml-auto"), "the disclosure triangle is right-aligned");
 assert(map.includes("text-base font-semibold"), "category headers are at least as large as the tenant names");
 assert(map.includes("border-y border-border"), "category headers have a divider above and below");
 assert(map.includes("pl-4"), "tenant rows sit in from the header");
 assert(map.includes("opacity-40"), "add location stays faint until the row is hovered");
-assert(map.includes(">Done<"), "the Done label stays in the row");
 assert(map.includes("withMapLocations"), "tenants with no locations are left off the map list");
+assert(map.includes("applyStoreEdits"), "a location fetch cannot wipe a pin that just saved");
+assert(map.includes("bumpLocations"), "saving a location updates the tenant count");
 assert(map.includes('"fill-color": ["get", "color"]'), "spacing rings fill with the tenant pin color");
 assert(map.includes('"line-color": ["get", "color"]'), "spacing rings stroke with the tenant pin color");
 assert(map.includes('"fill-opacity": RING_FILL_OPACITY'), "spacing ring fill is lighter than the pin");
@@ -75,8 +76,6 @@ assert(
   ringPaint.length > 0 && !ringPaint.includes('"line-color": RING') && !ringPaint.includes('"fill-color": RING'),
   "spacing rings do not use the generic ring color"
 );
-const table = readFileSync("src/components/demand/TenantTable.tsx", "utf8");
-assert(table.includes(">No locations<"), "the list shows the no-locations note");
 assert(!map.includes(">Showing<") && !map.includes(">Active<"), "there is no pinned Active or Showing section");
 assert(map.includes('aria-label="Clear map"'), "the map can be cleared");
 assert(map.includes(">Done<"), "add location switches to a Done button");
@@ -94,6 +93,18 @@ assert(
   listingEffects.length > 0 && listingEffects.every((block) => !block.includes("setActive")),
   "changing the listing keeps tenants on the map"
 );
+
+const table = readFileSync("src/components/demand/TenantTable.tsx", "utf8");
+assert(table.includes(">No locations<"), "the list shows the no-locations note");
+assert(table.includes("groupMapCategories"), "the list reuses the map's category groups");
+assert(table.includes("categoryIsOpen"), "search opens the same categories as the map");
+assert(table.includes("bg-accent-soft"), "Top rows in the list use the soft CRE8 green fill");
+assert(!table.includes("text-warning") && !table.includes("bg-warning"), "the list does not use the gold Top fill");
+assert(table.includes("Edit "), "the edit pencil stays");
+assert(table.includes('"Brand"') && table.includes('"Broker"') && table.includes('"In-house"'), "the list keeps its columns");
+
+const service = readFileSync("src/lib/demand/service.ts", "utf8");
+assert(service.includes('source: "manual"'), "a pin added from Demand is stored as manual");
 
 const sql = readFileSync("supabase/migrations/2026-11-17_spacing_defaults.sql", "utf8");
 for (const snippet of [

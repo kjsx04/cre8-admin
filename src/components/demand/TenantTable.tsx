@@ -1,14 +1,15 @@
 "use client";
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { Pencil } from "lucide-react";
+import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
-import { IconButton } from "@/components/ui";
+import { IconButton, cn, FOCUS_RING } from "@/components/ui";
 import PersonHover from "@/components/demand/PersonHover";
 import TenantEditModal from "@/components/demand/TenantEditModal";
+import { categoryIsOpen, categoryRows, groupMapCategories, type MapFit } from "@/lib/demand/active-tenants";
 import { yesDealLabels } from "@/lib/demand/deals";
 import { rangeText } from "@/lib/demand/format";
-import { BUCKET_LABEL, type Bucket, type DealFlags } from "@/lib/demand/types";
+import type { Bucket, DealFlags } from "@/lib/demand/types";
 import type { ContactView, DemandListTenant, MatchResponse, TenantMatchView } from "@/lib/demand/view";
 
 const COLS =
@@ -26,8 +27,8 @@ type Row = {
 };
 
 type Item =
-  | { kind: "tier"; id: string; label: string }
-  | { kind: "row"; id: string; row: Row; rank: number | null };
+  | { kind: "category"; id: string; label: string; count: number; open: boolean }
+  | { kind: "row"; id: string; row: Row; rank: number | null; top: boolean };
 
 function flagsOf(tenant: DemandListTenant): DealFlags {
   return {
@@ -64,13 +65,14 @@ export default function TenantTable({
 }) {
   const [catalog, setCatalog] = useState<DemandListTenant[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showAll, setShowAll] = useState(false);
+  const [opened, setOpened] = useState<Record<string, boolean>>({});
   const [editingId, setEditingId] = useState<string | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const q = query.trim().toLowerCase();
+  const searching = q.length > 0;
 
   useEffect(() => {
-    setShowAll(false);
+    setOpened({});
   }, [listingId]);
 
   const refresh = useCallback(async () => {
@@ -90,13 +92,18 @@ export default function TenantTable({
     };
   }, [refresh]);
 
-  const items = useMemo(() => buildItems(catalog || [], match, listingId, q, showAll), [catalog, match, listingId, q, showAll]);
+  const items = useMemo(() => buildItems(catalog || [], match, listingId, q, opened), [catalog, match, listingId, q, opened]);
+
+  const listingSelected = Boolean(listingId && match);
+  function toggleCategory(category: string) {
+    if (searching) return;
+    const open = categoryIsOpen(category, opened, false, listingSelected);
+    setOpened((current) => ({ ...current, [category]: !open }));
+  }
   const editing = catalog?.find((tenant) => tenant.id === editingId) || null;
   const openEdit = useCallback((id: string) => setEditingId(id), []);
 
   if (error) return <p className="px-4 py-6 text-sm text-danger-fg">{error}</p>;
-
-  const fit = Boolean(listingId && match);
 
   return (
     <>
@@ -111,66 +118,83 @@ export default function TenantTable({
           </div>
         </div>
         <div className="px-3">
-          <VirtualRows items={items} scrollRef={scroller} render={(item) => (item.kind === "tier" ? <TierLine label={item.label} /> : <DataRow item={item} onEdit={openEdit} />)} />
+          <VirtualRows
+            items={items}
+            scrollRef={scroller}
+            render={(item) =>
+              item.kind === "category" ? (
+                <CategoryHeader item={item} onToggle={() => toggleCategory(item.label)} />
+              ) : (
+                <DataRow item={item} onEdit={openEdit} />
+              )
+            }
+          />
         </div>
-        {fit && (
-          <div className="px-6 py-3">
-            <button type="button" className="text-sm text-text-2 hover:text-text" onClick={() => setShowAll((value) => !value)}>
-              {showAll ? "Hide" : "Show all"}
-            </button>
-          </div>
-        )}
       </div>
       <TenantEditModal tenant={editing} onClose={() => setEditingId(null)} onSaved={() => refresh().catch(() => undefined)} />
     </>
   );
 }
 
-function buildItems(catalog: DemandListTenant[], match: MatchResponse | null, listingId: string, query: string, showAll: boolean): Item[] {
-  const all = catalog
-    .filter((tenant) => !query || `${tenant.brandName} ${tenant.category}`.toLowerCase().includes(query))
-    .map((tenant) => ({ tenant, bucket: null as Bucket | null, score: 0, space: "", reason: "", storeCount: null as number | null }))
-    .sort((a, b) => a.tenant.brandName.localeCompare(b.tenant.brandName));
-  if (!listingId || !match) {
-    return all.map((row) => ({ kind: "row", id: row.tenant.id, row, rank: null }));
+function buildItems(
+  catalog: DemandListTenant[],
+  match: MatchResponse | null,
+  listingId: string,
+  query: string,
+  opened: Record<string, boolean>
+): Item[] {
+  const searching = query.trim().length > 0;
+  const listingSelected = Boolean(listingId && match);
+  const fits = listingSelected && match ? fitsFrom(match) : null;
+  const bases = new Map<string, Row>();
+  for (const tenant of catalog) {
+    bases.set(tenant.id, { tenant, bucket: null, score: 0, space: "", reason: "", storeCount: null });
   }
-  const byId = new Map(all.map((row) => [row.tenant.id, row]));
   const best = new Map<string, Row>();
-  for (const group of match.groups) {
-    for (const tenant of [...group.optimal, ...group.possible, ...group.excluded]) {
-      const base = byId.get(tenant.tenantId);
-      if (!base) continue;
-      const row: Row = { ...base, ...fromMatch(tenant, group.title) };
-      const prev = best.get(row.tenant.id);
-      if (!prev || RANK[row.bucket || "excluded"] < RANK[prev.bucket || "excluded"] || (row.bucket === prev.bucket && row.score > prev.score)) {
-        best.set(row.tenant.id, row);
+  if (match && listingId) {
+    for (const group of match.groups) {
+      for (const tenant of [...group.optimal, ...group.possible, ...group.excluded]) {
+        const base = bases.get(tenant.tenantId);
+        if (!base) continue;
+        const row: Row = { ...base, ...fromMatch(tenant, group.title) };
+        const prev = best.get(row.tenant.id);
+        if (!prev || RANK[row.bucket || "excluded"] < RANK[prev.bucket || "excluded"] || (row.bucket === prev.bucket && row.score > prev.score)) {
+          best.set(row.tenant.id, row);
+        }
       }
     }
   }
-  const tiers: { id: string; label: string; bucket: Bucket }[] = [
-    { id: "tier-optimal", label: BUCKET_LABEL.optimal, bucket: "optimal" },
-    { id: "tier-possible", label: BUCKET_LABEL.possible, bucket: "possible" },
-  ];
   const items: Item[] = [];
-  const used = new Set<string>();
-  for (const tier of tiers) {
-    const rows = Array.from(best.values())
-      .filter((row) => row.bucket === tier.bucket)
-      .sort((a, b) => b.score - a.score || a.tenant.brandName.localeCompare(b.tenant.brandName));
-    if (!rows.length) continue;
-    items.push({ kind: "tier", id: tier.id, label: tier.label });
-    rows.forEach((row, index) => {
-      used.add(row.tenant.id);
-      items.push({ kind: "row", id: row.tenant.id, row, rank: index + 1 });
+  for (const group of groupMapCategories(catalog, query, fits)) {
+    const open = categoryIsOpen(group.category, opened, searching, listingSelected);
+    items.push({ kind: "category", id: `category:${group.category}`, label: group.category, count: group.count, open });
+    categoryRows(group, open, listingSelected).forEach((tenant, index) => {
+      const row = best.get(tenant.id) || bases.get(tenant.id);
+      if (!row) return;
+      items.push({
+        kind: "row",
+        id: tenant.id,
+        row,
+        rank: listingSelected ? index + 1 : null,
+        top: Boolean(listingSelected && row.bucket === "optimal"),
+      });
     });
   }
-  if (showAll) {
-    for (const row of all) {
-      if (used.has(row.tenant.id)) continue;
-      items.push({ kind: "row", id: row.tenant.id, row: best.get(row.tenant.id) || row, rank: null });
+  return items;
+}
+
+function fitsFrom(match: MatchResponse): Map<string, MapFit> {
+  const map = new Map<string, MapFit>();
+  for (const group of match.groups) {
+    for (const tenant of [...group.optimal, ...group.possible, ...group.excluded]) {
+      const next: MapFit = { bucket: tenant.bucket, score: tenant.score };
+      const prev = map.get(tenant.tenantId);
+      if (!prev || RANK[next.bucket] < RANK[prev.bucket] || (next.bucket === prev.bucket && next.score > prev.score)) {
+        map.set(tenant.tenantId, next);
+      }
     }
   }
-  return items;
+  return map;
 }
 
 function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" | "score" | "space" | "reason" | "storeCount"> {
@@ -183,23 +207,32 @@ function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" |
   };
 }
 
-function TierLine({ label }: { label: string }) {
+function CategoryHeader({ item, onToggle }: { item: Extract<Item, { kind: "category" }>; onToggle: () => void }) {
   return (
-    <div className="flex items-center gap-3 px-3 h-8">
-      <span className="text-xs text-text-3">{label}</span>
-      <span className="flex-1 border-t border-border" />
-    </div>
+    <button
+      type="button"
+      aria-expanded={item.open}
+      aria-label={`${item.open ? "Collapse" : "Expand"} ${item.label}, ${item.count}`}
+      onClick={onToggle}
+      className={cn("-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 border-y border-border bg-surface px-3 py-2 text-left", FOCUS_RING)}
+    >
+      <span className="text-base font-semibold text-text">{item.label}</span>
+      <span className="text-base font-semibold tabular-nums text-text">{item.count}</span>
+      <span className="ml-auto text-text-3" aria-hidden>
+        {item.open ? <ChevronDown size={16} strokeWidth={1.75} /> : <ChevronRight size={16} strokeWidth={1.75} />}
+      </span>
+    </button>
   );
 }
 
 const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { kind: "row" }>; onEdit: (id: string) => void }) {
-  const { row, rank } = item;
+  const { row, rank, top } = item;
   const deals = yesDealLabels(flagsOf(row.tenant)).join(", ");
   const noLocations = row.storeCount === 0 || row.reason === "No locations";
   return (
-    <div className={`grid ${COLS} items-center border-b border-border min-h-11`}>
+    <div className={cn(`grid ${COLS} items-center border-b border-border min-h-11`, top && "bg-accent-soft")}>
       <div className="px-3 text-xs text-text-3 tabular-nums">{rank ?? ""}</div>
-      <div className="px-3 py-2 font-medium text-sm text-text">
+      <div className="py-2 pl-8 pr-3 font-medium text-sm text-text">
         {row.tenant.brandName}
         {row.space && <span className="ml-2 text-xs text-text-3 font-normal">{row.space}</span>}
         {noLocations && <span className="ml-2 text-xs text-text-3 font-normal">No locations</span>}
@@ -243,7 +276,7 @@ function VirtualRows({
     offsets[0] = 0;
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index];
-      const fallback = item.kind === "tier" ? 32 : 48;
+      const fallback = item.kind === "category" ? 40 : 48;
       offsets[index + 1] = offsets[index] + (heights.current.get(item.id) || fallback);
     }
     return offsets;
