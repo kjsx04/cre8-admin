@@ -247,7 +247,9 @@ async function loadBundle(): Promise<Bundle> {
 async function readBundle(): Promise<Bundle> {
   const [tenantRows, contactRows, firmRows, tierRows, categoryRows, categoryTiers, tenantTiers, locationRows, relationshipRows] =
     await Promise.all([
-      fetchAll("tenants", "*", ["brand_name", "id"]),
+      // tenant_locations(count) is one grouped count per tenant. Spacing still
+      // needs the coordinate rows loaded below; the bucket rule does not.
+      fetchAll("tenants", "*,tenant_locations(count)", ["brand_name", "id"]),
       fetchAll("tenant_contacts", "*", ["id"]),
       fetchAll("rep_firms", "*", ["name", "id"]),
       fetchAll("size_tiers", "*", ["sort_order", "id"]),
@@ -295,13 +297,6 @@ async function readBundle(): Promise<Bundle> {
   }
   Array.from(contacts.values()).forEach((list) => list.sort(contactOrder));
 
-  const storeCount = new Map<string, number>();
-  for (const row of locationRows) {
-    if (!row.tenant_id) continue;
-    const id = String(row.tenant_id);
-    storeCount.set(id, (storeCount.get(id) || 0) + 1);
-  }
-
   const tenants: TenantInput[] = tenantRows.map((row) => ({
     id: String(row.id),
     brandName: String(row.brand_name || ""),
@@ -328,7 +323,7 @@ async function readBundle(): Promise<Bundle> {
     researchStatus: researchStatusOf(row.research_status),
     researchPriority: asNumber(row.research_priority),
     lastResearched: asString(row.last_researched),
-    storeCount: storeCount.get(String(row.id)) || 0,
+    storeCount: embeddedCount(row.tenant_locations),
   }));
 
   const admin = new Map(

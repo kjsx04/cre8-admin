@@ -8,7 +8,7 @@ import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
-import { fitOnFirstShow, groupMapCategories, type MapFit } from "@/lib/demand/active-tenants";
+import { fitOnFirstShow, groupMapCategories, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
 
 export type BaseMap = "light" | "dark" | "satellite";
 
@@ -48,6 +48,9 @@ interface LastPin {
 
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
+/** Spacing rings use the tenant pin color, lighter than the dot itself. */
+const RING_FILL_OPACITY = 0.16;
+const RING_LINE_OPACITY = 0.5;
 
 export default function BrandMap({
   listings,
@@ -171,7 +174,7 @@ export default function BrandMap({
     return map;
   }, [fits]);
   const groups = useMemo(
-    () => groupMapCategories(brands, query, listingId ? fitById : null),
+    () => groupMapCategories(withMapLocations(brands), query, listingId ? fitById : null),
     [brands, query, listingId, fitById]
   );
 
@@ -286,6 +289,7 @@ export default function BrandMap({
     }
     const store = { ...(body as Store), status: locationStatus((body as Store).status) };
     setStores((current) => ({ ...current, [tenantId]: [...(current[tenantId] || []), store] }));
+    bumpLocations(tenantId, 1);
     setLastPin({ id: store.id, tenantId, store });
     setPending(null);
   }
@@ -299,6 +303,7 @@ export default function BrandMap({
       [pin.tenantId]: (current[pin.tenantId] || []).filter((store) => store.id !== pin.id),
     }));
     const res = await apiFetch(`/api/demand/locations/${pin.id}`, { method: "DELETE" });
+    if (res.ok) bumpLocations(pin.tenantId, -1);
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       setStores((current) => ({
@@ -324,6 +329,14 @@ export default function BrandMap({
     }
   }
 
+  function bumpLocations(tenantId: string, delta: number) {
+    setBrands((current) =>
+      current.map((brand) =>
+        brand.id === tenantId ? { ...brand, locationCount: Math.max(0, brand.locationCount + delta) } : brand
+      )
+    );
+  }
+
   function patchStore(tenantId: string, id: string, patch: Partial<Store>) {
     setStores((current) => ({
       ...current,
@@ -338,6 +351,7 @@ export default function BrandMap({
       [store.tenantId]: (current[store.tenantId] || []).filter((item) => item.id !== store.id),
     }));
     const res = await apiFetch(`/api/demand/locations/${store.id}`, { method: "DELETE" });
+    if (res.ok) bumpLocations(store.tenantId, -1);
     if (!res.ok) {
       const body = await res.json().catch(() => null);
       setStores((current) => ({
@@ -434,17 +448,19 @@ export default function BrandMap({
             const open = categoryOpen(group.category);
             const rows = open ? group.all : listingId ? group.shown : [];
             return (
-              <section key={group.category} className="mb-2" aria-label={group.category}>
+              <section key={group.category} className="mt-1 first:mt-0" aria-label={group.category}>
                 <button
                   type="button"
                   aria-expanded={open}
                   aria-label={`${open ? "Collapse" : "Expand"} ${group.category}, ${group.count}`}
                   onClick={() => toggleCategory(group.category)}
-                  className={cn("flex w-full items-center gap-1 px-2 py-1 text-left", FOCUS_RING)}
+                  className={cn("flex w-full items-center gap-1.5 border-y border-border px-3 py-1.5 text-left", FOCUS_RING)}
                 >
-                  {open ? <ChevronDown size={14} className="shrink-0 text-text-3" /> : <ChevronRight size={14} className="shrink-0 text-text-3" />}
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-text">{group.category}</span>
-                  <span className="text-xs tabular-nums text-text-3">{group.count}</span>
+                  <span className="min-w-0 truncate text-base font-semibold text-text">{group.category}</span>
+                  <span className="shrink-0 text-xs tabular-nums text-text-3">{group.count}</span>
+                  <span className="ml-auto inline-flex shrink-0 text-text-3">
+                    {open ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                  </span>
                 </button>
                 {rows.length > 0 && <div role="list">{rows.map((brand) => renderBrand(brand))}</div>}
               </section>
@@ -482,7 +498,12 @@ function BrandRow({
   return (
     <div
       role="listitem"
-      className={cn("mx-1 flex items-center rounded-control", on && "ring-2 ring-inset ring-black", adding && !dim && !on && "bg-surface-2")}
+      className={cn(
+        "group flex w-full items-center pl-4",
+        top && "bg-warning-bg",
+        on && "ring-2 ring-inset ring-black",
+        adding && !dim && !on && !top && "bg-surface-2"
+      )}
     >
       {color && (
         <span className="flex w-5 shrink-0 justify-center" aria-hidden>
@@ -498,7 +519,8 @@ function BrandRow({
         onClick={onToggle}
         className={cn(
           "flex-1 min-w-0 text-left px-2 py-1.5 text-sm",
-          dim ? "text-text-3" : top ? "font-medium text-warning-fg" : "text-text",
+          dim ? "text-text-3" : "text-text",
+          top && !dim && "font-medium",
           FOCUS_RING
         )}
       >
@@ -512,7 +534,11 @@ function BrandRow({
           type="button"
           aria-label={`Add a location for ${brand.brandName}`}
           onClick={onAdd}
-          className={cn("shrink-0 px-2 py-1 text-text-2 hover:text-text", dim && "text-text-3", FOCUS_RING)}
+          className={cn(
+            "shrink-0 px-2 py-1 text-text-3 transition-opacity duration-150",
+            dim ? "opacity-25 group-hover:opacity-70" : "opacity-40 group-hover:text-text-2 group-hover:opacity-90",
+            FOCUS_RING
+          )}
         >
           <Plus size={16} strokeWidth={1.75} />
         </button>
@@ -885,6 +911,12 @@ function mount(map: import("mapbox-gl").Map) {
   map.addLayer({ id: "parcel-fill", type: "fill", source: "parcel", paint: { "fill-color": GREEN, "fill-opacity": 0.15 } });
   map.addLayer({ id: "parcel-line", type: "line", source: "parcel", paint: { "line-color": GREEN, "line-width": 2 } });
   map.addLayer({ id: "listing-radius", type: "line", source: "radius", paint: { "line-color": RING, "line-width": 1.5, "line-opacity": 0.35 } });
+  map.addLayer({
+    id: "ring-fill",
+    type: "fill",
+    source: "rings",
+    paint: { "fill-color": ["get", "color"], "fill-opacity": RING_FILL_OPACITY },
+  });
   for (const value of LOCATION_STATUSES) {
     const dash = ringDash(value);
     map.addLayer({
@@ -893,12 +925,12 @@ function mount(map: import("mapbox-gl").Map) {
       source: "rings",
       filter: ["==", ["get", "status"], value],
       paint: {
-        "line-color": RING,
+        "line-color": ["get", "color"],
         "line-width": 2,
         // Location ids are UUIDs. Mapbox feature-state only accepts ids that
         // cast to integers, so a feature-state opacity defaulting to 0 left
         // every ring (and every pin) invisible. Paint is a plain number.
-        "line-opacity": 1,
+        "line-opacity": RING_LINE_OPACITY,
         ...(dash ? { "line-dasharray": dash } : {}),
       },
     });
@@ -977,7 +1009,7 @@ function writeSources(
         type: "Feature",
         id: store.id,
         geometry: { type: "Polygon", coordinates: [circlePolygon(store.lng, store.lat, miles)] },
-        properties: { status: kind },
+        properties: { status: kind, color },
       });
     }
     pinFeatures.push({

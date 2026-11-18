@@ -387,6 +387,10 @@ export function classifySpace(
   if (formatOk && listing.propertyFamily === "office" && !isMedicalDental(tenant.category)) soft.push("Property type is Office");
   if (formatOk && listing.propertyFamily === "medical" && !isMedicalDental(tenant.category)) soft.push("Property type is Medical");
 
+  // storeCount is the per-tenant total from one grouped count, not a scan of
+  // every location row. Zero locations can never be Top. A hard miss still excludes.
+  if (tenant.storeCount <= 0) soft.unshift("No locations");
+
   let bucket: Bucket = hard.length ? "excluded" : soft.length ? "possible" : "optimal";
   if (override?.decision === "exclude") {
     bucket = "excluded";
@@ -395,6 +399,7 @@ export function classifySpace(
     bucket = "optimal";
     notes.unshift(override.reason?.trim() ? `Included by override: ${override.reason.trim()}` : "Included by override");
   }
+  if (tenant.storeCount <= 0 && bucket === "optimal") bucket = "possible";
 
   const reasons = (bucket === "excluded" ? [...hard, ...soft] : bucket === "possible" ? [...soft, ...notes] : [...notes]).filter(Boolean);
   if (reasons.length === 0) reasons.push("Fits format, size, and market");

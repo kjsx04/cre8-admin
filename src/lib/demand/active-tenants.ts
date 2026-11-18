@@ -1,7 +1,11 @@
 /**
  * The map's left column groups tenants by category.
  * Search narrows every category. Who is on the map is tracked separately.
+ * Case variants of one category share a header. Tenants with no stored
+ * locations are left out before grouping, so an empty category disappears.
  */
+
+import { categoryKey, categoryLabel } from "./categories";
 
 export interface TenantListItem {
   id: string;
@@ -30,6 +34,11 @@ export function fitOnFirstShow(shownBefore: number): boolean {
   return shownBefore === 0;
 }
 
+/** A tenant with no rows in tenant_locations cannot be drawn, so the map list skips them. */
+export function withMapLocations<T extends { locationCount: number }>(brands: T[]): T[] {
+  return brands.filter((brand) => brand.locationCount > 0);
+}
+
 export function tenantMatchesQuery(brand: Pick<TenantListItem, "brandName" | "category">, query: string): boolean {
   const q = query.trim().toLowerCase();
   if (!q) return true;
@@ -46,20 +55,21 @@ export function groupMapCategories<T extends TenantListItem>(
   query: string,
   fits: Map<string, MapFit> | null
 ): MapCategory<T>[] {
-  const byCategory = new Map<string, T[]>();
+  const byCategory = new Map<string, { label: string; list: T[] }>();
   for (const brand of brands) {
     if (!tenantMatchesQuery(brand, query)) continue;
-    const list = byCategory.get(brand.category) || [];
-    list.push(brand);
-    byCategory.set(brand.category, list);
+    const key = categoryKey(brand.category) || "other";
+    const entry = byCategory.get(key);
+    if (entry) entry.list.push(brand);
+    else byCategory.set(key, { label: categoryLabel(brand.category), list: [brand] });
   }
-  return Array.from(byCategory.entries())
-    .filter(([, list]) => list.length > 0)
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .map(([category, list]) => {
+  return Array.from(byCategory.values())
+    .filter((entry) => entry.list.length > 0)
+    .sort((a, b) => a.label.localeCompare(b.label))
+    .map(({ label, list }) => {
       const all = list.slice().sort((a, b) => compareTenants(a, b, fits));
       const shown = fits ? all.filter((brand) => fits.get(brand.id)?.bucket === "optimal") : all;
-      return { category, count: all.length, shown, all };
+      return { category: label, count: all.length, shown, all };
     });
 }
 
