@@ -475,6 +475,7 @@ function toGroup(group: ReturnType<typeof groupSpaceMatches>[number], bundle: Bu
       bucket: classified.bucket,
       score: classified.score,
       reasons: classified.reasons,
+      checks: classified.checks,
       requirement: requirementText(classified.requirement, bundle.tiers),
       sfMin: tenant?.sfMin ?? null,
       sfMax: tenant?.sfMax ?? null,

@@ -8,7 +8,8 @@ import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, haversineMiles, spacingCue,
 import { deriveSpaces, parseSpacesHtml } from "./spaces";
 import { groupTitle } from "./format";
 import { CONTACT_CSV_HEADERS, TENANT_CSV_HEADERS, parseContactCsv, parseTenantCsv } from "./csv";
-import { classifySpace, dealTypeFit, effectiveRequirement, groupSpaceMatches, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
+import { classifySpace, dealTypeFit, effectiveRequirement, groupSpaceMatches, isStatewideMarket, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
+import type { FitCheck } from "./types";
 import { yesDealLabels } from "./deals";
 import { CANONICAL_CATEGORIES } from "./categories";
 import { BUCKET_LABEL, type CategoryDefault, type DemandSpace, type ListingContext, type SizeTier, type TenantInput, type TenantLocation } from "./types";
@@ -188,6 +189,125 @@ const wrongMarket = classifySpace(
 assert(wrongMarket.bucket === "excluded" && wrongMarket.reasons.includes("Not in this market"), "a city that is not listed is out of market");
 assert(marketMatches(["Phoenix metro"], "Mesa", "Maricopa"), "Phoenix metro covers Mesa");
 assert(!marketMatches(["Phoenix"], "Mesa", "Maricopa"), "Phoenix the city does not cover Mesa");
+
+const blossom: ListingContext = {
+  id: "blossom",
+  name: "Marketplace at Blossom Rock",
+  city: "Apache Junction",
+  county: "Pinal",
+  marketLabel: "Apache Junction, Pinal",
+  lat: 33.336973,
+  lng: -111.560578,
+  zoning: "C-2",
+  propertyType: "Retail Pads",
+  propertyFamily: "retail",
+};
+for (const market of ["Arizona", "AZ", "statewide", "Arizona statewide", "ARIZONA", "az"]) {
+  assert(marketMatches([market], "Apache Junction", "Pinal"), `${market} matches any Arizona listing`);
+}
+assert(marketMatches(["Arizona (national program)"], "Apache Junction", "Pinal"), "Arizona (national program) is still statewide");
+assert(
+  marketMatches(["Arizona statewide (incl. SE Tucson, Buckeye)"], "Apache Junction", "Pinal"),
+  "Arizona statewide with example cities is still the state"
+);
+assert(!marketMatches(["Statewide interstates"], "Apache Junction", "Pinal"), "statewide interstates is a corridor, not the whole state");
+assert(!marketMatches(["Tucson"], "Apache Junction", "Pinal"), "Tucson does not cover Apache Junction");
+assert(!isStatewideMarket("Phoenix"), "Phoenix is not a statewide tag");
+assert(marketMatches(["Arizona", "Nevada"], "Apache Junction", "Pinal"), "a statewide tag among other states still matches Arizona");
+
+function checkOf(result: { checks: FitCheck[] }, id: FitCheck["id"]): FitCheck {
+  const found = result.checks.find((check) => check.id === id);
+  if (!found) {
+    failed += 1;
+    console.error("FAIL:", `${id} check is present`);
+    throw new Error(`missing ${id} check`);
+  }
+  return found;
+}
+
+const pad11 = space({ id: "pad-b", label: "Pad B", spaceType: "pad", acres: 1.1, driveThru: null, deal: "both" });
+const whataburger = tenant({
+  id: "whataburger",
+  brandName: "Whataburger",
+  category: "QSR",
+  formats: ["endcap", "pad"],
+  sfMin: 3300,
+  sfMax: 3750,
+  acresMin: 1,
+  acresMax: 1.5,
+  driveThruRequired: true,
+  azMarkets: ["Arizona"],
+  spacingMiles: 1.5,
+  dealLease: true,
+  dealBuy: null,
+  dealGroundLease: true,
+  dealBts: null,
+  freestanding: true,
+  inline: false,
+  storeCount: 45,
+});
+const farStore = [{ id: "wb", tenantId: "whataburger", name: "Whataburger", address: null, lat: 33.336973 + 4.24 / 69, lng: -111.560578, status: "open" }];
+const wb = classifySpace(blossom, pad11, whataburger, null, tiers, farStore, null);
+assert(wb.bucket === "optimal", "Whataburger is Top on a 1.1 ac Blossom Rock pad");
+assert(!wb.reasons.includes("Not in this market"), "statewide Arizona is not out of market");
+assert(wb.checks.map((check) => check.id).join(",") === "market,format,deal,size,driveThru,spacing,locations,override", "checks stay in a stable order");
+assert(checkOf(wb, "market").status === "pass" && checkOf(wb, "market").requirement === "Arizona" && checkOf(wb, "market").value === "Apache Junction, Pinal County", "the market check names the statewide tag and the listing");
+assert(checkOf(wb, "size").status === "pass" && checkOf(wb, "size").requirement === "1-1.5 ac" && checkOf(wb, "size").value === "1.1 ac", "the size check shows the tenant range and the pad");
+assert(checkOf(wb, "driveThru").status === "unknown" && checkOf(wb, "driveThru").requirement === "Required" && checkOf(wb, "driveThru").value === "Unknown", "a pad that doesn't say drive-thru stays unknown");
+assert(checkOf(wb, "spacing").status === "pass" && checkOf(wb, "spacing").requirement === "1.5 mi" && /Nearest store \d+(\.\d)? mi/.test(checkOf(wb, "spacing").value), "spacing shows the nearest store even when it passes");
+assert(checkOf(wb, "locations").status === "pass" && checkOf(wb, "locations").value === "45 locations", "a tenant with stores clears the locations cap");
+assert(checkOf(wb, "format").status === "pass" && checkOf(wb, "deal").status === "pass" && checkOf(wb, "override").status === "pass", "format, deal type, and override pass for Whataburger");
+
+const mcdonalds = tenant({
+  id: "mcdonalds",
+  brandName: "Mcdonald's",
+  category: "QSR",
+  formats: ["endcap", "pad"],
+  acresMin: 1,
+  acresMax: 1.15,
+  driveThruRequired: true,
+  azMarkets: ["Arizona"],
+  spacingMiles: 1.5,
+  dealLease: true,
+  dealBuy: true,
+  dealGroundLease: true,
+  freestanding: true,
+  inline: false,
+  storeCount: 297,
+});
+assert(classifySpace(blossom, pad11, mcdonalds, null, tiers, [], null).bucket === "optimal", "McDonald's is Top on a 1.1 ac Blossom Rock pad");
+const pad13 = space({ id: "pad-a", label: "PAD A", spaceType: "pad", acres: 1.3, driveThru: null, deal: "both" });
+assert(classifySpace(blossom, pad13, mcdonalds, null, tiers, [], null).bucket === "possible", "McDonald's stays Possible on a 1.3 ac pad");
+
+const panda = classifySpace(
+  blossom,
+  pad11,
+  tenant({
+    id: "panda",
+    brandName: "Panda Express",
+    category: "QSR",
+    formats: ["endcap", "pad"],
+    acresMin: 1,
+    acresMax: 1,
+    driveThruRequired: true,
+    azMarkets: ["Phoenix"],
+    dealBuy: true,
+    dealGroundLease: true,
+    freestanding: true,
+    inline: false,
+    storeCount: 108,
+  }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(panda.bucket === "excluded" && checkOf(panda, "market").status === "fail", "Phoenix the city excludes Panda Express at Apache Junction");
+assert(checkOf(panda, "market").requirement === "Phoenix" && checkOf(panda, "market").value === "Apache Junction, Pinal County", "the failed market check still shows both sides");
+assert(checkOf(panda, "size").status === "soft" && checkOf(panda, "size").requirement === "1 ac", "1.1 ac against a 1 ac pad is a soft size miss");
+assert(checkOf(wb, "deal").requirement === "Ground Lease, Rent, no inline", "a passing deal check names the deal types the tenant takes");
+assert(panda.checks.some((check) => check.status === "pass"), "an excluded tenant still keeps the checks that passed");
+assert(panda.checks.every((check) => check.requirement && check.value), "every check has a requirement and a listing value");
 
 const near: TenantLocation[] = [{ id: "loc", tenantId: "burger", name: "Existing", address: null, lat: 33.4484 + 1.1 / 69, lng: -112.074, status: "open" }];
 const spaced = classifySpace(
@@ -409,6 +529,7 @@ const grouped = groupSpaceMatches(
 );
 assert(grouped.length === 2, "a 6 ac parcel does not share a group with the small pads");
 assert(grouped[0].title === "Pads A, B, C, D, 0-1.5 ac", "small pads collapse to one group label");
+assert(checkOf(grouped[0].tenants[0], "size").value === "0.9-1.4 ac", "a shared pad group shows the acreage span on the size check");
 assert(grouped[0].tenants[0].bucket === "optimal", "the shared group is the optimal set");
 assert(grouped[1].tenants[0].bucket === "excluded", "the 6 ac parcel is its own excluded result");
 assert(groupTitle(pads, "0-1.5 ac") === "Pads A, B, C, D, 0-1.5 ac", "group title pluralizes pad labels");

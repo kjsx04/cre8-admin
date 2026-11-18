@@ -10,11 +10,9 @@ import type { BaseMap } from "@/components/demand/BrandMap";
 import SpacingDefaults from "@/components/demand/SpacingDefaults";
 
 const BrandMap = dynamic(() => import("@/components/demand/BrandMap"), { ssr: false });
-import type { ListingSummary, MatchResponse } from "@/lib/demand/view";
-import type { Bucket } from "@/lib/demand/types";
+import type { ListingFit, ListingSummary, MatchResponse } from "@/lib/demand/view";
 
 type DemandView = "list" | "map";
-export type Fit = { id: string; bucket: Bucket; score: number };
 
 function useDesktop(): boolean | null {
   const [desktop, setDesktop] = useState<boolean | null>(null);
@@ -210,13 +208,19 @@ function DemandDesktop() {
   );
 }
 
-function fitsFrom(match: MatchResponse | null): Fit[] {
+function fitsFrom(match: MatchResponse | null): ListingFit[] {
   if (!match) return [];
-  const best = new Map<string, Fit>();
+  const best = new Map<string, ListingFit>();
   const rank = { optimal: 0, possible: 1, excluded: 2 };
   for (const group of match.groups || []) {
-    for (const tenant of [...group.optimal, ...group.possible]) {
-      const next: Fit = { id: tenant.tenantId, bucket: tenant.bucket, score: tenant.score };
+    for (const tenant of [...group.optimal, ...group.possible, ...group.excluded]) {
+      const next: ListingFit = {
+        id: tenant.tenantId,
+        bucket: tenant.bucket,
+        score: tenant.score,
+        space: group.title,
+        checks: tenant.checks || [],
+      };
       const prev = best.get(next.id);
       if (!prev || rank[next.bucket] < rank[prev.bucket] || (next.bucket === prev.bucket && next.score > prev.score)) {
         best.set(next.id, next);
