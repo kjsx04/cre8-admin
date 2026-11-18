@@ -22,6 +22,7 @@ type Row = {
   score: number;
   space: string;
   reason: string;
+  storeCount: number | null;
 };
 
 type Item =
@@ -128,7 +129,7 @@ export default function TenantTable({
 function buildItems(catalog: DemandListTenant[], match: MatchResponse | null, listingId: string, query: string, showAll: boolean): Item[] {
   const all = catalog
     .filter((tenant) => !query || `${tenant.brandName} ${tenant.category}`.toLowerCase().includes(query))
-    .map((tenant) => ({ tenant, bucket: null as Bucket | null, score: 0, space: "", reason: "" }))
+    .map((tenant) => ({ tenant, bucket: null as Bucket | null, score: 0, space: "", reason: "", storeCount: null as number | null }))
     .sort((a, b) => a.tenant.brandName.localeCompare(b.tenant.brandName));
   if (!listingId || !match) {
     return all.map((row) => ({ kind: "row", id: row.tenant.id, row, rank: null }));
@@ -172,12 +173,13 @@ function buildItems(catalog: DemandListTenant[], match: MatchResponse | null, li
   return items;
 }
 
-function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" | "score" | "space" | "reason"> {
+function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" | "score" | "space" | "reason" | "storeCount"> {
   return {
     bucket: tenant.bucket,
     score: tenant.score,
     space,
     reason: tenant.reasons[0] || "",
+    storeCount: tenant.storeCount,
   };
 }
 
@@ -193,13 +195,17 @@ function TierLine({ label }: { label: string }) {
 const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { kind: "row" }>; onEdit: (id: string) => void }) {
   const { row, rank } = item;
   const deals = yesDealLabels(flagsOf(row.tenant)).join(", ");
+  const noLocations = row.storeCount === 0 || row.reason === "No locations";
   return (
     <div className={`grid ${COLS} items-center border-b border-border min-h-11`}>
       <div className="px-3 text-xs text-text-3 tabular-nums">{rank ?? ""}</div>
       <div className="px-3 py-2 font-medium text-sm text-text">
         {row.tenant.brandName}
         {row.space && <span className="ml-2 text-xs text-text-3 font-normal">{row.space}</span>}
-        {rank == null && row.reason && <span className="ml-2 text-xs text-text-3 font-normal">{row.reason}</span>}
+        {noLocations && <span className="ml-2 text-xs text-text-3 font-normal">No locations</span>}
+        {rank == null && row.reason && row.reason !== "No locations" && (
+          <span className="ml-2 text-xs text-text-3 font-normal">{row.reason}</span>
+        )}
       </div>
       <div className="px-3 text-sm text-text">{row.tenant.category}</div>
       <div className="px-3 text-sm text-text whitespace-nowrap">{sizeOf(row.tenant)}</div>

@@ -111,3 +111,24 @@ export function lookupCategory<T extends { category: string }>(rows: T[], catego
   if (!category) return null;
   return indexByCategory(rows).get(categoryKey(category)) ?? null;
 }
+
+/**
+ * The name to show for a category. Known names use the canonical spelling
+ * (so "medical/dental" and "Medical/Dental" are one label). Anything else
+ * is title case. This is display only — stored values are left alone.
+ */
+export function categoryLabel(value: string | null | undefined): string {
+  const canonical = CANONICAL.get(categoryKey(value));
+  if (canonical) return canonical;
+  const raw = (value || "").trim().replace(/\s+/g, " ");
+  if (!raw) return "Other";
+  return raw
+    .split(/(\s+|\/|-)/)
+    .map((part) => {
+      if (!part || /^[\s/-]+$/.test(part)) return part;
+      const lower = part.toLowerCase();
+      if (lower === "qsr" || lower === "bts") return lower.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
+    .join("");
+}

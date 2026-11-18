@@ -57,7 +57,26 @@ assert(map.includes("Location status"), "a new pin asks for its status on the ma
 assert(map.includes("groupMapCategories"), "tenants are grouped by category");
 assert(map.includes("Expand"), "a category header expands");
 assert(map.includes("ring-black"), "a tenant on the map has a black outline");
-assert(map.includes("text-warning-fg"), "Top tenants keep the gold highlight");
+assert(map.includes("bg-warning-bg"), "Top rows use a soft gold fill");
+assert(!map.includes("text-warning-fg"), "Top names stay black");
+assert(map.includes("ml-auto"), "the disclosure triangle is right-aligned");
+assert(map.includes("text-base font-semibold"), "category headers are at least as large as the tenant names");
+assert(map.includes("border-y border-border"), "category headers have a divider above and below");
+assert(map.includes("pl-4"), "tenant rows sit in from the header");
+assert(map.includes("opacity-40"), "add location stays faint until the row is hovered");
+assert(map.includes(">Done<"), "the Done label stays in the row");
+assert(map.includes("withMapLocations"), "tenants with no locations are left off the map list");
+assert(map.includes('"fill-color": ["get", "color"]'), "spacing rings fill with the tenant pin color");
+assert(map.includes('"line-color": ["get", "color"]'), "spacing rings stroke with the tenant pin color");
+assert(map.includes('"fill-opacity": RING_FILL_OPACITY'), "spacing ring fill is lighter than the pin");
+assert(map.includes('"line-opacity": RING_LINE_OPACITY'), "spacing ring stroke is lighter than the pin");
+const ringPaint = map.slice(map.indexOf('id: "ring-fill"'), map.indexOf('id: "listing-dot"'));
+assert(
+  ringPaint.length > 0 && !ringPaint.includes('"line-color": RING') && !ringPaint.includes('"fill-color": RING'),
+  "spacing rings do not use the generic ring color"
+);
+const table = readFileSync("src/components/demand/TenantTable.tsx", "utf8");
+assert(table.includes(">No locations<"), "the list shows the no-locations note");
 assert(!map.includes(">Showing<") && !map.includes(">Active<"), "there is no pinned Active or Showing section");
 assert(map.includes('aria-label="Clear map"'), "the map can be cleared");
 assert(map.includes(">Done<"), "add location switches to a Done button");

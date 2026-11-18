@@ -1,7 +1,7 @@
 /**
  * Run: npx tsx src/lib/demand/categories.test.ts
  */
-import { categoryKey, categoryOptions, isMedicalDental, lookupCategory, sameCategory } from "./categories";
+import { categoryKey, categoryLabel, categoryOptions, isMedicalDental, lookupCategory, sameCategory } from "./categories";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -36,6 +36,12 @@ assert(lookupCategory(rows, "Grocery") == null, "a missing category does not inv
 const options = categoryOptions("junior box");
 assert(options[0] === "junior box" && options.includes("QSR") && options.includes("Medical/Dental"), "a legacy category stays selectable");
 assert(categoryOptions("QSR")[0] === "QSR" && !categoryOptions("QSR").includes("other"), "new tenants start from the 20 names");
+assert(categoryLabel("auto service") === "Auto Service" && categoryLabel("Auto Service") === "Auto Service", "auto service shows in title case");
+assert(categoryLabel("medical/dental") === "Medical/Dental" && categoryLabel("Medical/Dental") === "Medical/Dental", "medical dental folds to the canonical label");
+assert(categoryLabel("grocery") === "Grocery", "a lowercase known category uses the canonical spelling");
+assert(categoryLabel("c-store/fuel") === "C-Store/Fuel", "c-store keeps the canonical punctuation");
+assert(categoryLabel("junior box") === "Junior Box", "an unknown category is title case");
+assert(categoryLabel("  ") === "Other", "a blank category is Other");
 
 if (failed) {
   console.error(`\n${failed} failed`);

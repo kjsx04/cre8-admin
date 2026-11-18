@@ -1,7 +1,7 @@
 /**
  * Run: npx tsx src/lib/demand/active-tenants.test.ts
  */
-import { fitOnFirstShow, groupMapCategories, tenantMatchesQuery } from "./active-tenants";
+import { fitOnFirstShow, groupMapCategories, tenantMatchesQuery, withMapLocations } from "./active-tenants";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -45,6 +45,32 @@ assert(fuel?.shown.length === 0 && fuel?.count === 1, "a category with no Top te
 const searched = groupMapCategories(brands, "waffle", fits);
 assert(searched.length === 1 && searched[0].all.map((brand) => brand.id).join() === "c", "search filters across categories");
 assert(groupMapCategories(brands, "zzz", fits).length === 0, "a search that matches nothing hides every category");
+
+const cased = [
+  { id: "low", brandName: "Carvana", category: "auto service" },
+  { id: "proper", brandName: "Jiffy Lube", category: "Auto Service" },
+  { id: "med", brandName: "VIO Med Spa", category: "medical/dental" },
+  { id: "med2", brandName: "Aspen Dental", category: "Medical/Dental" },
+  { id: "box", brandName: "TJX", category: "junior box" },
+];
+const folded = groupMapCategories(cased, "", null);
+assert(
+  folded.map((group) => group.category).join("|") === "Auto Service|Junior Box|Medical/Dental",
+  "case variants share one title-case header"
+);
+assert(folded[0].count === 2 && folded[0].all.length === 2, "both casings count toward the same header");
+assert(folded.find((group) => group.category === "Medical/Dental")?.count === 2, "medical/dental folds into Medical/Dental");
+
+const located = [
+  { id: "has", brandName: "Pilot", category: "C-Store/Fuel", locationCount: 4 },
+  { id: "none", brandName: "Empty", category: "C-Store/Fuel", locationCount: 0 },
+  { id: "only", brandName: "Ghost", category: "Hotel", locationCount: 0 },
+];
+const onMap = withMapLocations(located);
+assert(onMap.map((brand) => brand.id).join() === "has", "a tenant with no locations is left off the map");
+const mapGroups = groupMapCategories(onMap, "", null);
+assert(mapGroups.length === 1 && mapGroups[0].category === "C-Store/Fuel", "a category with only empty tenants disappears");
+assert(mapGroups[0].shown.length === 1 && mapGroups[0].count === 1, "the default list and the count skip tenants with no locations");
 
 assert(fitOnFirstShow(0) === true, "the first tenant on the map fits to its locations");
 assert(fitOnFirstShow(1) === false, "a tenant added while another is on the map does not move the camera");

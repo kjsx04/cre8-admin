@@ -86,7 +86,7 @@ function tenant(partial: Partial<TenantInput> & Pick<TenantInput, "id" | "brandN
     researchStatus: null,
     researchPriority: null,
     lastResearched: null,
-    storeCount: 0,
+    storeCount: 1,
     ...partial,
   };
 }
@@ -209,7 +209,59 @@ const noStores = classifySpace(
   [],
   null
 );
-assert(noStores.bucket === "optimal", "spacing is skipped when the tenant has no locations");
+assert(noStores.bucket === "optimal", "spacing is skipped when no store coordinates are loaded");
+
+const nowhere = classifySpace(
+  listing,
+  fitSite,
+  tenant({
+    id: "nowhere",
+    brandName: "Nowhere",
+    formats: ["pad"],
+    acresMin: 0.8,
+    acresMax: 1.5,
+    azMarkets: ["Mesa"],
+    storeCount: 0,
+  }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(nowhere.bucket === "possible", "a tenant with no locations is not Top");
+assert(nowhere.reasons.includes("No locations"), "the soft reason is No locations");
+assert(!nowhere.reasons.some((reason) => /spacing|Existing store/.test(reason)), "no locations is not a spacing exclusion");
+
+const nowhereHard = classifySpace(
+  listing,
+  bigSite,
+  tenant({ id: "nowhere-big", brandName: "Nowhere", formats: ["pad"], acresMin: 0.8, acresMax: 1.5, storeCount: 0 }),
+  null,
+  tiers,
+  [],
+  null
+);
+assert(nowhereHard.bucket === "excluded" && nowhereHard.reasons.includes("No locations"), "a hard miss stays excluded and still notes no locations");
+
+const forcedEmpty = classifySpace(
+  listing,
+  fitSite,
+  tenant({
+    id: "forced-empty",
+    brandName: "Forced",
+    formats: ["pad"],
+    acresMin: 0.8,
+    acresMax: 1.5,
+    azMarkets: ["Mesa"],
+    storeCount: 0,
+  }),
+  null,
+  tiers,
+  [],
+  { spaceId: "fit", tenantId: "forced-empty", decision: "include", reason: "Landlord asked" }
+);
+assert(forcedEmpty.bucket === "possible", "an include override cannot make a tenant with no locations Top");
+assert(forcedEmpty.reasons.includes("No locations"), "the override still leaves the no-locations note");
 
 const salePad = space({ id: "sale-pad", label: "Pad A", spaceType: "pad", acres: 1.1, driveThru: true, deal: "sale" });
 const buyer = tenant({
