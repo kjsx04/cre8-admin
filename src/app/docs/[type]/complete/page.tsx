@@ -27,6 +27,7 @@ import {
   dollarToWritten,
   formatCurrency,
 } from "@/lib/number-to-words";
+import { landPricePerUnit } from "@/lib/loi-wording";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DocPreview from "@/components/DocPreview";
 import FolderPicker from "@/components/FolderPicker";
@@ -171,6 +172,16 @@ function CollapsibleSection({
                   )}
                 </label>
                 <div className="flex items-center gap-1.5">
+                  {token === "psa_drafted_by" ? (
+                    <select
+                      value={fieldValues[token] === "Buyer" ? "Buyer" : "Seller"}
+                      onChange={(e) => onFieldChange(token, e.target.value)}
+                      className="flex-1 bg-white border border-[#E0E0E0] rounded px-3 py-1.5 text-[#1A1A1A] text-sm focus:border-green"
+                    >
+                      <option value="Seller">Seller (default)</option>
+                      <option value="Buyer">Buyer</option>
+                    </select>
+                  ) : (
                   <input
                     type="text"
                     value={fieldValues[token] || ""}
@@ -185,6 +196,7 @@ function CollapsibleSection({
                                  : "border-[#E0E0E0]"
                                }`}
                   />
+                  )}
                   {/* Verification checkmark — strict mode only */}
                   {strictMode && onToggleVerify && (
                     <button
@@ -680,7 +692,7 @@ export default function CompletePage() {
 
   // Track which per-unit price was last manually entered (for LOI Land display)
   // "per_acre" | "per_sqft" | null — determines what shows in {{price_per_unit}}
-  const lastPriceModeRef = useRef<string | null>(null);
+  const lastPriceModeRef = useRef<"per_acre" | "per_sqft" | null>(null);
 
   // Team members (hardcoded) + CMS listings
   const teamMembers = CRE8_TEAM;
@@ -1033,7 +1045,9 @@ export default function CompletePage() {
     return bytes.buffer;
   }
 
-  // ── Regenerate the document with updated field values ──
+  // Rebuilds the docx and hands it to DocPreview. Field edits already call
+  // this. Clause include/exclude and edited wording must too — see the
+  // effect on clausePayload below. There is no second preview path.
   const regenerateDocument = useCallback(async () => {
     if (!docType) return;
     setIsRegenerating(true);
@@ -1171,6 +1185,19 @@ export default function CompletePage() {
     }, 1500);
   }, [regenerateDocument]);
 
+  // Checking or editing a clause updates clausePayload. After the first
+  // preview has loaded, that change rebuilds the docx the same way a
+  // form field does, so the preview follows the wording live.
+  const clauseRegenReady = useRef(false);
+  useEffect(() => {
+    if (initialLoading) return;
+    if (!clauseRegenReady.current) {
+      clauseRegenReady.current = true;
+      return;
+    }
+    triggerDebouncedRegen();
+  }, [clausePayload, initialLoading, triggerDebouncedRegen]);
+
   // ── Handle a field value change (with debounced regen) ──
   // NOTE: Dollar fields (price, money, deposit) are NOT formatted here —
   // formatting is deferred to onBlur so the user can type freely.
@@ -1215,9 +1242,10 @@ export default function CompletePage() {
               updated.price_per_acre = formatCurrency(String(Math.round(perSqft * 43560)));
             }
           } else if (token === "purchase_price" && acreage > 0) {
-            // User typed total → calc per acre and per SF (but don't set display mode)
+            // User typed the total. Keep the calculated per-acre figure on the letter.
             const total = stripCurrency(value);
             if (total > 0) {
+              if (!lastPriceModeRef.current) lastPriceModeRef.current = "per_acre";
               updated.price_per_acre = formatCurrency(String(Math.round(total / acreage)));
               // PSF: keep 2 decimals for precision (e.g. "$5.75")
               const psf = total / totalSqft;
@@ -1227,22 +1255,20 @@ export default function CompletePage() {
             // Acreage changed — recalc per-unit from total if available
             const total = stripCurrency(updated.purchase_price || "");
             if (total > 0 && acreage > 0) {
+              if (!lastPriceModeRef.current) lastPriceModeRef.current = "per_acre";
               updated.price_per_acre = formatCurrency(String(Math.round(total / acreage)));
               const psf = total / totalSqft;
               updated.price_per_sqft = "$" + psf.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
           }
 
-          // Compute the display token for the template
-          // Only shows if user explicitly entered per acre or per SF
-          const mode = lastPriceModeRef.current;
-          if (mode === "per_acre" && updated.price_per_acre) {
-            updated.price_per_unit = `(${updated.price_per_acre} per acre)`;
-          } else if (mode === "per_sqft" && updated.price_per_sqft) {
-            updated.price_per_unit = `(${updated.price_per_sqft} PSF)`;
-          } else {
-            updated.price_per_unit = "";
-          }
+          // Per-acre stays on the letter when it was calculated from the total.
+          // Per-SF wins only when that is the field the broker is editing.
+          updated.price_per_unit = landPricePerUnit({
+            mode: lastPriceModeRef.current,
+            pricePerAcre: updated.price_per_acre || "",
+            pricePerSqft: updated.price_per_sqft || "",
+          });
         }
 
         // ── Listing Agreement: auto-compute listing_price_display ──
@@ -1353,12 +1379,11 @@ export default function CompletePage() {
         }
 
         // Update price_per_unit display after formatting
-        const mode = lastPriceModeRef.current;
-        if (mode === "per_acre" && updated.price_per_acre) {
-          updated.price_per_unit = `(${updated.price_per_acre} per acre)`;
-        } else if (mode === "per_sqft" && updated.price_per_sqft) {
-          updated.price_per_unit = `(${updated.price_per_sqft} PSF)`;
-        }
+        updated.price_per_unit = landPricePerUnit({
+          mode: lastPriceModeRef.current,
+          pricePerAcre: updated.price_per_acre || "",
+          pricePerSqft: updated.price_per_sqft || "",
+        });
 
         // Recompute listing_price_display after formatting
         const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_sale_lease";

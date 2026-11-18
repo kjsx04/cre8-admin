@@ -11,10 +11,16 @@ interface DocPreviewProps {
  * Renders a .docx file as a scrollable preview inside a white container.
  * Uses docx-preview (dynamic import to avoid SSR issues).
  */
+function docxHasLetterhead(binary: string): boolean {
+  // The image filename is stored uncompressed in the zip directory.
+  return binary.includes("loi-letterhead.png");
+}
+
 export default function DocPreview({ fileBase64 }: DocPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string>("");
+  const [letterhead, setLetterhead] = useState(false);
 
   useEffect(() => {
     if (!fileBase64 || !containerRef.current) return;
@@ -35,6 +41,8 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
         for (let i = 0; i < binaryString.length; i++) {
           bytes[i] = binaryString.charCodeAt(i);
         }
+        const hasLetterhead = docxHasLetterhead(binaryString);
+        containerRef.current?.classList.toggle("with-letterhead", hasLetterhead);
 
         // Clear previous render
         if (containerRef.current) {
@@ -60,7 +68,10 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
           renderEndnotes: true,
         });
 
-        if (!cancelled) setLoading(false);
+        if (!cancelled) {
+          setLetterhead(hasLetterhead);
+          setLoading(false);
+        }
       } catch (err) {
         console.error("DocPreview render error:", err);
         if (!cancelled) {
@@ -100,7 +111,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
       {/* The docx-preview renders into this container */}
       <div
         ref={containerRef}
-        className="docx-preview-container border border-[#E0E0E0]"
+        className={`docx-preview-container border border-[#E0E0E0]${letterhead ? " with-letterhead" : ""}`}
         style={{ minHeight: loading ? "300px" : undefined }}
       />
     </div>
