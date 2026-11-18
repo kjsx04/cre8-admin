@@ -54,6 +54,16 @@ assert(map.includes('"icon-opacity": 1'), "store pins are drawn at full opacity"
 assert(map.includes("None within 10 mi"), "a tenant with nothing nearby says so");
 assert(map.includes("No locations"), "a tenant with no stores says so");
 assert(map.includes("Location status"), "a new pin asks for its status on the map");
+assert(map.includes("partitionTenants"), "active tenants are split out of the search results");
+assert(map.includes('aria-label="Active tenants"'), "active tenants sit in their own section");
+assert(map.includes("Clear all"), "the active section can be cleared");
+assert(map.includes("stageRowFlip"), "a chosen tenant slides between the list and the active section");
+assert(map.includes("from the map"), "an active tenant can be removed from the map");
+const listingEffects = map.split("useEffect(").filter((block) => block.includes("}, [listingId]"));
+assert(
+  listingEffects.length > 0 && listingEffects.every((block) => !block.includes("setActive")),
+  "changing the listing keeps the active tenants"
+);
 
 const sql = readFileSync("supabase/migrations/2026-11-17_spacing_defaults.sql", "utf8");
 for (const snippet of [
