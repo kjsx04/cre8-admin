@@ -572,7 +572,21 @@ const nearListing = { lat: 33.21908, lng: -111.54483 };
 assert(withinListingRadius(nearListing, nearListing.lat + 1 / 69, nearListing.lng), "a store about a mile away is inside the listing radius");
 assert(!withinListingRadius(nearListing, nearListing.lat + 12 / 69, nearListing.lng), "a store about 12 miles away is outside the listing radius");
 assert(withinListingRadius(null, 0, 0), "no listing keeps every location");
-assert(yesDealLabels({ dealLease: true, dealBuy: false, dealGroundLease: null, dealBts: true, freestanding: null, inline: true, dealTypesSource: null, dealTypesConfidence: null }).join(",") === "Rent,BTS,Inline", "only Yes deal types are labeled");
+const labeled = {
+  dealLease: true,
+  dealBuy: true,
+  dealGroundLease: true,
+  dealBts: true,
+  freestanding: true,
+  inline: true,
+  dealTypesSource: null,
+  dealTypesConfidence: null,
+};
+assert(yesDealLabels(labeled).join(", ") === "Purchase, Ground Lease, Rent, BTS", "yes deal types are Purchase, Ground Lease, Rent, BTS");
+assert(
+  yesDealLabels({ ...labeled, dealBuy: false, dealGroundLease: null, freestanding: true, inline: true }).join(", ") === "Rent, BTS",
+  "format flags are not deal labels"
+);
 assert(CANONICAL_CATEGORIES.length === 20 && CANONICAL_CATEGORIES.includes("QSR") && CANONICAL_CATEGORIES.includes("Specialty Retail"), "there are 20 canonical categories");
 assert(
   BUCKET_LABEL.optimal === "Top" && BUCKET_LABEL.possible === "Possible" && BUCKET_LABEL.excluded === "Not a fit",
