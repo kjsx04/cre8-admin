@@ -6,7 +6,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { IconButton, cn, FOCUS_RING } from "@/components/ui";
 import PersonHover from "@/components/demand/PersonHover";
 import TenantEditModal from "@/components/demand/TenantEditModal";
-import { categoryIsOpen, categoryRows, groupMapCategories, type MapFit } from "@/lib/demand/active-tenants";
+import { categoryIsOpen, categoryRows, groupMapCategories, toggleCategoryDisclosure, type MapFit } from "@/lib/demand/active-tenants";
 import { yesDealLabels } from "@/lib/demand/deals";
 import { rangeText } from "@/lib/demand/format";
 import type { Bucket, DealFlags } from "@/lib/demand/types";
@@ -96,9 +96,9 @@ export default function TenantTable({
 
   const listingSelected = Boolean(listingId && match);
   function toggleCategory(category: string) {
-    if (searching) return;
-    const open = categoryIsOpen(category, opened, false, listingSelected);
-    setOpened((current) => ({ ...current, [category]: !open }));
+    const groups = groupMapCategories(catalog || [], q, listingSelected && match ? fitsFrom(match) : null);
+    const topCount = groups.find((group) => group.category === category)?.shown.length ?? 0;
+    setOpened((current) => toggleCategoryDisclosure(category, current, searching, listingSelected, topCount));
   }
   const editing = catalog?.find((tenant) => tenant.id === editingId) || null;
   const openEdit = useCallback((id: string) => setEditingId(id), []);
@@ -166,9 +166,9 @@ function buildItems(
   }
   const items: Item[] = [];
   for (const group of groupMapCategories(catalog, query, fits)) {
-    const open = categoryIsOpen(group.category, opened, searching, listingSelected);
+    const open = categoryIsOpen(group.category, opened, searching, listingSelected, group.shown.length);
     items.push({ kind: "category", id: `category:${group.category}`, label: group.category, count: group.count, open });
-    categoryRows(group, open, listingSelected).forEach((tenant, index) => {
+    categoryRows(group, opened, searching, listingSelected).forEach((tenant, index) => {
       const row = best.get(tenant.id) || bases.get(tenant.id);
       if (!row) return;
       items.push({
@@ -217,7 +217,7 @@ function CategoryHeader({ item, onToggle }: { item: Extract<Item, { kind: "categ
       className={cn("-mx-3 flex w-[calc(100%+1.5rem)] items-center gap-2 border-y border-border bg-surface px-3 py-2 text-left", FOCUS_RING)}
     >
       <span className="text-base font-semibold text-text">{item.label}</span>
-      <span className="text-base font-semibold tabular-nums text-text">{item.count}</span>
+      <span className="text-xs font-normal tabular-nums text-text-3">{item.count}</span>
       <span className="ml-auto text-text-3" aria-hidden>
         {item.open ? <ChevronDown size={16} strokeWidth={1.75} /> : <ChevronRight size={16} strokeWidth={1.75} />}
       </span>

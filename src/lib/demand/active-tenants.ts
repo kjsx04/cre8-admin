@@ -48,7 +48,9 @@ export function tenantMatchesQuery(brand: Pick<TenantListItem, "brandName" | "ca
 /**
  * Categories with no matching tenants are omitted.
  * With a listing, `shown` is the Top (optimal) fits in score order.
- * Without one, `shown` is the whole category in brand-name order, which is the list the map uses today.
+ * Without one, `shown` is the whole category in brand-name order.
+ * Headers start collapsed. A listing still shows `shown` until the user
+ * clicks; an explicit collapse then hides every row.
  */
 export function groupMapCategories<T extends TenantListItem>(
   brands: T[],
@@ -73,22 +75,56 @@ export function groupMapCategories<T extends TenantListItem>(
     });
 }
 
-/** Search forces a category open. Otherwise a click wins, and a listing starts collapsed. */
+/**
+ * The triangle is open when any tenant rows are showing.
+ * Search forces that. A stored true or false is an explicit click and wins,
+ * including over Top. With no click yet, a listing is open only while it has
+ * Top rows, and All listings starts closed.
+ */
 export function categoryIsOpen(
   category: string,
   opened: Readonly<Record<string, boolean>>,
   searching: boolean,
-  listingSelected: boolean
+  listingSelected: boolean,
+  topCount: number
 ): boolean {
   if (searching) return true;
-  if (Object.prototype.hasOwnProperty.call(opened, category)) return Boolean(opened[category]);
-  return !listingSelected;
+  if (Object.prototype.hasOwnProperty.call(opened, category)) return opened[category];
+  return listingSelected && topCount > 0;
 }
 
-/** Collapsed with a listing still shows Top. Collapsed with no listing shows nothing. */
-export function categoryRows<T extends TenantListItem>(group: MapCategory<T>, open: boolean, listingSelected: boolean): T[] {
-  if (open) return group.all;
+/**
+ * Search shows every match. An explicit collapse hides every row, including
+ * Top and tenants on the map. Before any click, a listing shows Top and
+ * All listings shows nothing.
+ */
+export function categoryRows<T extends TenantListItem>(
+  group: MapCategory<T>,
+  opened: Readonly<Record<string, boolean>>,
+  searching: boolean,
+  listingSelected: boolean
+): T[] {
+  if (searching) return group.all;
+  if (Object.prototype.hasOwnProperty.call(opened, group.category)) {
+    return opened[group.category] ? group.all : [];
+  }
   return listingSelected ? group.shown : [];
+}
+
+/**
+ * Clicking the header or its triangle hides every row when any are visible,
+ * and shows the whole category otherwise. Search does not record a click.
+ */
+export function toggleCategoryDisclosure(
+  category: string,
+  opened: Readonly<Record<string, boolean>>,
+  searching: boolean,
+  listingSelected: boolean,
+  topCount: number
+): Record<string, boolean> {
+  if (searching) return opened;
+  const open = categoryIsOpen(category, opened, false, listingSelected, topCount);
+  return { ...opened, [category]: !open };
 }
 
 function compareTenants(a: TenantListItem, b: TenantListItem, fits: Map<string, MapFit> | null): number {
