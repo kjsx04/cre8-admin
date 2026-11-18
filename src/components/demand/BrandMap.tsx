@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Copy, Eye, EyeOff, Plus } from "lucide-react";
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
+import { Copy, Eye, EyeOff, Plus, X } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
@@ -10,6 +10,7 @@ import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from 
 import { SHOW_ALL_TOOLTIP, showAllAllowed } from "@/lib/demand/board";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
+import { partitionTenants, tenantMatchesQuery } from "@/lib/demand/active-tenants";
 
 export type BaseMap = "light" | "dark" | "satellite";
 
@@ -49,6 +50,149 @@ interface LastPin {
 
 const GREEN = "#8CC644";
 const RING = "#1F5F8B";
+const FLIP_MS = 420;
+const FLIP_EASE = "cubic-bezier(0.4, 0, 0.2, 1)";
+const MAX_FLY = 12;
+
+type RowSnap = { rect: DOMRect; zone: string };
+
+function stageRowFlip(
+  nodes: Map<string, HTMLDivElement>,
+  prev: Map<string, RowSnap>,
+  activeScroller: HTMLElement | null,
+  clones: HTMLElement[]
+): { play: () => void; cancel: () => void } {
+  const noop = { play() {}, cancel() {} };
+  for (const clone of [...clones]) clone.remove();
+  clones.length = 0;
+  for (const el of Array.from(nodes.values())) {
+    if (!el.isConnected) continue;
+    el.style.transition = "none";
+    el.style.transform = "";
+    el.style.visibility = "";
+  }
+  if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return noop;
+
+  for (const [id, el] of Array.from(nodes.entries())) {
+    if (!el.isConnected) nodes.delete(id);
+  }
+
+  const moves: { el: HTMLDivElement; before: RowSnap; zoneChanged: boolean }[] = [];
+  for (const [id, el] of Array.from(nodes.entries())) {
+    const before = prev.get(id);
+    if (!before) continue;
+    moves.push({ el, before, zoneChanged: before.zone !== (el.dataset.zone || "") });
+  }
+  const zoneChanges = moves.filter((move) => move.zoneChanged).length;
+  if (zoneChanges > MAX_FLY) return noop;
+
+  const firstActive = activeScroller?.querySelector("[data-zone='active']");
+  let pinToTop = false;
+  let revealed = false;
+  for (const move of moves) {
+    if (!move.zoneChanged) continue;
+    if (move.el.dataset.zone === "active" && move.el === firstActive) pinToTop = true;
+    if (!revealed && move.el.dataset.zone === "list" && move.before.zone === "active") {
+      revealRow(move.el);
+      revealed = true;
+    }
+  }
+  if (pinToTop && activeScroller) activeScroller.scrollTop = 0;
+
+  const plays: Array<() => void> = [];
+  const cancels: Array<() => void> = [];
+
+  for (const move of moves) {
+    const to = move.el.getBoundingClientRect();
+    const dx = move.before.rect.left - to.left;
+    const dy = move.before.rect.top - to.top;
+    if (Math.abs(dx) < 0.5 && Math.abs(dy) < 0.5) continue;
+    if (move.zoneChanged) {
+      const clone = move.el.cloneNode(true) as HTMLDivElement;
+      clone.setAttribute("aria-hidden", "true");
+      clone.setAttribute("inert", "");
+      clone.style.position = "fixed";
+      clone.style.margin = "0";
+      clone.style.left = `${move.before.rect.left}px`;
+      clone.style.top = `${move.before.rect.top}px`;
+      clone.style.width = `${move.before.rect.width}px`;
+      clone.style.height = `${move.before.rect.height}px`;
+      clone.style.zIndex = "40";
+      clone.style.pointerEvents = "none";
+      clone.style.transition = "none";
+      clone.style.transform = "translate(0px, 0px)";
+      clone.style.boxSizing = "border-box";
+      const bg = getComputedStyle(move.el).backgroundColor;
+      clone.style.backgroundColor = bg && bg !== "transparent" && bg !== "rgba(0, 0, 0, 0)" ? bg : "#ffffff";
+      clone.classList.add("shadow-popover");
+      document.body.appendChild(clone);
+      clones.push(clone);
+      move.el.style.visibility = "hidden";
+      const el = move.el;
+      const targetX = to.left - move.before.rect.left;
+      const targetY = to.top - move.before.rect.top;
+      plays.push(() => {
+        clone.style.transition = `transform ${FLIP_MS}ms ${FLIP_EASE}, width ${FLIP_MS}ms ${FLIP_EASE}, height ${FLIP_MS}ms ${FLIP_EASE}`;
+        clone.style.transform = `translate(${targetX}px, ${targetY}px)`;
+        clone.style.width = `${to.width}px`;
+        clone.style.height = `${to.height}px`;
+        const timer = window.setTimeout(finish, FLIP_MS + 60);
+        function finish() {
+          window.clearTimeout(timer);
+          if (!clone.isConnected) return;
+          clone.remove();
+          const index = clones.indexOf(clone);
+          if (index >= 0) clones.splice(index, 1);
+          if (el.isConnected) el.style.visibility = "";
+        }
+      });
+      cancels.push(() => {
+        clone.remove();
+        const index = clones.indexOf(clone);
+        if (index >= 0) clones.splice(index, 1);
+        if (el.isConnected) el.style.visibility = "";
+      });
+    } else {
+      const el = move.el;
+      el.style.transition = "none";
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      plays.push(() => {
+        el.style.transition = `transform ${FLIP_MS}ms ${FLIP_EASE}`;
+        el.style.transform = "";
+        el.addEventListener(
+          "transitionend",
+          () => {
+            el.style.transition = "";
+          },
+          { once: true }
+        );
+      });
+      cancels.push(() => {
+        el.style.transition = "";
+        el.style.transform = "";
+      });
+    }
+  }
+
+  return {
+    play() {
+      if (plays.length) document.body.getBoundingClientRect();
+      for (const run of plays) run();
+    },
+    cancel() {
+      for (const run of cancels) run();
+    },
+  };
+}
+
+function revealRow(el: HTMLElement) {
+  const scroller = el.closest("[data-brand-scroll]");
+  if (!(scroller instanceof HTMLElement)) return;
+  const row = el.getBoundingClientRect();
+  const box = scroller.getBoundingClientRect();
+  if (row.top < box.top) scroller.scrollTop -= box.top - row.top;
+  else if (row.bottom > box.bottom) scroller.scrollTop += row.bottom - box.bottom;
+}
 
 export default function BrandMap({
   listings,
@@ -83,6 +227,10 @@ export default function BrandMap({
   const storesRef = useRef(stores);
   const addingRef = useRef(addingId);
   const pendingRef = useRef(pending);
+  const rowNodes = useRef(new Map<string, HTMLDivElement>());
+  const flipPrev = useRef<Map<string, RowSnap> | null>(null);
+  const flipClones = useRef<HTMLElement[]>([]);
+  const activeScroll = useRef<HTMLDivElement>(null);
   storesRef.current = stores;
   addingRef.current = addingId;
   pendingRef.current = pending;
@@ -130,11 +278,12 @@ export default function BrandMap({
     };
   }, [listingId]);
 
+  // Pin placement is tied to the current map click. The active set stays,
+  // so switching listings does not take tenants off the map.
   useEffect(() => {
     addingRef.current = null;
     setAddingId(null);
     setPending(null);
-    setActive([]);
     setShowAll(false);
     setSelection(null);
     setLastPin(null);
@@ -158,9 +307,37 @@ export default function BrandMap({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  const q = query.trim().toLowerCase();
+  useLayoutEffect(() => {
+    const prev = flipPrev.current;
+    if (!prev) return;
+    const staged = stageRowFlip(rowNodes.current, prev, activeScroll.current, flipClones.current);
+    let played = false;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        played = true;
+        flipPrev.current = null;
+        staged.play();
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      if (!played) staged.cancel();
+    };
+  });
+
+  useEffect(() => {
+    const clones = flipClones.current;
+    return () => {
+      for (const clone of clones) clone.remove();
+      clones.length = 0;
+    };
+  }, []);
+
+  const { active: activeBrands, list: filtered } = partitionTenants(brands, active, query);
   const fitById = new Map(fits.map((fit) => [fit.id, fit]));
-  const filtered = brands.filter((brand) => !q || `${brand.brandName} ${brand.category}`.toLowerCase().includes(q));
   const fitting = listingId
     ? filtered
         .filter((brand) => fitById.has(brand.id))
@@ -185,7 +362,9 @@ export default function BrandMap({
     .filter((store) => withinListingRadius(origin, store.lat, store.lng));
   const spacing = new Map(brands.map((brand) => [brand.id, brand.spacingMiles]));
   const colors = new Map(brands.map((brand) => [brand.id, brandColor(brand.brandName)]));
-  const boardIds = listingId ? fits.map((fit) => fit.id) : filtered.map((brand) => brand.id);
+  const boardIds = listingId
+    ? fits.map((fit) => fit.id)
+    : brands.filter((brand) => tenantMatchesQuery(brand, query)).map((brand) => brand.id);
   const showing = active.length > 0;
   const showBlocked = !showing && !showAllAllowed(boardIds.length);
   const selected = selection ? shown.find((store) => store.id === selection.id) || null : null;
@@ -199,34 +378,78 @@ export default function BrandMap({
     return near.length === 0 ? "None within 10 mi" : null;
   }
 
-  async function reveal(ids: string[], fit: boolean) {
-    const missing = ids.filter((id) => !storesRef.current[id]);
-    setActive((current) => Array.from(new Set([...current, ...ids])));
-    if (missing.length) {
-      const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
-      const body = await res.json().catch(() => null);
-      if (!res.ok) {
-        toast.error(body?.error || "Could not load");
-        return;
-      }
-      const grouped: Record<string, Store[]> = {};
-      for (const id of missing) grouped[id] = [];
-      for (const store of body as Store[]) {
-        const row = { ...store, status: locationStatus(store.status) };
-        (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
-      }
-      setStores((current) => ({ ...current, ...grouped }));
+  function bindRow(id: string, node: HTMLDivElement | null) {
+    if (node) {
+      rowNodes.current.set(id, node);
+      return;
     }
+    const current = rowNodes.current.get(id);
+    if (current && !current.isConnected) rowNodes.current.delete(id);
+  }
+
+  function armFlip() {
+    const snap = new Map<string, RowSnap>();
+    for (const [id, el] of Array.from(rowNodes.current.entries())) {
+      if (!el.isConnected) continue;
+      snap.set(id, { rect: el.getBoundingClientRect(), zone: el.dataset.zone || "" });
+    }
+    flipPrev.current = snap;
+  }
+
+  function addActive(ids: string[], place: "start" | "end"): boolean {
+    const have = new Set(active);
+    const fresh = ids.filter((id) => !have.has(id));
+    if (!fresh.length) return false;
+    armFlip();
+    setActive(place === "start" ? [...fresh, ...active] : [...active, ...fresh]);
+    return true;
+  }
+
+  async function loadStores(ids: string[]) {
+    const missing = ids.filter((id) => !storesRef.current[id]);
+    if (!missing.length) return;
+    const res = await apiFetch("/api/demand/locations", { method: "PUT", body: JSON.stringify({ tenantIds: missing }) });
+    const body = await res.json().catch(() => null);
+    if (!res.ok) {
+      toast.error(body?.error || "Could not load");
+      return;
+    }
+    const grouped: Record<string, Store[]> = {};
+    for (const id of missing) grouped[id] = [];
+    for (const store of body as Store[]) {
+      const row = { ...store, status: locationStatus(store.status) };
+      (grouped[row.tenantId] || (grouped[row.tenantId] = [])).push(row);
+    }
+    setStores((current) => ({ ...current, ...grouped }));
+  }
+
+  async function reveal(ids: string[], fit: boolean) {
+    addActive(ids, "end");
+    await loadStores(ids);
     if (fit && !addingRef.current) setFitRequest((value) => value + 1);
   }
 
-  async function toggle(id: string) {
-    if (active.includes(id)) {
-      setActive((current) => current.filter((item) => item !== id));
-      if (!addingRef.current) setFitRequest((value) => value + 1);
-      return;
+  function deactivate(id: string) {
+    if (!active.includes(id)) return;
+    if (addingRef.current === id) {
+      addingRef.current = null;
+      setAddingId(null);
+      setPending(null);
     }
-    await reveal([id], true);
+    armFlip();
+    setActive(active.filter((item) => item !== id));
+    setSelection((current) => {
+      if (!current) return null;
+      const owns = (storesRef.current[id] || []).some((store) => store.id === current.id);
+      return owns ? null : current;
+    });
+    if (!addingRef.current) setFitRequest((value) => value + 1);
+  }
+
+  async function activate(id: string) {
+    if (!addActive([id], "start")) return;
+    await loadStores([id]);
+    if (!addingRef.current) setFitRequest((value) => value + 1);
   }
 
   function selectForAdd(id: string) {
@@ -234,10 +457,14 @@ export default function BrandMap({
     setAddingId(id);
     setPending(null);
     setSelection(null);
-    if (!active.includes(id)) void reveal([id], false);
+    if (!active.includes(id)) {
+      addActive([id], "start");
+      void loadStores([id]);
+    }
   }
 
   function clearBoard() {
+    if (active.length) armFlip();
     addingRef.current = null;
     setAddingId(null);
     setPending(null);
@@ -328,6 +555,34 @@ export default function BrandMap({
     }
   }
 
+  function renderBrand(brand: Brand, zone: "active" | "list", rank?: number) {
+    const pinned = zone === "active";
+    return (
+      <BrandRow
+        key={brand.id}
+        ref={(node) => bindRow(brand.id, node)}
+        zone={zone}
+        brand={brand}
+        rank={pinned ? undefined : rank}
+        color={pinned ? colors.get(brand.id) || brandColor(brand.brandName) : undefined}
+        on={pinned}
+        adding={addingId === brand.id}
+        dim={addingId != null && addingId !== brand.id}
+        hint={locationHint(brand)}
+        onToggle={() => {
+          if (pinned) {
+            deactivate(brand.id);
+            return;
+          }
+          if (addingId) selectForAdd(brand.id);
+          else void activate(brand.id);
+        }}
+        onAdd={() => selectForAdd(brand.id)}
+        onRemove={pinned ? () => deactivate(brand.id) : undefined}
+      />
+    );
+  }
+
   return (
     <div className="absolute inset-0">
       <MapCanvas
@@ -408,7 +663,30 @@ export default function BrandMap({
             </div>
           )}
         </div>
-        <div className="flex-1 overflow-y-auto py-2">
+        {activeBrands.length > 0 && (
+          <section
+            aria-label="Active tenants"
+            ref={activeScroll}
+            className="shrink-0 max-h-48 overflow-y-auto overscroll-contain border-b border-border bg-surface"
+          >
+            <div className="sticky top-0 z-10 flex items-center gap-2 bg-surface px-3 py-1">
+              <span className="text-xs text-text-3">Active</span>
+              <span className="text-xs tabular-nums text-text-3">{activeBrands.length}</span>
+              <span className="flex-1 border-t border-border" />
+              <button
+                type="button"
+                onClick={clearBoard}
+                className={cn("shrink-0 text-xs text-text-2 hover:text-text", FOCUS_RING)}
+              >
+                Clear all
+              </button>
+            </div>
+            <div role="list" className="pb-1">
+              {activeBrands.map((brand) => renderBrand(brand, "active"))}
+            </div>
+          </section>
+        )}
+        <div data-brand-scroll="" className="min-h-0 flex-1 overflow-y-auto py-2">
           {listingId ? (
             <>
               {(["optimal", "possible"] as const).map((bucket) => {
@@ -420,19 +698,9 @@ export default function BrandMap({
                       <span className="text-xs text-text-3">{BUCKET_LABEL[bucket]}</span>
                       <span className="flex-1 border-t border-border" />
                     </div>
-                    {list.map((brand, index) => (
-                      <BrandRow
-                        key={brand.id}
-                        brand={brand}
-                        rank={index + 1}
-                        on={active.includes(brand.id)}
-                        adding={addingId === brand.id}
-                        dim={addingId != null && addingId !== brand.id}
-                        hint={locationHint(brand)}
-                        onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
-                        onAdd={() => selectForAdd(brand.id)}
-                      />
-                    ))}
+                    <div role="list">
+                      {list.map((brand, index) => renderBrand(brand, "list", index + 1))}
+                    </div>
                   </div>
                 );
               })}
@@ -443,18 +711,9 @@ export default function BrandMap({
               </div>
               <div className={cn("grid transition-[grid-template-rows,opacity] duration-300 ease-in-out", showAll ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0")}>
                 <Collapsed inert={!showAll}>
-                  {rest.map((brand) => (
-                    <BrandRow
-                      key={brand.id}
-                      brand={brand}
-                      on={active.includes(brand.id)}
-                      adding={addingId === brand.id}
-                      dim={addingId != null && addingId !== brand.id}
-                      hint={locationHint(brand)}
-                      onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
-                      onAdd={() => selectForAdd(brand.id)}
-                    />
-                  ))}
+                  <div role="list">
+                    {rest.map((brand) => renderBrand(brand, "list"))}
+                  </div>
                 </Collapsed>
               </div>
             </>
@@ -462,18 +721,9 @@ export default function BrandMap({
             categories.map(([category, list]) => (
               <div key={category} className="px-2 mb-2">
                 <p className="px-2 py-1 text-xs text-text-3">{category}</p>
-                {list.map((brand) => (
-                  <BrandRow
-                    key={brand.id}
-                    brand={brand}
-                    on={active.includes(brand.id)}
-                    adding={addingId === brand.id}
-                    dim={addingId != null && addingId !== brand.id}
-                    hint={locationHint(brand)}
-                    onToggle={() => (addingId ? selectForAdd(brand.id) : void toggle(brand.id))}
-                    onAdd={() => selectForAdd(brand.id)}
-                  />
-                ))}
+                <div role="list">
+                  {list.map((brand) => renderBrand(brand, "list"))}
+                </div>
               </div>
             ))
           )}
@@ -498,30 +748,38 @@ function Collapsed({ inert, children }: { inert: boolean; children: ReactNode })
   );
 }
 
-function BrandRow({
-  brand,
-  rank,
-  on,
-  adding,
-  dim,
-  hint,
-  onToggle,
-  onAdd,
-}: {
+const BrandRow = forwardRef<HTMLDivElement, {
   brand: Brand;
+  zone: "active" | "list";
   rank?: number;
+  color?: string;
   on: boolean;
   adding: boolean;
   dim: boolean;
   hint: string | null;
   onToggle: () => void;
   onAdd: () => void;
-}) {
+  onRemove?: () => void;
+}>(function BrandRow({ brand, zone, rank, color, on, adding, dim, hint, onToggle, onAdd, onRemove }, ref) {
   return (
-    <div className={cn("flex items-center rounded-control mx-1", (on || adding) && !dim && "bg-surface-2")}>
+    <div
+      ref={ref}
+      data-zone={zone}
+      role="listitem"
+      className={cn("flex items-center rounded-control mx-1", (on || adding) && !dim && "bg-surface-2")}
+    >
       {rank != null && <span className="w-5 text-right text-xs text-text-3 tabular-nums">{rank}</span>}
+      {color && (
+        <span className="flex w-5 shrink-0 justify-center" aria-hidden>
+          <span
+            className={cn("h-2.5 w-2.5 rounded-full border-2 border-white ring-1 ring-border", dim && "opacity-40")}
+            style={{ background: color }}
+          />
+        </span>
+      )}
       <button
         type="button"
+        aria-pressed={on}
         onClick={onToggle}
         className={cn("flex-1 min-w-0 text-left px-2 py-1.5 text-sm", dim ? "text-text-3" : "text-text", on && !dim && "font-medium", FOCUS_RING)}
       >
@@ -537,9 +795,19 @@ function BrandRow({
       >
         <Plus size={16} strokeWidth={1.75} />
       </button>
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove ${brand.brandName} from the map`}
+          onClick={onRemove}
+          className={cn("shrink-0 px-1.5 py-1 text-text-3 hover:text-text", FOCUS_RING)}
+        >
+          <X size={14} strokeWidth={1.75} />
+        </button>
+      )}
     </div>
   );
-}
+});
 
 function StatusPopover({
   x,
