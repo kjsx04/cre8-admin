@@ -36,7 +36,7 @@ import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 import LoiSectionList from "@/components/LoiSectionList";
-import { defaultLoiClauses, type LoiClauseInput } from "@/lib/loi-sections";
+import { defaultLoiClauses, GENERAL_LOI_FIELDS, sectionsFor, type LoiClauseInput } from "@/lib/loi-sections";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
 const ParcelPickerModal = dynamic(() => import("@/components/ParcelPickerModal"), {
@@ -67,6 +67,103 @@ function isDollarToken(token: string): boolean {
 }
 
 // ── Collapsible section card for the field sidebar ──
+function FieldInputs({
+  tokens,
+  varMap,
+  writtenTokens,
+  fieldValues,
+  onFieldChange,
+  onFieldBlur,
+  aiFillingTokens,
+  strictMode,
+  verifiedFields,
+  onToggleVerify,
+}: {
+  tokens: string[];
+  varMap: Map<string, VariableDef>;
+  writtenTokens: Set<string>;
+  fieldValues: Record<string, string>;
+  onFieldChange: (token: string, value: string) => void;
+  onFieldBlur: (token: string) => void;
+  aiFillingTokens: Set<string>;
+  strictMode?: boolean;
+  verifiedFields?: Set<string>;
+  onToggleVerify?: (token: string) => void;
+}) {
+  const editable = tokens.filter((token) => {
+    if (writtenTokens.has(token) || token.endsWith("_written") || token === "price_per_unit") return false;
+    const def = varMap.get(token);
+    if (!def) return false;
+    if (def.source === "auto" && token !== "date") return false;
+    return true;
+  });
+  if (editable.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {editable.map((token) => {
+        const def = varMap.get(token);
+        const label = def?.label || token.replace(/_/g, " ");
+        const isFilling = aiFillingTokens.has(token);
+        const isDollar = !!(def?.numberField && isDollarToken(token));
+        const hasFillValue = !!(fieldValues[token] && fieldValues[token].trim());
+        const isVerified = verifiedFields?.has(token) ?? false;
+        return (
+          <div key={token} className={`transition-all duration-300 ${isFilling ? "ai-filling" : ""}`}>
+            <label className="block text-medium-gray text-xs mb-1">
+              {label}
+              {isDollar && (
+                <span className="text-[#777] ml-1 font-normal">— type number, formats on exit</span>
+              )}
+            </label>
+            <div className="flex items-center gap-1.5">
+              {token === "psa_drafted_by" ? (
+                <select
+                  value={fieldValues[token] === "Buyer" ? "Buyer" : "Seller"}
+                  onChange={(e) => onFieldChange(token, e.target.value)}
+                  className="flex-1 bg-white border border-[#E0E0E0] rounded px-3 py-1.5 text-[#1A1A1A] text-sm focus:border-green"
+                >
+                  <option value="Seller">Seller (default)</option>
+                  <option value="Buyer">Buyer</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={fieldValues[token] || ""}
+                  onChange={(e) => onFieldChange(token, e.target.value)}
+                  onBlur={() => onFieldBlur(token)}
+                  placeholder={isDollar ? "e.g. 2500000" : ""}
+                  className={`flex-1 bg-white border rounded px-3 py-1.5 text-[#1A1A1A] text-sm transition-all duration-300 focus:border-green ${
+                    isFilling ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]" : "border-[#E0E0E0]"
+                  }`}
+                />
+              )}
+              {strictMode && onToggleVerify && (
+                <button
+                  type="button"
+                  onClick={() => onToggleVerify(token)}
+                  disabled={!hasFillValue}
+                  title={!hasFillValue ? "Fill field first" : isVerified ? "Verified — click to un-verify" : "Click to verify this field"}
+                  className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200 ${
+                    !hasFillValue
+                      ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
+                      : isVerified
+                        ? "bg-green/15 border border-green text-green hover:bg-green/25"
+                        : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17L4 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CollapsibleSection({
   section,
   varMap,
@@ -148,85 +245,19 @@ function CollapsibleSection({
 
       {/* Fields — shown when expanded */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-3">
-          {editableTokens.map((token) => {
-            const def = varMap.get(token);
-            const label = def?.label || token.replace(/_/g, " ");
-            const isFilling = aiFillingTokens.has(token);
-            const isDollar = !!(def?.numberField && isDollarToken(token));
-            const hasFillValue = !!(fieldValues[token] && fieldValues[token].trim());
-            const isVerified = verifiedFields?.has(token) ?? false;
-
-            return (
-              <div
-                key={token}
-                className={`transition-all duration-300 ${
-                  isFilling ? "ai-filling" : ""
-                }`}
-              >
-                <label className="block text-medium-gray text-xs mb-1">
-                  {label}
-                  {/* Small hint for dollar fields: formatting happens when you leave the input */}
-                  {isDollar && (
-                    <span className="text-[#777] ml-1 font-normal">
-                      — type number, formats on exit
-                    </span>
-                  )}
-                </label>
-                <div className="flex items-center gap-1.5">
-                  {token === "psa_drafted_by" ? (
-                    <select
-                      value={fieldValues[token] === "Buyer" ? "Buyer" : "Seller"}
-                      onChange={(e) => onFieldChange(token, e.target.value)}
-                      className="flex-1 bg-white border border-[#E0E0E0] rounded px-3 py-1.5 text-[#1A1A1A] text-sm focus:border-green"
-                    >
-                      <option value="Seller">Seller (default)</option>
-                      <option value="Buyer">Buyer</option>
-                    </select>
-                  ) : (
-                  <input
-                    type="text"
-                    value={fieldValues[token] || ""}
-                    onChange={(e) => onFieldChange(token, e.target.value)}
-                    onBlur={() => onFieldBlur(token)}
-                    placeholder={isDollar ? "e.g. 2500000" : ""}
-                    className={`flex-1 bg-white border rounded px-3 py-1.5
-                               text-[#1A1A1A] text-sm transition-all duration-300
-                               focus:border-green
-                               ${isFilling
-                                 ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]"
-                                 : "border-[#E0E0E0]"
-                               }`}
-                  />
-                  )}
-                  {/* Verification checkmark — strict mode only */}
-                  {strictMode && onToggleVerify && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleVerify(token)}
-                      disabled={!hasFillValue}
-                      title={
-                        !hasFillValue ? "Fill field first" :
-                        isVerified ? "Verified — click to un-verify" :
-                        "Click to verify this field"
-                      }
-                      className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200
-                        ${!hasFillValue
-                          ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
-                          : isVerified
-                            ? "bg-green/15 border border-green text-green hover:bg-green/25"
-                            : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
-                        }`}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17L4 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="px-4 pb-3">
+          <FieldInputs
+            tokens={editableTokens}
+            varMap={varMap}
+            writtenTokens={writtenTokens}
+            fieldValues={fieldValues}
+            onFieldChange={onFieldChange}
+            onFieldBlur={onFieldBlur}
+            aiFillingTokens={aiFillingTokens}
+            strictMode={strictMode}
+            verifiedFields={verifiedFields}
+            onToggleVerify={onToggleVerify}
+          />
         </div>
       )}
     </div>
@@ -582,12 +613,82 @@ function FieldSidebar({
           {ownerWarning}
         </p>
       )}
-      {onClausesChange && clauses && (
-        <LoiSectionList docTypeId={docTypeId} clauses={clauses} onChange={onClausesChange} />
+      {onClausesChange && clauses && sectionsFor(docTypeId).length > 0 && (
+        <>
+          <div className="bg-white border border-[#E0E0E0] rounded-card px-3 py-3 space-y-3">
+            <FieldInputs
+              tokens={GENERAL_LOI_FIELDS}
+              varMap={varMap}
+              writtenTokens={writtenTokens}
+              fieldValues={fieldValues}
+              onFieldChange={onFieldChange}
+              onFieldBlur={onFieldBlur}
+              aiFillingTokens={aiFillingTokens}
+              strictMode={strictMode}
+              verifiedFields={verifiedFields}
+              onToggleVerify={onToggleVerify}
+            />
+            <button
+              onClick={onOpenParcelPicker}
+              className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              Select from Map
+            </button>
+            {hasParcelMapImage && onToggleParcelMap && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={includeParcelMap}
+                  onClick={onToggleParcelMap}
+                  className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"}`}
+                >
+                  <span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${includeParcelMap ? "translate-x-[14px]" : ""}`} />
+                </button>
+                <span className="text-xs text-medium-gray">Attach parcel map to document</span>
+              </label>
+            )}
+          </div>
+          {!strictMode && (
+            <CmsDropdowns
+              teamMembers={teamMembers}
+              listings={listings}
+              loadingCms={loadingCms}
+              selectedCre8Broker={selectedCre8Broker}
+              selectedListing={selectedListing}
+              onCre8BrokerChange={onCre8BrokerChange}
+              onSellerBrokerChange={onSellerBrokerChange}
+              onListingChange={onListingChange}
+            />
+          )}
+          <LoiSectionList
+            docTypeId={docTypeId}
+            clauses={clauses}
+            onChange={onClausesChange}
+            renderFields={(tokens) => (
+              <FieldInputs
+                tokens={tokens}
+                varMap={varMap}
+                writtenTokens={writtenTokens}
+                fieldValues={fieldValues}
+                onFieldChange={onFieldChange}
+                onFieldBlur={onFieldBlur}
+                aiFillingTokens={aiFillingTokens}
+                strictMode={strictMode}
+                verifiedFields={verifiedFields}
+                onToggleVerify={onToggleVerify}
+              />
+            )}
+          />
+        </>
       )}
 
-      {/* Field sections — inject helpers before Property and Date & Brokers sections */}
-      {sections.map((section) => (
+      {/* Listing agreements keep their own field groups. LOI fields live under each section. */}
+      {sectionsFor(docTypeId).length === 0 && sections.map((section) => (
         <div key={section.title}>
           {/* CMS Dropdowns right before the Date & Brokers section — flexible mode only */}
           {!strictMode && section.title === "Date & Brokers" && (

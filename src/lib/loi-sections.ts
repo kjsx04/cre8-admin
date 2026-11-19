@@ -29,7 +29,20 @@ export interface LoiSectionDef {
   /** Wording inserted when the letter has no paragraph for this section yet. */
   insertText?: string;
   variants: LoiSectionVariant[];
+  /** Form fields that belong under this row. Hidden while the section is off. */
+  fields?: string[];
 }
+
+/** Recipient, date, and the property identity. These are not numbered sections. */
+export const GENERAL_LOI_FIELDS = [
+  "date",
+  "seller_broker_name",
+  "seller_broker_company",
+  "seller_broker_email",
+  "property_address",
+  "parcel_number",
+  "acreage",
+];
 
 const EXCLUSIVE =
   "Exclusive Dealings: In consideration of Buyer's commitment to expend significant time, effort and expense to evaluate the possible acquisition of the Property, Seller agrees that it will deal exclusively with Buyer while Seller and Buyer are negotiating a Purchase Agreement and while that agreement is in full force and effect. Seller will not entertain offers, conduct negotiations, or enter into any binding agreement affecting the Property with third parties during such time.";
@@ -53,12 +66,12 @@ function libraryVariants(id: string): LoiSectionVariant[] {
 }
 
 export const LOI_SECTIONS: LoiSectionDef[] = [
-  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "seller", label: "Seller", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "buyer", label: "Buyer", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "purchase_price", label: "Purchase Price", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "contract_closing", label: "Contract & Closing", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
+  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["zoning"] },
+  { id: "seller", label: "Seller", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_entity"] },
+  { id: "buyer", label: "Buyer", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["buyer_entity"] },
+  { id: "purchase_price", label: "Purchase Price", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["purchase_price", "price_per_acre", "price_per_sqft"] },
+  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["earnest_money", "emd_days"] },
+  { id: "contract_closing", label: "Contract & Closing", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["psa_drafted_by", "psa_draft_days", "closing_period"] },
   {
     id: "closing_extension",
     label: "Closing Extension",
@@ -66,18 +79,19 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
     required: false,
     defaultOn: { loi_land: true, loi_building: true },
     variants: libraryVariants("closing_extension"),
+    fields: ["extension_count", "extension_days", "extension_deposit"],
   },
-  { id: "seller_disclosures", label: "Seller's Disclosures", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "due_diligence", label: "Due Diligence", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "title_insurance", label: "Title Insurance", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
+  { id: "seller_disclosures", label: "Seller's Disclosures", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_disclosures_days"] },
+  { id: "due_diligence", label: "Due Diligence", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["dd_period"] },
+  { id: "title_insurance", label: "Title Insurance", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["title_company", "title_agent"] },
   { id: "prorations", label: "Pro-rations", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
-  { id: "brokers", label: "Brokers", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
+  { id: "brokers", label: "Brokers", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["broker_names", "commission_pct", "cre8_agent_email", "cre8_agent_phone"] },
   {
     id: "exclusive_dealings",
     label: "Exclusive Dealings",
     docs: ["loi_land", "loi_building"],
     required: false,
-    defaultOn: { loi_land: true, loi_building: false },
+    defaultOn: { loi_land: true, loi_building: true },
     insertText: EXCLUSIVE,
     variants: [],
   },
@@ -86,7 +100,7 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
     label: "Confidentiality",
     docs: ["loi_land", "loi_building"],
     required: false,
-    defaultOn: { loi_land: true, loi_building: false },
+    defaultOn: { loi_land: true, loi_building: true },
     insertText: CONFIDENTIALITY,
     variants: [],
   },
@@ -96,8 +110,9 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
     label: "Offer Expiration",
     docs: ["loi_land", "loi_building"],
     required: false,
-    defaultOn: { loi_land: false, loi_building: false },
+    defaultOn: { loi_land: true, loi_building: true },
     insertText: OFFER_EXPIRATION,
+    fields: ["offer_expiration_days"],
     variants: [],
   },
   ...CLAUSE_LIBRARY.filter((clause) => clause.id !== "closing_extension").map((clause) => ({
@@ -109,7 +124,7 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
     insertText: `${clause.label}: ${libraryVariants(clause.id)[0]?.text || clause.template}`,
     variants: libraryVariants(clause.id),
   })),
-  { id: "nonbinding", label: "Non-Binding", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
+  { id: "nonbinding", label: "Non-Binding", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
 ];
 
 export function sectionsFor(docType: string): LoiSectionDef[] {
@@ -135,11 +150,6 @@ export function resolveLoiClauses(docType: string, clauses: LoiClauseInput[] | u
       customText: clause.customText,
       variables: clause.variables,
     });
-  }
-  for (const section of sectionsFor(docType)) {
-    if (!section.required) continue;
-    const current = resolved.get(section.id);
-    resolved.set(section.id, { ...current, id: section.id, included: true });
   }
   return resolved;
 }
@@ -258,7 +268,6 @@ export function applyLoiSections(
     if (present.has(section.id)) continue;
     const clause = resolved.get(section.id);
     if (!clause?.included) continue;
-    if (section.required) continue;
     const custom = clause.customText?.trim();
     const text = custom
       || (section.id === "offer_expiration" ? offerExpirationText(variables) : section.insertText || "");

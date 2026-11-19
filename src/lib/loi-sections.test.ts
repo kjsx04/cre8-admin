@@ -5,7 +5,8 @@
 import PizZip from "pizzip";
 import { generateDocxBuffer } from "./generate-docx";
 import { summarizeParcels } from "./loi-parcels";
-import { bindingCarveout } from "./loi-sections";
+import { bindingCarveout, defaultLoiClauses } from "./loi-sections";
+import { loiPreviewModel } from "./loi-page-model";
 import { countPhrase } from "./number-to-words";
 import { dollarToWritten, numberToWritten } from "./number-to-words";
 
@@ -62,6 +63,8 @@ const land = textOf("loi_land");
 assert(land.includes("ninety (90)"), "due diligence days are written out");
 assert(land.includes("thirty (30)"), "the hardcoded 30 days is written out");
 assert(land.includes("Exclusive Dealings") && land.includes("Confidentiality"), "land defaults include both sections");
+assert(land.includes("Offer Expiration:"), "land starts with offer expiration checked");
+assert(defaultLoiClauses("loi_land").every((clause) => clause.id === "financing_contingency" || clause.id === "as_is_purchase" || clause.id === "exchange_1031" || clause.id === "right_of_first_refusal" || clause.id === "seller_carryback" || clause.included), "template sections start checked");
 assert(land.includes("“Confidentiality” and “Exclusive Dealings” provisions"), "land carve-out cites both");
 assert(!land.includes("loi_sec_"), "section markers are not visible");
 assert(!land.includes("zoned"), "blank zoning adds nothing");
@@ -82,14 +85,17 @@ assert(landOff.includes("“Confidentiality” provision"), "carve-out follows t
 assert(!landOff.includes("Exclusive Dealings"), "carve-out does not cite a removed section");
 
 const building = textOf("loi_building");
-assert(!building.includes("Confidentiality") && !building.includes("Exclusive Dealings"), "building leaves those sections off");
-assert(!building.includes("except the parties shall be bound"), "building has no carve-out by default");
+assert(building.includes("Confidentiality") && building.includes("Exclusive Dealings"), "building starts with both sections on");
+assert(building.includes("Offer Expiration:"), "building starts with offer expiration on");
+assert(building.includes("“Confidentiality” and “Exclusive Dealings” provisions"), "building carve-out cites both by default");
 
 const buildingOn = textOf("loi_building", [
+  { id: "exclusive_dealings", included: false },
   { id: "confidentiality", included: true },
   { id: "offer_expiration", included: true },
 ]);
 assert(buildingOn.includes("Confidentiality:"), "building can turn Confidentiality on");
+assert(!buildingOn.includes("Exclusive Dealings:"), "building can turn Exclusive Dealings off");
 assert(buildingOn.includes("Offer Expiration:"), "offer expiration can be turned on");
 assert(buildingOn.includes("ten (10) days"), "offer expiration writes the day count");
 {
@@ -103,6 +109,19 @@ assert(buildingOn.includes("ten (10) days"), "offer expiration writes the day co
   assert(paragraph.includes('w:hanging="2880"'), "an inserted section keeps the hanging indent");
 }
 assert(buildingOn.includes("“Confidentiality” provision"), "building carve-out cites only what is on");
+
+{
+  const bytes = generateDocxBuffer({
+    docType: "loi_land",
+    variables: { buyer_entity: "A", seller_entity: "B", property_address: "4040 E Camelback", purchase_price: "$1", earnest_money: "$2" },
+    clauses: [{ id: "earnest_money", included: false }],
+  });
+  const body = textOf("loi_land", [{ id: "earnest_money", included: false }]);
+  assert(!body.includes("Earnest Money"), "unchecked Earnest Money leaves the letter");
+  const model = loiPreviewModel(bytes);
+  const contract = model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Contract")));
+  assert(contract?.number === "5.", "the next numbered item becomes 5");
+}
 
 const zoned = textOf("loi_land", undefined, { zoning: "C-2" });
 assert(zoned.includes("(zoned C-2)"), "zoning is added where the property line can hold it");

@@ -186,8 +186,7 @@ function assertCommonPurchase(label: string, body: string, drafter: "Seller" | "
 
 const building = textOf(generateDocxBuffer({ docType: "loi_building", variables: purchase }));
 assertCommonPurchase("building", building, "Seller");
-assert(!building.includes("Confidentiality"), "building does not cite a missing Confidentiality section");
-assert(!building.includes("Exclusive Dealings"), "building does not cite a missing Exclusive Dealings section");
+assert(building.includes("Confidentiality") && building.includes("Exclusive Dealings"), "building starts with Confidentiality and Exclusive Dealings on");
 
 const buildingBuyer = textOf(generateDocxBuffer({
   docType: "loi_building",
