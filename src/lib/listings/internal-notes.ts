@@ -15,8 +15,6 @@ export interface InternalNoteFieldDef {
   key: "asking_price" | "zoning_uses" | "other";
   /** Label shown above the box */
   label: string;
-  /** Grey hint text shown while the box is empty */
-  placeholder: string;
 }
 
 export const INTERNAL_NOTE_FIELDS: InternalNoteFieldDef[] = [
@@ -24,18 +22,15 @@ export const INTERNAL_NOTE_FIELDS: InternalNoteFieldDef[] = [
     key: "asking_price",
     // Column is still named asking_price — only the label changed
     label: "Price Guidance",
-    placeholder: "e.g. $2.4M, seller will take $2.1M. Add any pricing notes...",
   },
   {
     key: "zoning_uses",
     label: "Zoning and Allowed Uses",
-    placeholder: "Zoning, allowed uses, restrictions, entitlements...",
   },
   {
     key: "other",
     // Column is still named other — only the label changed
     label: "Notes",
-    placeholder: "Anything else the team should know...",
   },
 ];
 

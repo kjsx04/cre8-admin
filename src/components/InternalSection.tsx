@@ -211,7 +211,8 @@ export default function InternalSection({ listingId, listingName }: InternalSect
                 <RichTextEditor
                   value={values[field.key]}
                   onChange={(html) => handleChange(field.key, html)}
-                  placeholder={field.placeholder}
+                  // No grey hint text — the boxes start empty
+                  placeholder=""
                   compact
                   bare
                 />
