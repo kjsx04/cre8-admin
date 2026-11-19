@@ -242,6 +242,19 @@ function offerExpirationText(variables: Record<string, string>): string {
   return `Offer Expiration: This offer expires ${words} (${days}) days from the date of this letter if Seller has not accepted it in writing.`;
 }
 
+function visibleText(paragraph: string): string {
+  return (paragraph.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [])
+    .map((node) => node.replace(/<[^>]+>/g, ""))
+    .join("")
+    .trim();
+}
+
+/** The empty paragraph that follows a numbered item. Keep-with-next spacers stay. */
+function isItemSpacer(paragraph: string | undefined): boolean {
+  if (!paragraph || visibleText(paragraph)) return false;
+  return !/<w:keepNext\b|<w:keepLines\b|<w:drawing\b|<w:sectPr\b|<w:pict\b/.test(paragraph);
+}
+
 export function applyLoiSections(
   documentXml: string,
   docType: string,
@@ -250,16 +263,35 @@ export function applyLoiSections(
 ): string {
   const resolved = resolveLoiClauses(docType, clauses);
   const present = new Set<string>();
-  const xml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
+  const paragraphs = documentXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  const spacer = paragraphs.find((paragraph) => isItemSpacer(paragraph)) || "<w:p/>";
+  let cursor = 0;
+  let xml = "";
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    const at = documentXml.indexOf(paragraph, cursor);
+    xml += documentXml.slice(cursor, at);
+    cursor = at + paragraph.length;
     const id = markerId(paragraph);
-    if (!id) return paragraph;
+    if (!id) {
+      xml += paragraph;
+      continue;
+    }
     present.add(id);
     const clause = resolved.get(id);
-    if (clause && clause.included === false) return "";
+    if (clause && clause.included === false) {
+      if (isItemSpacer(paragraphs[index + 1])) {
+        const blank = paragraphs[index + 1];
+        const blankAt = documentXml.indexOf(blank, cursor);
+        cursor = blankAt + blank.length;
+        index += 1;
+      }
+      continue;
+    }
     const custom = clause?.customText?.trim();
-    const next = custom ? rewriteParagraph(paragraph, custom) : paragraph;
-    return stripVanish(next);
-  });
+    xml += stripVanish(custom ? rewriteParagraph(paragraph, custom) : paragraph);
+  }
+  xml += documentXml.slice(cursor);
 
   const shell = cloneShell(xml);
   if (!shell) return xml;
@@ -272,7 +304,7 @@ export function applyLoiSections(
     const text = custom
       || (section.id === "offer_expiration" ? offerExpirationText(variables) : section.insertText || "");
     if (!text) continue;
-    inserts.push(insertedParagraph(shell, text));
+    inserts.push(insertedParagraph(shell, text) + spacer);
   }
   if (inserts.length === 0) return xml;
   const anchor = xml.search(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:Term Sheet|Non-Binding)/);

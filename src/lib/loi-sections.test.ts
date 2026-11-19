@@ -121,6 +121,18 @@ assert(buildingOn.includes("“Confidentiality” provision"), "building carve-o
   const model = loiPreviewModel(bytes);
   const contract = model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Contract")));
   assert(contract?.number === "5.", "the next numbered item becomes 5");
+  const xml = new PizZip(bytes).file("word/document.xml")?.asText() ?? "";
+  const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  const paraText = (paragraph: string) =>
+    (paragraph.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join("").trim();
+  const priceAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Purchase Price"));
+  const contractAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Contract"));
+  const between = paras.slice(priceAt + 1, contractAt).filter((paragraph) => !paraText(paragraph)).length;
+  assert(between === 1, "removing Earnest Money leaves a single spacer, not a double gap");
+  const extensionAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Closing Extension"));
+  const disclosuresAt = paras.findIndex((paragraph, index) => index > extensionAt && paraText(paragraph).includes("Disclosures"));
+  const beforeDisclosures = paras.slice(extensionAt + 1, disclosuresAt).filter((paragraph) => !paraText(paragraph)).length;
+  assert(beforeDisclosures === 1, "the gap before Seller's Disclosures is one spacer, not a run of blank paragraphs");
 }
 
 const zoned = textOf("loi_land", undefined, { zoning: "C-2" });
