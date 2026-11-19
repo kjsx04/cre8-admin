@@ -1,58 +1,51 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import LoiDocPreview from "@/components/LoiDocPreview";
 
 interface DocPreviewProps {
   /** Base64 data URL of the .docx file (e.g. "data:application/...;base64,ABC...") */
   fileBase64: string;
 }
 
-/**
- * Renders a .docx file as a scrollable preview inside a white container.
- * Uses docx-preview (dynamic import to avoid SSR issues).
- */
-function docxHasLetterhead(binary: string): boolean {
-  // The image filename is stored uncompressed in the zip directory.
-  return binary.includes("loi-letterhead.png");
+function bytesFromDataUrl(fileBase64: string): { bytes: Uint8Array; hasLetterhead: boolean } {
+  const base64Data = fileBase64.split(",")[1] || "";
+  const binaryString = atob(base64Data);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i += 1) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return { bytes, hasLetterhead: binaryString.includes("loi-letterhead.png") };
 }
 
+/**
+ * LOIs are drawn as letter pages from the generated docx so the preview
+ * matches the download. Other documents still use docx-preview.
+ */
 export default function DocPreview({ fileBase64 }: DocPreviewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>("");
-  const [letterhead, setLetterhead] = useState(false);
+  const [error, setError] = useState("");
+  const [loiBytes, setLoiBytes] = useState<Uint8Array | null>(null);
 
   useEffect(() => {
-    if (!fileBase64 || !containerRef.current) return;
-
+    if (!fileBase64) return;
     let cancelled = false;
 
     async function render() {
       try {
-        // Dynamic import — docx-preview needs browser DOM
-        const docxPreview = await import("docx-preview");
-
+        const { bytes, hasLetterhead } = bytesFromDataUrl(fileBase64);
         if (cancelled) return;
-
-        // Convert base64 data URL to ArrayBuffer
-        const base64Data = fileBase64.split(",")[1];
-        const binaryString = atob(base64Data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) {
-          bytes[i] = binaryString.charCodeAt(i);
+        if (hasLetterhead) {
+          setLoiBytes(bytes);
+          setLoading(false);
+          return;
         }
-        const hasLetterhead = docxHasLetterhead(binaryString);
-        containerRef.current?.classList.toggle("with-letterhead", hasLetterhead);
-
-        // Clear previous render
-        if (containerRef.current) {
-          containerRef.current.innerHTML = "";
-        }
-
-        // Render the document
-        // ignoreFonts: true prevents null:1 404 errors from docx-preview trying
-        // to load font URLs that resolve to null — browser native fonts are fine
-        await docxPreview.renderAsync(bytes.buffer, containerRef.current!, undefined, {
+        setLoiBytes(null);
+        const docxPreview = await import("docx-preview");
+        if (cancelled || !containerRef.current) return;
+        containerRef.current.innerHTML = "";
+        await docxPreview.renderAsync(bytes.buffer, containerRef.current, undefined, {
           className: "docx",
           inWrapper: true,
           ignoreWidth: false,
@@ -67,11 +60,7 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
           renderFootnotes: true,
           renderEndnotes: true,
         });
-
-        if (!cancelled) {
-          setLetterhead(hasLetterhead);
-          setLoading(false);
-        }
+        if (!cancelled) setLoading(false);
       } catch (err) {
         console.error("DocPreview render error:", err);
         if (!cancelled) {
@@ -81,8 +70,9 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
       }
     }
 
+    setLoading(true);
+    setError("");
     render();
-
     return () => {
       cancelled = true;
     };
@@ -96,9 +86,12 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
     );
   }
 
+  if (loiBytes) {
+    return <LoiDocPreview bytes={loiBytes} />;
+  }
+
   return (
     <div className="relative">
-      {/* Loading overlay while rendering */}
       {loading && (
         <div className="absolute inset-0 flex items-center justify-center bg-[#F5F5F5] rounded-card z-10">
           <div className="flex flex-col items-center gap-3">
@@ -107,11 +100,9 @@ export default function DocPreview({ fileBase64 }: DocPreviewProps) {
           </div>
         </div>
       )}
-
-      {/* The docx-preview renders into this container */}
       <div
         ref={containerRef}
-        className={`docx-preview-container border border-[#E0E0E0]${letterhead ? " with-letterhead" : ""}`}
+        className="docx-preview-container border border-[#E0E0E0]"
         style={{ minHeight: loading ? "300px" : undefined }}
       />
     </div>

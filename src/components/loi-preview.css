@@ -1,0 +1,96 @@
+/* LOI editor pages. Sizes follow the Word file: letter, 1in margins,
+   Calibri 11pt, the green page border, and the header logo. */
+.loi-preview {
+  background: #e8e8ea;
+  padding: 16px 12px 28px;
+  overflow: auto;
+  max-height: calc(100vh - 180px);
+}
+.loi-page {
+  position: relative;
+  width: 8.5in;
+  height: 11in;
+  margin: 0 auto 18px;
+  background: #fff;
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
+}
+.loi-page-letterhead {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
+.loi-page-border {
+  position: absolute;
+  /* Word pgBorders space="24pt" and sz="3pt", color #92D050 */
+  inset: 0.33in;
+  border: 3pt solid #92d050;
+  pointer-events: none;
+}
+.loi-page-logo {
+  position: absolute;
+  top: 0.7in;
+  left: 50%;
+  width: 2.141in;
+  height: 0.724in;
+  transform: translateX(-50%);
+  object-fit: contain;
+}
+.loi-page-body {
+  position: absolute;
+  top: 1.54in;
+  left: 1in;
+  right: 1in;
+  bottom: 0.95in;
+  overflow: hidden;
+}
+.loi-page-footer {
+  position: absolute;
+  left: 0.6in;
+  right: 0.6in;
+  bottom: 0.42in;
+  text-align: center;
+  font-family: Calibri, Carlito, "Liberation Sans", sans-serif;
+  font-size: 10.5pt;
+  line-height: 1.1;
+  color: #1a1a1a;
+}
+.loi-line,
+.loi-columns {
+  font-family: Calibri, Carlito, "Liberation Sans", sans-serif;
+  font-size: 11pt;
+  line-height: 1.22;
+  color: #1a1a1a;
+  margin: 0;
+}
+.loi-line {
+  min-height: 1.22em;
+}
+.loi-columns {
+  display: grid;
+  column-gap: 0.08in;
+  align-items: start;
+}
+.loi-columns-hang {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+.loi-num {
+  flex: 0 0 auto;
+  font-size: 11pt;
+  font-family: Calibri, Carlito, "Liberation Sans", sans-serif;
+}
+.loi-measure {
+  position: absolute;
+  left: -12000px;
+  top: 0;
+  width: 6.5in;
+  height: 8.51in;
+  visibility: hidden;
+  pointer-events: none;
+  overflow: hidden;
+}
