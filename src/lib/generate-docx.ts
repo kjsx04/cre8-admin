@@ -4,7 +4,7 @@ import fs from "fs";
 import path from "path";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
 import { embedLoiLetterhead, isLoiDocType } from "@/lib/loi-letterhead";
-import { applyLoiSectionsToZip, bindingCarveout, includedSectionIds } from "@/lib/loi-sections";
+import { applyLoiSectionsToZip, bindingCarveout, includedSectionIds, insertLoiPageBreaksToZip } from "@/lib/loi-sections";
 import { applyLoiDerived } from "@/lib/loi-wording";
 import { polishLoiDocument } from "@/lib/loi-polish";
 
@@ -198,6 +198,11 @@ export function generateDocxBuffer(input: GenerateDocxInput): Buffer {
   // Polish is LOI-only: listing agreements keep their own templates and fonts.
   if (isLoiDocType(docType)) {
     applyLoiSectionsToZip(doc.getZip(), docType, clauses, data);
+    // Lease has no Exhibit A page and no numbered-section cards. Land and
+    // building start the closing, then Exhibit A, on their own pages.
+    if (docType === "loi_land" || docType === "loi_building") {
+      insertLoiPageBreaksToZip(doc.getZip());
+    }
     polishLoiDocument(doc.getZip(), data);
     embedLoiLetterhead(doc.getZip());
   }

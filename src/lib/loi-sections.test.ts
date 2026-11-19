@@ -135,6 +135,68 @@ assert(buildingOn.includes("“Confidentiality” provision"), "building carve-o
   assert(beforeDisclosures === 1, "the gap before Seller's Disclosures is one spacer, not a run of blank paragraphs");
 }
 
+{
+  const bytes = generateDocxBuffer({
+    docType: "loi_land",
+    variables: {
+      buyer_entity: "Sonoran Outpatient Partners LLC",
+      seller_entity: "Camelback Medical Holdings LLC",
+      property_address: "4040 E Camelback Road, Phoenix, AZ 85018",
+      parcel_number: "172-28-001A",
+      purchase_price: "$4,750,000",
+      acreage: "8.75",
+      earnest_money: "",
+      earnest_money_written: "",
+      emd_days: "3",
+      title_company: "Fidelity National Title",
+      title_agent: "Kristina Gooding",
+    },
+  });
+  const xml = new PizZip(bytes).file("word/document.xml")?.asText() ?? "";
+  const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  const paraText = (paragraph: string) =>
+    (paragraph.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join("").replace(/\s+/g, " ").trim();
+  const earnestPara = paras.find((paragraph) => paraText(paragraph).startsWith("Earnest Money"));
+  assert(paraText(earnestPara || "") === "Earnest Money:", "a checked blank earnest section keeps only its heading");
+  assert(!paraText(earnestPara || "").includes("Fidelity"), "a blank earnest value has no leftover title sentence");
+  const model = loiPreviewModel(bytes);
+  const earnest = model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Earnest Money")));
+  assert(earnest?.number === "5.", "the blank earnest heading stays item 5");
+  assert((earnest?.right || []).every((run) => run.text.trim() === ""), "the blank earnest value column is empty");
+  const closingAt = model?.blocks.findIndex((block) => block.left.some((run) => run.text.startsWith("If the basic terms"))) ?? -1;
+  assert(closingAt > 0 && model?.blocks[closingAt - 1]?.kind === "break", "the closing starts on a new page");
+  const exhibitAt = model?.blocks.findIndex((block) => block.left.some((run) => run.text.startsWith("Exhibit A"))) ?? -1;
+  assert(exhibitAt > closingAt && model?.blocks[exhibitAt - 1]?.kind === "break", "Exhibit A starts on its own page");
+}
+
+{
+  const blankProperty = textOf("loi_land", undefined, { acreage: "", zoning: "" });
+  assert(blankProperty.includes("Property:"), "a checked blank property section keeps its heading");
+  assert(!blankProperty.includes("Approximately"), "a blank property value is not a placeholder sentence");
+}
+
+for (const docType of ["loi_land", "loi_building"]) {
+  const xml = new PizZip(generateDocxBuffer({
+    docType,
+    variables: { buyer_entity: "A", seller_entity: "B", property_address: "4040 E Camelback", acreage: "1" },
+  })).file("word/document.xml")?.asText() ?? "";
+  const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  const paraText = (paragraph: string) =>
+    (paragraph.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join("");
+  const closing = paras.findIndex((paragraph) => paraText(paragraph).includes("If the basic terms and conditions of this Offer"));
+  const exhibit = paras.findIndex((paragraph) => paraText(paragraph).includes("Exhibit A"));
+  assert(/<w:br\b[^>]*w:type="page"/.test(paras[closing] || ""), `${docType}: page break before the closing`);
+  assert(exhibit > closing, `${docType}: Exhibit A follows the signature`);
+  assert(/<w:br\b[^>]*w:type="page"/.test(paras[exhibit] || ""), `${docType}: page break before Exhibit A`);
+  assert(!paras.slice(closing + 1, exhibit).some((paragraph) => /w:type="page"/.test(paragraph)), `${docType}: the signature stays with the closing`);
+}
+
+const leaseXml = new PizZip(generateDocxBuffer({
+  docType: "loi_lease",
+  variables: { tenant_entity: "Desert Dental Group LLC", property_address: "21001 N Tatum" },
+})).file("word/document.xml")?.asText() ?? "";
+assert(!leaseXml.includes("Exhibit A:"), "the lease letter does not gain an Exhibit A page");
+
 const zoned = textOf("loi_land", undefined, { zoning: "C-2" });
 assert(zoned.includes("(zoned C-2)"), "zoning is added where the property line can hold it");
 

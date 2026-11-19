@@ -20,10 +20,14 @@ function Runs({ runs }: { runs: PreviewRun[] }) {
             fontWeight: run.bold ? 700 : 400,
             fontStyle: run.italic ? "italic" : "normal",
             color: run.color || undefined,
-            textDecoration: run.underline ? "underline" : undefined,
+            textDecoration: run.underline && !run.rule ? "underline" : undefined,
+            display: run.rule ? "inline-block" : undefined,
+            width: run.rule ? "0.5in" : undefined,
+            borderBottom: run.rule ? "1px solid currentColor" : undefined,
+            transform: run.rule ? "translateY(-0.15em)" : undefined,
           }}
         >
-          {run.text}
+          {run.rule ? "" : run.text}
         </span>
       ))}
     </>

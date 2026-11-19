@@ -70,6 +70,10 @@ assert(address?.sizePt === 9 && address.color === "#1155CC" && address.underline
 
 const property = model?.blocks.find((block) => block.number === "1.");
 assert(!!property && property.left.some((run) => run.text.startsWith("Property")), "the label stays in the left column");
+const buyerName = model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Buyer Name")));
+assert(!!buyerName?.left.some((run) => run.rule), "signature lines keep the underline rules");
+const closingAt = model?.blocks.findIndex((block) => block.left.some((run) => run.text.startsWith("If the basic terms"))) ?? -1;
+assert(closingAt > 0 && model?.blocks[closingAt - 1]?.kind === "break", "the closing paragraph starts a new page");
 
 if (failed) {
   console.error(`${failed} assertion(s) failed`);

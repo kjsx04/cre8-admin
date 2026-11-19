@@ -14,6 +14,8 @@ export interface PreviewRun {
   /** Hyperlink blue, when the run sets one. */
   color: string | null;
   underline: boolean;
+  /** An underlined tab stop, drawn as a signature rule. */
+  rule?: boolean;
 }
 
 export interface PreviewBlock {
@@ -162,8 +164,23 @@ function paragraphBlocks(xml: string): PreviewBlock[] {
       if (/<w:vanish\b/.test(run)) continue;
       const style = styleFrom(run, paragraphStyle);
       const pieces = run.split(/<w:tab\/>/);
+      const underlinedTab = /<w:u\b/.test(run);
       pieces.forEach((piece, index) => {
-        if (index > 0) seenTab = true;
+        if (index > 0) {
+          seenTab = true;
+          if (underlinedTab) {
+            (seenTab ? right : left).push({
+              text: "",
+              bold: style.bold,
+              italic: style.italic,
+              fontFamily: style.fontFamily,
+              sizePt: style.sizePt,
+              color: style.color,
+              underline: true,
+              rule: true,
+            });
+          }
+        }
         const text = decode((piece.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join(""));
         if (!text) return;
         (seenTab ? right : left).push({
@@ -198,8 +215,8 @@ function paragraphBlocks(xml: string): PreviewBlock[] {
       kind: seenTab && hang > 0 ? "columns" : "text",
       hangInches: hang > 0 ? hang / 1440 : 0,
       number: numbered ? `${number}.` : null,
-      left: seenTab ? left : [...left, ...right],
-      right: seenTab ? right : [],
+      left: seenTab && hang > 0 ? left : [...left, ...right],
+      right: seenTab && hang > 0 ? right : [],
       align,
       linePt: Math.round(lead.sizePt * lineFactor(lead.fontFamily) * 100) / 100,
       keepNext,

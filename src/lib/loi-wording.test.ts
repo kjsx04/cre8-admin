@@ -179,7 +179,7 @@ function assertCommonPurchase(label: string, body: string, drafter: "Seller" | "
   assert(!body.includes("Day (30) day"), `${label}: no doubled Day`);
   assert(!body.includes("shall by bound"), `${label}: by/be typo is gone`);
   assert(body.includes("CRE8 Advisors, LLC"), `${label}: brokerage legal name`);
-  assert(!body.includes("Exhibit A"), `${label}: empty exhibit is omitted`);
+  assert(body.includes("Exhibit A:"), `${label}: Exhibit A follows the signature`);
   assert(!/Email:\s*$/.test(body) && body.includes("Email: rachel.torres@cushwake.com"), `${label}: email line is filled`);
   assert(!body.includes("()"), `${label}: no empty parentheses`);
 }
@@ -248,7 +248,8 @@ const unnamedBuyer = textOf(generateDocxBuffer({
   variables: { ...purchase, buyer_entity: "", earnest_money: "", earnest_money_written: "" },
 }));
 assert(unnamedBuyer.includes("the Buyer, and/or assignee"), "blank buyer is still named in the introduction");
-assert(!unnamedBuyer.includes("Buyer:"), "blank buyer omits the empty Buyer line");
+assert(unnamedBuyer.includes("Buyer:"), "a checked blank buyer keeps its heading");
+assert(!unnamedBuyer.includes("Buyer:Sonoran"), "blank buyer value stays empty");
 assert(!unnamedBuyer.includes("the sum of"), "blank earnest omits the empty sum");
 
 const leaseVars = {
