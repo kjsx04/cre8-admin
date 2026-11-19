@@ -201,6 +201,20 @@ assertCommonPurchase("land", land, "Seller");
 assert(land.includes("shall be bound"), "land keeps a binding carve-out and fixes the typo");
 assert(land.includes("Confidentiality") && land.includes("Exclusive Dealings"), "land cites the sections it actually contains");
 assert(land.includes("($850,000 per acre)"), "land price per acre reaches the letter");
+assert(land.includes(", and/or assignee"), "land intro uses the same comma as the building letter");
+assert(!land.includes(". (APN"), "land Re line drops the stray period before the APN");
+assert(!land.includes("85018 ."), "land Re line has no space before that period");
+{
+  const landXml = new PizZip(generateDocxBuffer({ docType: "loi_land", variables: purchase })).file("word/document.xml")?.asText() ?? "";
+  const landParas = landXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  const paraText = (paragraph: string) =>
+    (paragraph.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join("");
+  assert(landParas.some((paragraph) => paraText(paragraph) === "Rachel Torres"), "land contact name is its own line");
+  assert(landParas.some((paragraph) => paraText(paragraph).includes("Cushman &amp; Wakefield") && !paraText(paragraph).includes("Rachel")), "land company is its own line");
+}
+const acres = textOf(generateDocxBuffer({ docType: "loi_land", variables: { ...purchase, acreage: "3.75" } }));
+assert(acres.includes("Approximately 3.75"), "the letter prints the Acreage field");
+assert(!acres.includes("8.75"), "a different acreage does not stay in the letter");
 
 const buildingZip = new PizZip(generateDocxBuffer({ docType: "loi_building", variables: purchase }));
 const rels = buildingZip.file("word/_rels/document.xml.rels")?.asText() ?? "";

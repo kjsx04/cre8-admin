@@ -121,7 +121,7 @@ export function applyLoiDerived(
   const extensionCount = parseInt(filled(v.extension_count) || "1", 10);
   v.extension_noun =
     Number.isFinite(extensionCount) && extensionCount > 1 ? "extensions" : "extension";
-  // Intro still names someone when the buyer field is blank ("the Buyer and/or assignee").
+  // Intro still names someone when the buyer field is blank ("the Buyer, and/or assignee").
   v.buyer_party = filled(v.buyer_entity) || "the Buyer";
   if (!filled(v.alta_days)) v.alta_days = "30";
   if (!filled(v.alta_days_written)) v.alta_days_written = numberToWritten(v.alta_days);
