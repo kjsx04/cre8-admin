@@ -184,18 +184,20 @@ function assertCommonPurchase(label: string, body: string, drafter: "Seller" | "
   assert(!body.includes("()"), `${label}: no empty parentheses`);
 }
 
-const building = textOf(generateDocxBuffer({ docType: "loi_building", variables: purchase }));
+const extensionOn = [{ id: "closing_extension", included: true }];
+const building = textOf(generateDocxBuffer({ docType: "loi_building", variables: purchase, clauses: extensionOn }));
 assertCommonPurchase("building", building, "Seller");
 assert(building.includes("Confidentiality") && building.includes("Exclusive Dealings"), "building starts with Confidentiality and Exclusive Dealings on");
 
 const buildingBuyer = textOf(generateDocxBuffer({
   docType: "loi_building",
   variables: { ...purchase, psa_drafted_by: "Buyer" },
+  clauses: extensionOn,
 }));
 assert(buildingBuyer.includes("Buyer will commence preparation"), "form choice Buyer drafts");
 assert(buildingBuyer.includes("deliver the same to Seller for review"), "Buyer delivers the draft to Seller");
 
-const land = textOf(generateDocxBuffer({ docType: "loi_land", variables: purchase }));
+const land = textOf(generateDocxBuffer({ docType: "loi_land", variables: purchase, clauses: extensionOn }));
 assertCommonPurchase("land", land, "Seller");
 assert(land.includes("shall be bound"), "land keeps a binding carve-out and fixes the typo");
 assert(land.includes("Confidentiality") && land.includes("Exclusive Dealings"), "land cites the sections it actually contains");
