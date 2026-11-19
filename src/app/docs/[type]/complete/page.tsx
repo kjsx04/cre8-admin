@@ -644,9 +644,9 @@ function FieldSidebar({
             docTypeId={docTypeId}
             clauses={clauses}
             onChange={onClausesChange}
-            ids={["property"]}
             renderFields={renderFieldInputs}
-            preface={() => (
+            fieldLabels={{ earnest_money: { title_agent: "Escrow Officer" } }}
+            preface={(id) => id === "property" ? (
               <>
                 <button
                   type="button"
@@ -680,22 +680,7 @@ function FieldSidebar({
                   </label>
                 )}
               </>
-            )}
-          />
-          <LoiSectionList
-            docTypeId={docTypeId}
-            clauses={clauses}
-            onChange={onClausesChange}
-            ids={["seller", "buyer", "earnest_money"]}
-            renderFields={renderFieldInputs}
-            fieldLabels={{ earnest_money: { title_agent: "Escrow Officer" } }}
-          />
-          <LoiSectionList
-            docTypeId={docTypeId}
-            clauses={clauses}
-            onChange={onClausesChange}
-            omitIds={["property", "seller", "buyer", "earnest_money"]}
-            renderFields={renderFieldInputs}
+            ) : null}
           />
           {!strictMode && (
             <CmsDropdowns

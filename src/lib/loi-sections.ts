@@ -71,12 +71,12 @@ function libraryVariants(id: string): LoiSectionVariant[] {
 }
 
 export const LOI_SECTIONS: LoiSectionDef[] = [
-  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: [] },
-  { id: "seller", label: "Seller", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_entity"] },
-  { id: "buyer", label: "Buyer", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["buyer_entity"] },
-  { id: "purchase_price", label: "Purchase Price", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["purchase_price", "price_per_acre", "price_per_sqft"] },
-  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["earnest_money", "emd_days", "title_company", "title_agent"] },
-  { id: "contract_closing", label: "Contract & Closing", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["psa_drafted_by", "psa_draft_days", "closing_period"] },
+  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: [] },
+  { id: "seller", label: "Seller", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_entity"] },
+  { id: "buyer", label: "Buyer", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["buyer_entity"] },
+  { id: "purchase_price", label: "Purchase Price", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["purchase_price", "price_per_acre", "price_per_sqft"] },
+  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["earnest_money", "emd_days", "title_company", "title_agent"] },
+  { id: "contract_closing", label: "Contract & Closing", docs: ["loi_land", "loi_building"], required: true, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["psa_drafted_by", "psa_draft_days", "closing_period"] },
   {
     id: "closing_extension",
     label: "Closing Extension",
@@ -132,9 +132,74 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
   { id: "nonbinding", label: "Non-Binding", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
 ];
 
+/**
+ * loi_sec_* markers in each tokenized template, top to bottom.
+ * sectionsFor follows this. The section test reads the docx and fails if a
+ * template is reordered without this list, so the editor cannot drift.
+ * Sections that are not in the template are inserted just before Non-Binding,
+ * which is where the generator adds them.
+ */
+export const TEMPLATE_SECTION_ORDER: Record<string, string[]> = {
+  loi_land: [
+    "property",
+    "seller",
+    "buyer",
+    "purchase_price",
+    "earnest_money",
+    "contract_closing",
+    "closing_extension",
+    "seller_disclosures",
+    "due_diligence",
+    "title_insurance",
+    "prorations",
+    "brokers",
+    "exclusive_dealings",
+    "confidentiality",
+    "prior_agreements",
+    "nonbinding",
+  ],
+  loi_building: [
+    "property",
+    "seller",
+    "buyer",
+    "purchase_price",
+    "earnest_money",
+    "contract_closing",
+    "closing_extension",
+    "seller_disclosures",
+    "due_diligence",
+    "title_insurance",
+    "prorations",
+    "brokers",
+    "nonbinding",
+  ],
+};
+
+function orderLikeLetter(docType: string, defs: LoiSectionDef[]): LoiSectionDef[] {
+  const template = TEMPLATE_SECTION_ORDER[docType];
+  if (!template) return defs;
+  const byId = new Map(defs.map((section) => [section.id, section]));
+  const inTemplate = template
+    .map((id) => byId.get(id))
+    .filter((section): section is LoiSectionDef => !!section);
+  const extras = defs.filter((section) => !template.includes(section.id));
+  const anchor = inTemplate.findIndex((section) => section.id === "nonbinding");
+  if (anchor < 0) return [...inTemplate, ...extras];
+  return [...inTemplate.slice(0, anchor), ...extras, ...inTemplate.slice(anchor)];
+}
+
 export function sectionsFor(docType: string): LoiSectionDef[] {
-  return LOI_SECTIONS.filter((section) =>
-    section.docs.includes(docType as "loi_land" | "loi_building")
+  return orderLikeLetter(
+    docType,
+    LOI_SECTIONS.filter((section) => section.docs.includes(docType as "loi_land" | "loi_building"))
+  );
+}
+
+function requiredIds(docType: string): Set<string> {
+  return new Set(
+    LOI_SECTIONS.filter(
+      (section) => section.required && section.docs.includes(docType as "loi_land" | "loi_building")
+    ).map((section) => section.id)
   );
 }
 
@@ -148,10 +213,11 @@ export function defaultLoiClauses(docType: string): LoiClauseInput[] {
 export function resolveLoiClauses(docType: string, clauses: LoiClauseInput[] | undefined): Map<string, LoiClauseInput> {
   const resolved = new Map<string, LoiClauseInput>();
   for (const clause of defaultLoiClauses(docType)) resolved.set(clause.id, clause);
+  const required = requiredIds(docType);
   for (const clause of clauses || []) {
     resolved.set(clause.id, {
       id: clause.id,
-      included: clause.included !== false,
+      included: required.has(clause.id) ? true : clause.included !== false,
       customText: clause.customText,
       variables: clause.variables,
     });

@@ -56,7 +56,7 @@ export default function LoiSectionList({
     <div className="space-y-3">
       {ordered.map((section) => {
         const clause = byId.get(section.id);
-        const included = clause ? clause.included !== false : false;
+        const included = section.required || (clause ? clause.included !== false : false);
         const hasWording = section.variants.length > 0 || !!section.insertText;
         const fieldTokens = section.fields || [];
         const showOptions = included && (hasWording || fieldTokens.length > 0);
@@ -64,16 +64,18 @@ export default function LoiSectionList({
         const intro = preface?.(section.id);
         return (
           <div key={section.id} className="bg-white border border-[#E0E0E0] rounded-card px-3 py-3">
-            <label className="flex items-center gap-3 text-sm font-semibold text-[#1A1A1A] cursor-pointer">
+            <div className="flex items-center gap-3 text-sm font-semibold text-[#1A1A1A]">
               <span className="flex-1">{section.label}</span>
-              <input
-                type="checkbox"
-                aria-label={section.label}
-                className="h-4 w-4 shrink-0 accent-[#8CC644]"
-                checked={included}
-                onChange={(event) => update(section.id, { included: event.target.checked })}
-              />
-            </label>
+              {!section.required && (
+                <input
+                  type="checkbox"
+                  aria-label={section.label}
+                  className="h-4 w-4 shrink-0 accent-[#8CC644]"
+                  checked={included}
+                  onChange={(event) => update(section.id, { included: event.target.checked })}
+                />
+              )}
+            </div>
             {intro && <div className="mt-3 space-y-3">{intro}</div>}
             {showOptions && (
               <div className="mt-3 space-y-2 border-t border-[#E0E0E0] pt-3">
