@@ -42,6 +42,12 @@ interface RichTextEditorProps {
   placeholder?: string;
   /** Shorter starting height (for short notes). The box still grows as you type. */
   compact?: boolean;
+  /**
+   * Plain box with no toolbar (used by the Internal notes on a listing).
+   * Formatting still works: ⌘B bold, ⌘I italic, pasted bullets/bold/links are
+   * kept, and typing "-" then a space at the start of a line starts a bullet list.
+   */
+  bare?: boolean;
 }
 
 /* ============================================================
@@ -63,6 +69,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
   onChange,
   placeholder = "Enter property overview...",
   compact = false,
+  bare = false,
 }, handleRef) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
@@ -260,6 +267,55 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
     refreshState();
   }, [emit, refreshState]);
 
+  /**
+   * "-" then space at the start of a line turns the line into a bullet.
+   * Only in bare mode (the toolbar-less notes boxes).
+   */
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (!bare || e.key !== " ") return;
+    const editor = editorRef.current;
+    const sel = window.getSelection();
+    if (!editor || !sel || sel.rangeCount === 0 || !sel.isCollapsed) return;
+
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    // The caret has to be in plain text, right after a lone "-"
+    if (node.nodeType !== Node.TEXT_NODE || !editor.contains(node)) return;
+    if ((node.textContent || "").slice(0, range.startOffset) !== "-") return;
+
+    // Find the line (paragraph) the caret is in. Already inside a list? Leave it alone.
+    let block: HTMLElement | null = node.parentElement;
+    while (block && block !== editor && !["P", "DIV", "LI"].includes(block.tagName)) {
+      block = block.parentElement;
+    }
+    if (!block || block.tagName === "LI") return;
+
+    // The "-" must be the very first thing on the line, not a dash mid-sentence
+    if (block !== editor) {
+      const before = document.createRange();
+      before.setStart(block, 0);
+      before.setEnd(node, range.startOffset);
+      if (before.toString() !== "-") return;
+    } else {
+      // First line typed straight into the box (no paragraph wrapper yet)
+      const prev = node.previousSibling;
+      if (prev && prev.nodeName !== "BR" && prev.nodeType !== Node.ELEMENT_NODE) return;
+      if (prev && prev.nodeType === Node.ELEMENT_NODE && !["BR", "P", "UL", "OL", "DIV"].includes(prev.nodeName)) return;
+    }
+
+    // Swallow the space, remove the "-", and make this line a bullet
+    e.preventDefault();
+    (node as Text).deleteData(0, range.startOffset);
+    const caret = document.createRange();
+    caret.setStart(node, 0);
+    caret.collapse(true);
+    sel.removeAllRanges();
+    sel.addRange(caret);
+    document.execCommand("insertUnorderedList", false);
+    emit();
+    refreshState();
+  }, [bare, emit, refreshState]);
+
   const btn = (on: boolean) =>
     `w-8 h-8 rounded-btn border flex items-center justify-center text-sm transition-colors ${
       on
@@ -269,7 +325,8 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
 
   return (
     <div>
-      {/* Toolbar */}
+      {/* Toolbar — hidden in bare mode */}
+      {!bare && (
       <div className="flex items-center gap-1 mb-1.5">
         <button type="button" onMouseDown={(e) => e.preventDefault()} onClick={() => execCmd("bold")} className={`${btn(active.bold)} font-bold`} title="Bold (⌘B)">
           B
@@ -295,9 +352,10 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
         </button>
         <span className="ml-2 text-[11px] text-[#999]">Paste anything — it takes the site&apos;s formatting</span>
       </div>
+      )}
 
       {/* Link bar — appears under the toolbar, never a browser popup */}
-      {linkOpen && (
+      {!bare && linkOpen && (
         <div className="flex items-center gap-1.5 mb-1.5">
           <input
             autoFocus
@@ -327,6 +385,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
           onInput={emit}
           onBlur={handleBlur}
           onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
           onKeyUp={refreshState}
           onMouseUp={refreshState}
           className={`w-full ${compact ? "min-h-[88px]" : "min-h-[200px]"} bg-white border border-[#E5E5E5] rounded-btn px-3 py-2

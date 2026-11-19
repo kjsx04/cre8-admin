@@ -12,8 +12,8 @@ import {
 /* ============================================================
    INTERNAL SECTION — private notes at the top of a listing
 
-   Three rich text boxes (Internal Asking Price, Zoning and Allowed
-   Uses, Other). They are saved to Supabase only — never to Webflow,
+   Three rich text boxes (Price Guidance, Zoning and Allowed
+   Uses, Notes). They are saved to Supabase only — never to Webflow,
    never to the public site — through an API route that requires a
    signed-in user.
 
@@ -159,9 +159,6 @@ export default function InternalSection({ listingId, listingName }: InternalSect
           <h2 className="text-sm font-bold text-[#1a1a1a] uppercase tracking-wider">
             Internal
           </h2>
-          <span className="text-xs text-[#777]">
-            Team only. Never shown on the website.
-          </span>
         </div>
 
         {/* Save status */}
@@ -216,6 +213,7 @@ export default function InternalSection({ listingId, listingName }: InternalSect
                   onChange={(html) => handleChange(field.key, html)}
                   placeholder={field.placeholder}
                   compact
+                  bare
                 />
               </div>
             ))}

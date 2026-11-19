@@ -22,7 +22,8 @@ export interface InternalNoteFieldDef {
 export const INTERNAL_NOTE_FIELDS: InternalNoteFieldDef[] = [
   {
     key: "asking_price",
-    label: "Internal Asking Price",
+    // Column is still named asking_price — only the label changed
+    label: "Price Guidance",
     placeholder: "e.g. $2.4M, seller will take $2.1M. Add any pricing notes...",
   },
   {
@@ -32,7 +33,8 @@ export const INTERNAL_NOTE_FIELDS: InternalNoteFieldDef[] = [
   },
   {
     key: "other",
-    label: "Other",
+    // Column is still named other — only the label changed
+    label: "Notes",
     placeholder: "Anything else the team should know...",
   },
 ];
