@@ -42,6 +42,7 @@ export default function LoiSectionList({
           const hasWording = section.variants.length > 0 || !!section.insertText;
           const fieldTokens = section.fields || [];
           const showOptions = included && (hasWording || fieldTokens.length > 0);
+          const wording = clause?.customText !== undefined ? clause.customText : (section.insertText || "");
           return (
             <div key={section.id} className="border border-[#E0E0E0] rounded px-2.5 py-1.5">
               <label className="flex items-center gap-3 text-sm text-[#1A1A1A] cursor-pointer">
@@ -50,7 +51,7 @@ export default function LoiSectionList({
                   type="checkbox"
                   className="h-4 w-4 shrink-0 accent-[#8CC644]"
                   checked={included}
-                  onChange={(event) => update(section.id, { included: event.target.checked, customText: undefined })}
+                  onChange={(event) => update(section.id, { included: event.target.checked })}
                 />
               </label>
               {showOptions && (
@@ -58,7 +59,7 @@ export default function LoiSectionList({
                   {hasWording && (
                     <>
                       <select
-                        value={clause?.customText ? "saved" : "letter"}
+                        value={clause?.customText !== undefined ? "saved" : "letter"}
                         onChange={(event) => {
                           if (event.target.value === "letter") {
                             update(section.id, { included: true, customText: undefined });
@@ -73,14 +74,13 @@ export default function LoiSectionList({
                         <option value="letter">Letter wording</option>
                         <option value="saved">{section.variants[0]?.label || "Saved wording"}</option>
                       </select>
-                      {clause?.customText !== undefined && (
-                        <textarea
-                          value={clause.customText || ""}
-                          rows={3}
-                          onChange={(event) => update(section.id, { included: true, customText: event.target.value })}
-                          className="w-full bg-white border border-[#E0E0E0] rounded px-2 py-1 text-xs text-[#1A1A1A]"
-                        />
-                      )}
+                      <textarea
+                        value={wording}
+                        rows={4}
+                        placeholder="Letter wording"
+                        onChange={(event) => update(section.id, { included: true, customText: event.target.value })}
+                        className="w-full bg-white border border-[#E0E0E0] rounded px-2 py-1 text-xs text-[#1A1A1A]"
+                      />
                     </>
                   )}
                   {renderFields && fieldTokens.length > 0 && renderFields(fieldTokens)}
