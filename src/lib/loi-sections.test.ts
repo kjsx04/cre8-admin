@@ -2,10 +2,12 @@
  * Section toggles, the non-binding carve-out, parcel summing, and number words.
  * Run: npx tsx src/lib/loi-sections.test.ts
  */
+import fs from "fs";
+import path from "path";
 import PizZip from "pizzip";
 import { generateDocxBuffer } from "./generate-docx";
 import { summarizeParcels } from "./loi-parcels";
-import { bindingCarveout, defaultLoiClauses } from "./loi-sections";
+import { bindingCarveout, defaultLoiClauses, sectionsFor, TEMPLATE_SECTION_ORDER } from "./loi-sections";
 import { loiPreviewModel } from "./loi-page-model";
 import { countPhrase } from "./number-to-words";
 import { dollarToWritten, numberToWritten } from "./number-to-words";
@@ -110,29 +112,72 @@ assert(buildingOn.includes("ten (10) days"), "offer expiration writes the day co
 }
 assert(buildingOn.includes("“Confidentiality” provision"), "building carve-out cites only what is on");
 
+function templateMarkers(fileName: string): string[] {
+  const xml = new PizZip(fs.readFileSync(path.join("src/templates/tokenized", fileName))).file("word/document.xml")?.asText() ?? "";
+  const ids = Array.from(xml.matchAll(/loi_sec_([a-z0-9_]+)/g)).map((match) => match[1]);
+  return ids.filter((id, index) => ids.indexOf(id) === index);
+}
+
+for (const [docType, fileName] of [
+  ["loi_land", "loi-land-tokenized.docx"],
+  ["loi_building", "loi-building-tokenized.docx"],
+] as const) {
+  assert(
+    templateMarkers(fileName).join(",") === TEMPLATE_SECTION_ORDER[docType].join(","),
+    `${docType} editor order matches the template markers`
+  );
+  const ids = sectionsFor(docType).map((section) => section.id);
+  const fromLetter = ids.filter((id) => TEMPLATE_SECTION_ORDER[docType].includes(id));
+  assert(fromLetter.join(",") === TEMPLATE_SECTION_ORDER[docType].join(","), `${docType} cards follow the letter`);
+  assert(ids.indexOf("purchase_price") < ids.indexOf("earnest_money"), `${docType}: Purchase Price is above Earnest Money`);
+  assert(ids.indexOf("earnest_money") < ids.indexOf("contract_closing"), `${docType}: Earnest Money is above Contract & Closing`);
+  const nonbinding = ids.indexOf("nonbinding");
+  assert(ids.slice(0, nonbinding).includes("offer_expiration") && ids.indexOf("offer_expiration") < nonbinding, `${docType}: inserted sections sit before Non-Binding`);
+  for (const id of ["property", "seller", "buyer", "purchase_price", "earnest_money", "contract_closing"]) {
+    assert(sectionsFor(docType).find((section) => section.id === id)?.required === true, `${docType}: ${id} is required`);
+  }
+}
+
+{
+  const forcedOff = ["property", "seller", "buyer", "purchase_price", "earnest_money", "contract_closing"].map((id) => ({ id, included: false }));
+  const kept = textOf("loi_land", forcedOff, { earnest_money: "$2", purchase_price: "$1" });
+  assert(kept.includes("Property:"), "Property cannot be removed");
+  assert(kept.includes("Seller:"), "Seller cannot be removed");
+  assert(kept.includes("Buyer:"), "Buyer cannot be removed");
+  assert(kept.includes("Purchase Price:"), "Purchase Price cannot be removed");
+  assert(kept.includes("Earnest Money:"), "Earnest Money cannot be removed");
+  assert(kept.includes("Contract"), "Contract & Closing cannot be removed");
+  const model = loiPreviewModel(generateDocxBuffer({
+    docType: "loi_land",
+    variables: { buyer_entity: "A", seller_entity: "B", property_address: "4040 E Camelback", purchase_price: "$1", earnest_money: "$2", acreage: "1" },
+    clauses: forcedOff,
+  }));
+  assert(model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Earnest Money")))?.number === "5.", "Earnest Money stays item 5");
+  assert(model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Contract")))?.number === "6.", "Contract & Closing stays item 6");
+}
+
 {
   const bytes = generateDocxBuffer({
     docType: "loi_land",
-    variables: { buyer_entity: "A", seller_entity: "B", property_address: "4040 E Camelback", purchase_price: "$1", earnest_money: "$2" },
-    clauses: [{ id: "earnest_money", included: false }],
+    variables: { buyer_entity: "A", seller_entity: "B", property_address: "4040 E Camelback", purchase_price: "$1", earnest_money: "$2", acreage: "1" },
+    clauses: [{ id: "closing_extension", included: false }],
   });
-  const body = textOf("loi_land", [{ id: "earnest_money", included: false }]);
-  assert(!body.includes("Earnest Money"), "unchecked Earnest Money leaves the letter");
+  const body = textOf("loi_land", [{ id: "closing_extension", included: false }]);
+  assert(!body.includes("Closing Extension"), "unchecked Closing Extension leaves the letter");
   const model = loiPreviewModel(bytes);
-  const contract = model?.blocks.find((block) => block.left.some((run) => run.text.startsWith("Contract")));
-  assert(contract?.number === "5.", "the next numbered item becomes 5");
+  const disclosures = model?.blocks.find((block) => block.left.some((run) => run.text.includes("Disclosures")));
+  assert(disclosures?.number === "7.", "the next numbered item becomes 7");
   const xml = new PizZip(bytes).file("word/document.xml")?.asText() ?? "";
   const paras = xml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
   const paraText = (paragraph: string) =>
     (paragraph.match(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g) || []).map((node) => node.replace(/<[^>]+>/g, "")).join("").trim();
-  const priceAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Purchase Price"));
   const contractAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Contract"));
-  const between = paras.slice(priceAt + 1, contractAt).filter((paragraph) => !paraText(paragraph)).length;
-  assert(between === 1, "removing Earnest Money leaves a single spacer, not a double gap");
-  const extensionAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Closing Extension"));
-  const disclosuresAt = paras.findIndex((paragraph, index) => index > extensionAt && paraText(paragraph).includes("Disclosures"));
-  const beforeDisclosures = paras.slice(extensionAt + 1, disclosuresAt).filter((paragraph) => !paraText(paragraph)).length;
-  assert(beforeDisclosures === 1, "the gap before Seller's Disclosures is one spacer, not a run of blank paragraphs");
+  const disclosuresAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Disclosures"));
+  const between = paras.slice(contractAt + 1, disclosuresAt).filter((paragraph) => !paraText(paragraph)).length;
+  assert(between === 1, "removing Closing Extension leaves a single spacer, not a double gap");
+  const priceAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Purchase Price"));
+  const earnestAt = paras.findIndex((paragraph) => paraText(paragraph).includes("Earnest Money"));
+  assert(priceAt >= 0 && earnestAt > priceAt, "Purchase Price stays above Earnest Money in the letter");
 }
 
 {
