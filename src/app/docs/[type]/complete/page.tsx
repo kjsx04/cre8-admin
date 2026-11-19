@@ -36,7 +36,7 @@ import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 import LoiSectionList from "@/components/LoiSectionList";
-import { defaultLoiClauses, GENERAL_LOI_FIELDS, sectionsFor, type LoiClauseInput } from "@/lib/loi-sections";
+import { DATE_RECIPIENT_FIELDS, defaultLoiClauses, PROPERTY_IDENTITY_FIELDS, sectionsFor, type LoiClauseInput } from "@/lib/loi-sections";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
 const ParcelPickerModal = dynamic(() => import("@/components/ParcelPickerModal"), {
@@ -78,6 +78,7 @@ function FieldInputs({
   strictMode,
   verifiedFields,
   onToggleVerify,
+  labels,
 }: {
   tokens: string[];
   varMap: Map<string, VariableDef>;
@@ -89,6 +90,7 @@ function FieldInputs({
   strictMode?: boolean;
   verifiedFields?: Set<string>;
   onToggleVerify?: (token: string) => void;
+  labels?: Record<string, string>;
 }) {
   const editable = tokens.filter((token) => {
     if (writtenTokens.has(token) || token.endsWith("_written") || token === "price_per_unit") return false;
@@ -102,7 +104,7 @@ function FieldInputs({
     <div className="space-y-3">
       {editable.map((token) => {
         const def = varMap.get(token);
-        const label = def?.label || token.replace(/_/g, " ");
+        const label = labels?.[token] || def?.label || token.replace(/_/g, " ");
         const isFilling = aiFillingTokens.has(token);
         const isDollar = !!(def?.numberField && isDollarToken(token));
         const hasFillValue = !!(fieldValues[token] && fieldValues[token].trim());
@@ -577,18 +579,36 @@ function FieldSidebar({
   clauses?: LoiClauseInput[];
   onClausesChange?: (next: LoiClauseInput[]) => void;
 }) {
+  const isPurchaseLoi = sectionsFor(docTypeId).length > 0;
+  const renderFieldInputs = (tokens: string[], labels?: Record<string, string>) => (
+    <FieldInputs
+      tokens={tokens}
+      varMap={varMap}
+      writtenTokens={writtenTokens}
+      fieldValues={fieldValues}
+      onFieldChange={onFieldChange}
+      onFieldBlur={onFieldBlur}
+      aiFillingTokens={aiFillingTokens}
+      strictMode={strictMode}
+      verifiedFields={verifiedFields}
+      onToggleVerify={onToggleVerify}
+      labels={labels}
+    />
+  );
   return (
     <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
-      {/* AI Assist Bar */}
-      <AIAssistBar
-        docTypeId={docTypeId}
-        cmsContext={cmsContext}
-        onExtracted={onExtracted}
-        onExtracting={onExtracting}
-      />
+      {/* Listing agreements and the lease LOI keep AI assist. Land and building do not. */}
+      {!isPurchaseLoi && (
+        <AIAssistBar
+          docTypeId={docTypeId}
+          cmsContext={cmsContext}
+          onExtracted={onExtracted}
+          onExtracting={onExtracting}
+        />
+      )}
 
       {/* Shimmer overlay when AI is extracting */}
-      {isAiExtracting && (
+      {!isPurchaseLoi && isAiExtracting && (
         <div className="text-center py-2">
           <div className="inline-flex items-center gap-2 text-green text-xs">
             <div className="w-3 h-3 border-2 border-green border-t-transparent rounded-full animate-spin" />
@@ -604,55 +624,79 @@ function FieldSidebar({
         </div>
       )}
 
-      {/* Section header */}
-      <h2 className="font-bebas text-lg tracking-wide text-medium-gray mb-1">
-        EDIT FIELDS
-      </h2>
-      {ownerWarning && (
-        <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
-          {ownerWarning}
-        </p>
+      {!isPurchaseLoi && (
+        <h2 className="font-bebas text-lg tracking-wide text-medium-gray mb-1">
+          EDIT FIELDS
+        </h2>
       )}
-      {onClausesChange && clauses && sectionsFor(docTypeId).length > 0 && (
+      {onClausesChange && clauses && isPurchaseLoi && (
         <>
           <div className="bg-white border border-[#E0E0E0] rounded-card px-3 py-3 space-y-3">
-            <FieldInputs
-              tokens={GENERAL_LOI_FIELDS}
-              varMap={varMap}
-              writtenTokens={writtenTokens}
-              fieldValues={fieldValues}
-              onFieldChange={onFieldChange}
-              onFieldBlur={onFieldBlur}
-              aiFillingTokens={aiFillingTokens}
-              strictMode={strictMode}
-              verifiedFields={verifiedFields}
-              onToggleVerify={onToggleVerify}
-            />
-            <button
-              onClick={onOpenParcelPicker}
-              className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
-            >
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                <circle cx="12" cy="10" r="3" />
-              </svg>
-              Select from Map
-            </button>
-            {hasParcelMapImage && onToggleParcelMap && (
-              <label className="flex items-center gap-2 cursor-pointer">
+            <div className="text-sm font-semibold text-[#1A1A1A]">Date &amp; Recipient</div>
+            {renderFieldInputs(DATE_RECIPIENT_FIELDS, {
+              date: "Date",
+              seller_broker_name: "Recipient Name",
+              seller_broker_company: "Company",
+              seller_broker_email: "Email",
+            })}
+          </div>
+          <LoiSectionList
+            docTypeId={docTypeId}
+            clauses={clauses}
+            onChange={onClausesChange}
+            ids={["property"]}
+            renderFields={renderFieldInputs}
+            preface={() => (
+              <>
                 <button
                   type="button"
-                  role="switch"
-                  aria-checked={includeParcelMap}
-                  onClick={onToggleParcelMap}
-                  className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"}`}
+                  onClick={onOpenParcelPicker}
+                  className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
                 >
-                  <span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${includeParcelMap ? "translate-x-[14px]" : ""}`} />
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                    <circle cx="12" cy="10" r="3" />
+                  </svg>
+                  Select from Map
                 </button>
-                <span className="text-xs text-medium-gray">Attach parcel map to document</span>
-              </label>
+                {ownerWarning && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+                    {ownerWarning}
+                  </p>
+                )}
+                {renderFieldInputs(PROPERTY_IDENTITY_FIELDS)}
+                {hasParcelMapImage && onToggleParcelMap && (
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={includeParcelMap}
+                      onClick={onToggleParcelMap}
+                      className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"}`}
+                    >
+                      <span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${includeParcelMap ? "translate-x-[14px]" : ""}`} />
+                    </button>
+                    <span className="text-xs text-medium-gray">Attach parcel map to document</span>
+                  </label>
+                )}
+              </>
             )}
-          </div>
+          />
+          <LoiSectionList
+            docTypeId={docTypeId}
+            clauses={clauses}
+            onChange={onClausesChange}
+            ids={["seller", "buyer", "earnest_money"]}
+            renderFields={renderFieldInputs}
+            fieldLabels={{ earnest_money: { title_agent: "Escrow Officer" } }}
+          />
+          <LoiSectionList
+            docTypeId={docTypeId}
+            clauses={clauses}
+            onChange={onClausesChange}
+            omitIds={["property", "seller", "buyer", "earnest_money"]}
+            renderFields={renderFieldInputs}
+          />
           {!strictMode && (
             <CmsDropdowns
               teamMembers={teamMembers}
@@ -665,25 +709,6 @@ function FieldSidebar({
               onListingChange={onListingChange}
             />
           )}
-          <LoiSectionList
-            docTypeId={docTypeId}
-            clauses={clauses}
-            onChange={onClausesChange}
-            renderFields={(tokens) => (
-              <FieldInputs
-                tokens={tokens}
-                varMap={varMap}
-                writtenTokens={writtenTokens}
-                fieldValues={fieldValues}
-                onFieldChange={onFieldChange}
-                onFieldBlur={onFieldBlur}
-                aiFillingTokens={aiFillingTokens}
-                strictMode={strictMode}
-                verifiedFields={verifiedFields}
-                onToggleVerify={onToggleVerify}
-              />
-            )}
-          />
         </>
       )}
 

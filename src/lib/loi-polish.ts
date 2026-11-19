@@ -31,13 +31,15 @@ function paragraphTexts(xml: string): string[] {
   );
 }
 
-/** A label or optional sentence whose value came out blank. Spacers are kept. */
+/**
+ * A lease label or optional sentence whose value came out blank.
+ * Land and building keep a checked section's heading ("Buyer:", "Exhibit A:")
+ * even when the value is empty, so those are not in this list. Spacers are kept.
+ */
 function isBlankLabel(text: string): boolean {
   const normalized = text.replace(/\u2019/g, "'").replace(/\s+/g, " ").trim();
   return (
     /^email\s*:?$/i.test(normalized) ||
-    /^exhibit a:?$/i.test(normalized) ||
-    /^(buyer|seller|purchase price|property):$/i.test(normalized) ||
     /^tenant's trade name:$/i.test(normalized) ||
     /^lease term:$/i.test(normalized) ||
     /^exclusive:$/i.test(normalized) ||
@@ -92,8 +94,8 @@ function writeTexts(paragraph: string, texts: string[]): string {
 }
 
 /**
- * Drop a numbered line whose value is empty ("Buyer:", "Purchase Price:")
- * and an earnest phrase that rendered as "the sum of ()".
+ * Drop a lease label whose value is empty, and an earnest phrase that
+ * rendered as "the sum of ()". A checked land or building heading stays.
  * Blank paragraphs that only create vertical space are left in place.
  */
 export function dropBlankLoiLabels(documentXml: string): string {

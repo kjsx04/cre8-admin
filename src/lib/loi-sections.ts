@@ -33,15 +33,20 @@ export interface LoiSectionDef {
   fields?: string[];
 }
 
-/** Recipient, date, and the property identity. These are not numbered sections. */
-export const GENERAL_LOI_FIELDS = [
+/** Who the letter is addressed to. Not a numbered section. */
+export const DATE_RECIPIENT_FIELDS = [
   "date",
   "seller_broker_name",
   "seller_broker_company",
   "seller_broker_email",
+];
+
+/** Re line and the property facts the map can fill. Edited under the map button. */
+export const PROPERTY_IDENTITY_FIELDS = [
   "property_address",
   "parcel_number",
   "acreage",
+  "zoning",
 ];
 
 const EXCLUSIVE =
@@ -66,11 +71,11 @@ function libraryVariants(id: string): LoiSectionVariant[] {
 }
 
 export const LOI_SECTIONS: LoiSectionDef[] = [
-  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["zoning"] },
+  { id: "property", label: "Property", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: [] },
   { id: "seller", label: "Seller", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_entity"] },
   { id: "buyer", label: "Buyer", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["buyer_entity"] },
   { id: "purchase_price", label: "Purchase Price", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["purchase_price", "price_per_acre", "price_per_sqft"] },
-  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["earnest_money", "emd_days"] },
+  { id: "earnest_money", label: "Earnest Money", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["earnest_money", "emd_days", "title_company", "title_agent"] },
   { id: "contract_closing", label: "Contract & Closing", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["psa_drafted_by", "psa_draft_days", "closing_period"] },
   {
     id: "closing_extension",
@@ -83,7 +88,7 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
   },
   { id: "seller_disclosures", label: "Seller's Disclosures", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["seller_disclosures_days"] },
   { id: "due_diligence", label: "Due Diligence", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["dd_period"] },
-  { id: "title_insurance", label: "Title Insurance", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["title_company", "title_agent"] },
+  { id: "title_insurance", label: "Title Insurance", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
   { id: "prorations", label: "Pro-rations", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [] },
   { id: "brokers", label: "Brokers", docs: ["loi_land", "loi_building"], required: false, defaultOn: { loi_land: true, loi_building: true }, variants: [], fields: ["broker_names", "commission_pct", "cre8_agent_email", "cre8_agent_phone"] },
   {
@@ -249,6 +254,49 @@ function visibleText(paragraph: string): string {
     .trim();
 }
 
+/**
+ * These numbered items are a heading plus a value. When every value field is
+ * blank, the letter keeps "5. Earnest Money:" and leaves the value empty.
+ * Boilerplate sections (Confidentiality, Title Insurance, …) always have text.
+ */
+const SECTION_VALUE_FIELDS: Record<string, string[]> = {
+  property: ["acreage"],
+  seller: ["seller_entity"],
+  buyer: ["buyer_entity"],
+  purchase_price: ["purchase_price"],
+  earnest_money: ["earnest_money"],
+};
+
+function sectionValueEmpty(id: string, variables: Record<string, string>): boolean {
+  const fields = SECTION_VALUE_FIELDS[id];
+  if (!fields) return false;
+  return fields.every((field) => !(variables[field] || "").replace(/\s+/g, " ").trim());
+}
+
+function decodeXml(text: string): string {
+  return text
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+/** Keep the heading through its colon. The value runs are emptied, not replaced with a placeholder. */
+function clearSectionValue(paragraph: string): string {
+  let labelDone = false;
+  return paragraph.replace(/<w:t(\s[^>]*)?>([^<]*)<\/w:t>/g, (full, attrs, raw) => {
+    if (/loi_sec_/.test(raw)) return full;
+    if (labelDone) return `<w:t${attrs || ""}></w:t>`;
+    const decoded = decodeXml(raw);
+    const colon = decoded.indexOf(":");
+    if (colon < 0) return full;
+    labelDone = true;
+    const label = decoded.slice(0, colon + 1);
+    const attr = attrs || "";
+    const space = /\s/.test(label) && !attr.includes("xml:space") ? ' xml:space="preserve"' : "";
+    return `<w:t${attr}${space}>${encode(label)}</w:t>`;
+  });
+}
+
 /** The empty paragraph that follows a numbered item. Keep-with-next spacers stay. */
 function isItemSpacer(paragraph: string | undefined): boolean {
   if (!paragraph || visibleText(paragraph)) return false;
@@ -289,7 +337,9 @@ export function applyLoiSections(
       continue;
     }
     const custom = clause?.customText?.trim();
-    xml += stripVanish(custom ? rewriteParagraph(paragraph, custom) : paragraph);
+    let next = stripVanish(custom ? rewriteParagraph(paragraph, custom) : paragraph);
+    if (!custom && sectionValueEmpty(id, variables)) next = clearSectionValue(next);
+    xml += next;
   }
   xml += documentXml.slice(cursor);
 
@@ -310,6 +360,66 @@ export function applyLoiSections(
   const anchor = xml.search(/<w:p\b[^>]*>(?:(?!<\/w:p>)[\s\S])*?(?:Term Sheet|Non-Binding)/);
   if (anchor < 0) return xml + inserts.join("");
   return xml.slice(0, anchor) + inserts.join("") + xml.slice(anchor);
+}
+
+const PAGE_BREAK_RUN = `<w:r><w:br w:type="page"/></w:r>`;
+
+function injectPageBreak(paragraph: string): string {
+  if (/<w:br\b[^>]*w:type="page"/.test(paragraph)) return paragraph;
+  if (/<w:pPr\b/.test(paragraph)) {
+    return paragraph.replace(/<\/w:pPr>/, `</w:pPr>${PAGE_BREAK_RUN}`);
+  }
+  return paragraph.replace(/<w:p\b[^>]*>/, (open) => `${open}${PAGE_BREAK_RUN}`);
+}
+
+/**
+ * The closing ("If the basic terms and conditions…") and the signature block
+ * start on a new page. Exhibit A starts on the page after that. Trailing
+ * empty paragraphs left over from the old exhibit image are dropped so they
+ * cannot open a blank page between the signature and Exhibit A.
+ */
+export function insertLoiPageBreaks(documentXml: string): string {
+  const paragraphs = documentXml.match(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g) || [];
+  if (paragraphs.length === 0) return documentXml;
+  let lastText = -1;
+  paragraphs.forEach((paragraph, index) => {
+    if (visibleText(paragraph)) lastText = index;
+  });
+  if (lastText < 0) return documentXml;
+
+  const exhibit =
+    `<w:p><w:pPr><w:ind w:left="360"/><w:jc w:val="center"/><w:rPr>` +
+    `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>` +
+    `<w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr></w:pPr>` +
+    `${PAGE_BREAK_RUN}<w:r><w:rPr>` +
+    `<w:rFonts w:ascii="Calibri" w:hAnsi="Calibri" w:cs="Calibri"/>` +
+    `<w:sz w:val="22"/><w:szCs w:val="22"/></w:rPr><w:t>Exhibit A:</w:t></w:r></w:p>`;
+
+  let xml = "";
+  let cursor = 0;
+  let exhibitPlaced = false;
+  for (let index = 0; index < paragraphs.length; index += 1) {
+    const paragraph = paragraphs[index];
+    const at = documentXml.indexOf(paragraph, cursor);
+    xml += documentXml.slice(cursor, at);
+    cursor = at + paragraph.length;
+    if (index > lastText) continue;
+    const text = visibleText(paragraph);
+    const isClosing = text.startsWith("If the basic terms and conditions");
+    xml += isClosing ? injectPageBreak(paragraph) : paragraph;
+    if (index === lastText && !exhibitPlaced && !/Exhibit A/.test(text)) {
+      xml += exhibit;
+      exhibitPlaced = true;
+    }
+  }
+  xml += documentXml.slice(cursor);
+  return xml;
+}
+
+export function insertLoiPageBreaksToZip(zip: PizZip): void {
+  const document = zip.file("word/document.xml");
+  if (!document) return;
+  zip.file("word/document.xml", insertLoiPageBreaks(document.asText()));
 }
 
 export function applyLoiSectionsToZip(
