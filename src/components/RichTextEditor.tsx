@@ -40,6 +40,8 @@ interface RichTextEditorProps {
   onChange: (html: string) => void;
   /** Placeholder text when empty */
   placeholder?: string;
+  /** Shorter starting height (for short notes). The box still grows as you type. */
+  compact?: boolean;
 }
 
 /* ============================================================
@@ -60,6 +62,7 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
   value,
   onChange,
   placeholder = "Enter property overview...",
+  compact = false,
 }, handleRef) {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInitialized = useRef(false);
@@ -326,13 +329,13 @@ const RichTextEditor = forwardRef<RichTextEditorHandle, RichTextEditorProps>(fun
           onPaste={handlePaste}
           onKeyUp={refreshState}
           onMouseUp={refreshState}
-          className="w-full min-h-[200px] bg-white border border-[#E5E5E5] rounded-btn px-3 py-2
+          className={`w-full ${compact ? "min-h-[88px]" : "min-h-[200px]"} bg-white border border-[#E5E5E5] rounded-btn px-3 py-2
                      text-sm text-[#333] leading-relaxed outline-none focus:border-green transition-colors
                      [&_p]:mb-3 [&_p:last-child]:mb-0
                      [&_ul]:list-disc [&_ul]:pl-5 [&_ul]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ol]:mb-3
                      [&_li]:mb-1 [&_strong]:font-semibold [&_strong]:text-[#1A1A1A] [&_em]:italic
                      [&_a]:text-green [&_a]:underline
-                     [&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-[#BBB]"
+                     [&:empty]:before:content-[attr(data-placeholder)] [&:empty]:before:text-[#BBB]`}
           data-placeholder={placeholder}
           suppressContentEditableWarning
         />

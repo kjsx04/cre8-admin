@@ -22,6 +22,7 @@ import FileUploadZone from "@/components/FileUploadZone";
 import PhotoUploader from "@/components/PhotoUploader";
 import PublishModal from "@/components/PublishModal";
 import ChecklistCard from "@/components/checklist/ChecklistCard";
+import InternalSection from "@/components/InternalSection";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 import { EMPTY_ITEMS } from "@/lib/checklist/constants";
 import type { ListingChecklist } from "@/lib/checklist/types";
@@ -924,6 +925,16 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
         throw new Error(`Delete failed: ${res.status} — ${text}`);
       }
 
+      // Remove the internal notes — only after the listing itself is gone,
+      // so a failed delete never costs the team its notes
+      try {
+        await apiFetch(`/api/listings/internal/${draftId}`, {
+          method: "DELETE",
+        });
+      } catch {
+        // Non-critical — an orphaned notes row is harmless
+      }
+
       // Reset state and redirect to listings list
       setIsDeleting(false);
       setShowDeleteConfirm(false);
@@ -1138,6 +1149,14 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           )}
         </div>
       )}
+
+      {/* ---- Internal (team-only notes) ----
+          Saved to Supabase only, by its own auto-save. These notes are NOT
+          part of buildPayload(), so they never go to Webflow or the website. */}
+      <InternalSection
+        listingId={draftId}
+        listingName={String(fields.name || "")}
+      />
 
       {/* ---- New Listing Checklist ---- */}
       {checklist?.is_new && (
