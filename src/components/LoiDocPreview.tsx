@@ -81,11 +81,16 @@ interface PagePiece {
   clip: number;
 }
 
-function paginate(blocks: PreviewBlock[], heights: number[], limit: number): PagePiece[][] {
+/** Whole line boxes only, so a page never ends in the middle of a line. */
+function wholeLines(space: number, line: number): number {
+  if (line <= 0) return 0;
+  return Math.floor(space / line) * line;
+}
+
+function paginate(blocks: PreviewBlock[], heights: number[], steps: number[], limit: number): PagePiece[][] {
   const pages: PagePiece[][] = [];
   let current: PagePiece[] = [];
   let used = 0;
-  const line = 16;
 
   const pushPage = () => {
     if (current.length) pages.push(current);
@@ -93,29 +98,44 @@ function paginate(blocks: PreviewBlock[], heights: number[], limit: number): Pag
     used = 0;
   };
 
+  const chainEnd = (start: number) => {
+    let index = start;
+    while (index < blocks.length && blocks[index].kind !== "break" && blocks[index].keepNext) index += 1;
+    return Math.min(blocks.length, index + 1);
+  };
+
   blocks.forEach((block, index) => {
     if (block.kind === "break") {
       pushPage();
       return;
     }
+    const step = steps[index] > 0 ? steps[index] : 18;
     let height = heights[index] || 0;
     let offset = 0;
+    if (block.keepNext && current.length > 0) {
+      const end = chainEnd(index);
+      let group = 0;
+      for (let cursor = index; cursor < end; cursor += 1) group += heights[cursor] || 0;
+      if (used + group > limit && group <= limit) pushPage();
+    }
     if (current.length > 0 && used + height > limit) {
-      const remain = limit - used;
-      if (remain >= line && block.kind !== "blank") {
-        current.push({ block, offset: 0, clip: remain });
+      const room = wholeLines(limit - used, step);
+      if (room >= step && block.kind !== "blank" && !block.keepNext) {
+        current.push({ block, offset: 0, clip: room });
         pushPage();
-        offset = remain;
-        height -= remain;
+        offset = room;
+        height -= room;
       } else {
         pushPage();
       }
     }
+    let chunk = wholeLines(limit, step);
+    if (chunk < step) chunk = limit;
     while (height > limit) {
-      current.push({ block, offset, clip: limit });
+      current.push({ block, offset, clip: chunk });
       pushPage();
-      offset += limit;
-      height -= limit;
+      offset += chunk;
+      height -= chunk;
     }
     current.push({ block, offset, clip: 0 });
     used += height;
@@ -133,8 +153,13 @@ export default function LoiDocPreview({ bytes }: { bytes: Uint8Array }) {
     const root = measureRef.current;
     if (!model || !root) return;
     const limit = root.clientHeight || 800;
-    const heights = Array.from(root.children).map((node) => (node as HTMLElement).offsetHeight);
-    setPages(paginate(model.blocks, heights, limit));
+    const nodes = Array.from(root.children) as HTMLElement[];
+    const heights = nodes.map((node) => node.offsetHeight);
+    const steps = nodes.map((node) => {
+      const line = parseFloat(getComputedStyle(node).lineHeight);
+      return Number.isFinite(line) && line > 0 ? line : 18;
+    });
+    setPages(paginate(model.blocks, heights, steps, limit));
   }, [model]);
 
   if (!model) return null;

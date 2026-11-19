@@ -27,6 +27,8 @@ export interface PreviewBlock {
   align: "left" | "justify" | "center";
   /** Single-spacing line box for this paragraph's font, in points. */
   linePt: number;
+  /** Word keep-with-next. The paragraph stays on the same page as the one after it. */
+  keepNext: boolean;
 }
 
 export interface LoiPreviewModel {
@@ -135,6 +137,7 @@ function emptyBlock(kind: "blank" | "break"): PreviewBlock {
     align: "left",
     // Normal style is Times New Roman 12pt, which is the blank paragraph.
     linePt: kind === "blank" ? 13.3 : 0,
+    keepNext: false,
   };
 }
 
@@ -150,6 +153,7 @@ function paragraphBlocks(xml: string): PreviewBlock[] {
     const paragraphStyle = { ...styleFrom(pPr, DEFAULT_STYLE), bold: false, italic: false };
     const jc = /<w:jc w:val="([^"]+)"/.exec(pPr)?.[1] || "";
     const align = jc === "both" ? "justify" : jc === "center" ? "center" : "left";
+    const keepNext = /<w:keepNext\b/.test(pPr);
     const left: PreviewRun[] = [];
     const right: PreviewRun[] = [];
     let seenTab = false;
@@ -184,6 +188,7 @@ function paragraphBlocks(xml: string): PreviewBlock[] {
       if (/<w:sz w:val="\d+"/.test(pPr)) {
         blank.linePt = Math.round(paragraphStyle.sizePt * lineFactor(paragraphStyle.fontName) * 100) / 100;
       }
+      blank.keepNext = keepNext;
       blocks.push(blank);
       continue;
     }
@@ -197,6 +202,7 @@ function paragraphBlocks(xml: string): PreviewBlock[] {
       right: seenTab ? right : [],
       align,
       linePt: Math.round(lead.sizePt * lineFactor(lead.fontFamily) * 100) / 100,
+      keepNext,
     });
   }
   return blocks;

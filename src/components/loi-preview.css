@@ -46,7 +46,8 @@
   left: 1in;
   /* One device pixel of slack so a line that fills the margin does not wrap early. */
   right: calc(1in - 2px);
-  bottom: 0.95in;
+  /* Word's 1in bottom margin. The footer sits below this, so a line cannot run into it. */
+  bottom: 1in;
   overflow: hidden;
 }
 .loi-page-footer {
@@ -98,8 +99,8 @@
   left: -12000px;
   top: 0;
   width: calc(6.5in + 2px);
-  /* 11in page, body starts at 1.51in, stop just above the footer at 10.16in. */
-  height: 8.55in;
+  /* Same box as .loi-page-body: from 1.49in down to the 1in bottom margin. */
+  height: calc(11in - 1.49in - 1in);
   visibility: hidden;
   pointer-events: none;
   overflow: hidden;
