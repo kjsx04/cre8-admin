@@ -172,13 +172,6 @@ function markerId(paragraph: string): string | null {
   return match ? match[1] : null;
 }
 
-function paragraphText(paragraph: string): string {
-  return Array.from(paragraph.matchAll(/<w:t(?:\s[^>]*)?>([^<]*)<\/w:t>/g))
-    .map((match) => match[1])
-    .join("")
-    .replace(/&amp;/g, "&");
-}
-
 function encode(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -247,7 +240,7 @@ export function applyLoiSections(
 ): string {
   const resolved = resolveLoiClauses(docType, clauses);
   const present = new Set<string>();
-  let xml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
+  const xml = documentXml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, (paragraph) => {
     const id = markerId(paragraph);
     if (!id) return paragraph;
     present.add(id);

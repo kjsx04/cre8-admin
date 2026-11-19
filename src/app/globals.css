@@ -59,35 +59,6 @@ body {
   margin-bottom: 0 !important;
 }
 
-/* LOI letterhead sits behind the text at 50%, matching the downloaded
-   docx. docx-preview collapses behind-doc drawings to a 0×0 box, so the
-   page paints the same artwork itself. Listing previews do not get this. */
-.docx-preview-container.with-letterhead .docx-wrapper {
-  --docx-minorHAnsi-font: Calibri, Carlito, "Liberation Sans", sans-serif !important;
-  --docx-majorHAnsi-font: Calibri, Carlito, "Liberation Sans", sans-serif !important;
-}
-.docx-preview-container.with-letterhead .docx-wrapper > section.docx {
-  position: relative;
-  background: #fff;
-}
-.docx-preview-container.with-letterhead .docx-wrapper > section.docx::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: url("/loi-letterhead.png") top center / 100% 100% no-repeat;
-  opacity: 0.5;
-  pointer-events: none;
-  z-index: 0;
-}
-.docx-preview-container.with-letterhead .docx-wrapper > section.docx > * {
-  position: relative;
-  z-index: 1;
-}
-/* The letterhead art already includes the logo. */
-.docx-preview-container.with-letterhead .docx-wrapper > section.docx > header img {
-  visibility: hidden;
-}
-
 /* Transparency grid behind logo PNGs. The image itself stays a plain <img>
    so a drag into Photoshop still carries the transparent file. */
 .logo-checker {
