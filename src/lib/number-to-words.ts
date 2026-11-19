@@ -1,6 +1,7 @@
-// Converts numbers to written form for LOI tokens
-// 3 → "three (3)"
-// 50000 → "fifty thousand dollars" (for money)
+// Converts numbers to written form for LOI tokens.
+// 3 → "three"
+// 45 → "forty-five"
+// 50000 → "fifty thousand and 00/100 dollars"
 
 const ones = [
   "", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
@@ -31,8 +32,10 @@ function numberToWordsRaw(n: number): string {
     n %= 100;
   }
   if (n >= 20) {
-    result += tens[Math.floor(n / 10)] + " ";
-    n %= 10;
+    const ten = Math.floor(n / 10);
+    const one = n % 10;
+    result += one > 0 ? `${tens[ten]}-${ones[one]} ` : `${tens[ten]} `;
+    n = 0;
   }
   if (n > 0) {
     result += ones[n] + " ";
@@ -42,8 +45,8 @@ function numberToWordsRaw(n: number): string {
 }
 
 /**
- * For day/count fields: "3" → "three"
- * Just the word — the template already has ({{number}}) next to it
+ * For day/count fields: "45" → "forty-five"
+ * Just the word — the template already has ({{number}}) next to it.
  */
 export function numberToWritten(input: string): string {
   const n = parseInt(input, 10);
@@ -51,16 +54,32 @@ export function numberToWritten(input: string): string {
   return numberToWordsRaw(n);
 }
 
+/** "90" → "ninety (90)". Pass a unit for "ninety (90) days". */
+export function countPhrase(input: string, unit?: string): string {
+  const n = parseInt(String(input).replace(/[^0-9-]/g, ""), 10);
+  if (!Number.isFinite(n)) return input;
+  const phrase = `${numberToWritten(String(n))} (${n})`;
+  return unit ? `${phrase} ${unit}` : phrase;
+}
+
 /**
- * For dollar amount fields: "50000" → "fifty thousand dollars"
- * Input can be raw number or "$50,000" format
+ * For dollar amount fields: "50000" → "fifty thousand and 00/100 dollars"
+ * Input can be a raw number or "$50,000" / "$50,000.50".
  */
 export function dollarToWritten(input: string): string {
-  // Strip $ and commas to get raw number
   const cleaned = input.replace(/[$,]/g, "").trim();
-  const n = parseInt(cleaned, 10);
-  if (isNaN(n)) return input;
-  return numberToWordsRaw(n) + " dollars";
+  const n = Number(cleaned);
+  if (!Number.isFinite(n)) return input;
+  const sign = n < 0 ? "negative " : "";
+  const abs = Math.abs(n);
+  let dollars = Math.floor(abs + 1e-8);
+  let cents = Math.round((abs - dollars) * 100);
+  if (cents === 100) {
+    dollars += 1;
+    cents = 0;
+  }
+  const centText = String(cents).padStart(2, "0");
+  return `${sign}${numberToWordsRaw(dollars)} and ${centText}/100 dollars`;
 }
 
 /**

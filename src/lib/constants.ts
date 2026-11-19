@@ -80,6 +80,7 @@ export const LOI_BUILDING_VARIABLES: VariableDef[] = [
   { token: "seller_broker_email", label: "Seller Broker Email", source: "cms_teams", flag: false },
   { token: "property_address", label: "Property Address", source: "cms_listing", flag: false },
   { token: "parcel_number", label: "Parcel Number(s)", source: "user_input", flag: true },
+  { token: "zoning", label: "Zoning", source: "user_input", flag: false },
   { token: "seller_entity", label: "Seller Entity", source: "user_input", flag: true },
   { token: "buyer_entity", label: "Buyer Entity", source: "user_input", flag: true },
   { token: "purchase_price", label: "Purchase Price ($)", source: "user_input", flag: true, numberField: true },
@@ -87,6 +88,7 @@ export const LOI_BUILDING_VARIABLES: VariableDef[] = [
   { token: "earnest_money_written", label: "Earnest Money (written)", source: "auto", flag: true },
   { token: "emd_days", label: "Days to Deposit EMD", source: "user_input", flag: false, defaultValue: "3", numberField: true, writtenVariant: "emd_days_written" },
   { token: "emd_days_written", label: "Days to Deposit EMD (written)", source: "auto", flag: false },
+  { token: "psa_drafted_by", label: "PSA Drafted By", source: "user_input", flag: false, defaultValue: "Seller" },
   { token: "title_company", label: "Title Company", source: "default", flag: false, defaultValue: "Fidelity National Title" },
   { token: "title_agent", label: "Title Agent", source: "default", flag: false, defaultValue: "Kristina Gooding" },
   { token: "psa_draft_days", label: "PSA Draft Days", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "psa_draft_days_written" },
@@ -102,6 +104,8 @@ export const LOI_BUILDING_VARIABLES: VariableDef[] = [
   { token: "seller_disclosures_days_written", label: "Seller Disclosures Days (written)", source: "auto", flag: false },
   { token: "dd_period", label: "Due Diligence Period (days)", source: "user_input", flag: false, defaultValue: "90", numberField: true, writtenVariant: "dd_period_written" },
   { token: "dd_period_written", label: "Due Diligence Period (written)", source: "auto", flag: false },
+  { token: "offer_expiration_days", label: "Offer Expiration (days)", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "offer_expiration_days_written" },
+  { token: "offer_expiration_days_written", label: "Offer Expiration (written)", source: "auto", flag: false },
   { token: "broker_names", label: "CRE8 Broker Name(s)", source: "cms_teams", flag: false },
   { token: "commission_pct", label: "Commission %", source: "user_input", flag: false, defaultValue: "3%" },
   { token: "cre8_agent_email", label: "CRE8 Agent Email", source: "cms_teams", flag: false },
@@ -118,6 +122,7 @@ export const LOI_LAND_VARIABLES: VariableDef[] = [
   { token: "property_address", label: "Property Address", source: "cms_listing", flag: false },
   { token: "parcel_number", label: "Parcel Number(s)", source: "user_input", flag: true },
   { token: "acreage", label: "Acreage", source: "user_input", flag: false },
+  { token: "zoning", label: "Zoning", source: "user_input", flag: false },
   { token: "seller_entity", label: "Seller Entity", source: "user_input", flag: true },
   { token: "buyer_entity", label: "Buyer Entity", source: "user_input", flag: true },
   { token: "purchase_price", label: "Total Purchase Price ($)", source: "user_input", flag: true, numberField: true },
@@ -128,6 +133,7 @@ export const LOI_LAND_VARIABLES: VariableDef[] = [
   { token: "earnest_money_written", label: "Earnest Money (written)", source: "auto", flag: true },
   { token: "emd_days", label: "Days to Deposit EMD", source: "user_input", flag: false, defaultValue: "3", numberField: true, writtenVariant: "emd_days_written" },
   { token: "emd_days_written", label: "Days to Deposit EMD (written)", source: "auto", flag: false },
+  { token: "psa_drafted_by", label: "PSA Drafted By", source: "user_input", flag: false, defaultValue: "Seller" },
   { token: "title_company", label: "Title Company", source: "default", flag: false, defaultValue: "Fidelity National Title" },
   { token: "title_agent", label: "Title Agent", source: "default", flag: false, defaultValue: "Kristina Gooding" },
   { token: "psa_draft_days", label: "PSA Draft Days", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "psa_draft_days_written" },
@@ -143,6 +149,8 @@ export const LOI_LAND_VARIABLES: VariableDef[] = [
   { token: "seller_disclosures_days_written", label: "Seller Disclosures Days (written)", source: "auto", flag: false },
   { token: "dd_period", label: "Due Diligence Period (days)", source: "user_input", flag: false, defaultValue: "90", numberField: true, writtenVariant: "dd_period_written" },
   { token: "dd_period_written", label: "Due Diligence Period (written)", source: "auto", flag: false },
+  { token: "offer_expiration_days", label: "Offer Expiration (days)", source: "user_input", flag: false, defaultValue: "10", numberField: true, writtenVariant: "offer_expiration_days_written" },
+  { token: "offer_expiration_days_written", label: "Offer Expiration (written)", source: "auto", flag: false },
   { token: "broker_names", label: "CRE8 Broker Name(s)", source: "cms_teams", flag: false },
   { token: "commission_pct", label: "Commission %", source: "user_input", flag: false, defaultValue: "3%" },
   { token: "cre8_agent_email", label: "CRE8 Agent Email", source: "cms_teams", flag: false },
@@ -242,6 +250,7 @@ export const LOI_BUILDING_SECTIONS: FieldSection[] = [
     tokens: [
       "property_address",
       "parcel_number",
+      "zoning",
     ],
   },
   {
@@ -275,6 +284,7 @@ export const LOI_BUILDING_SECTIONS: FieldSection[] = [
   {
     title: "Title & PSA",
     tokens: [
+      "psa_drafted_by",
       "title_company",
       "title_agent",
       "psa_draft_days",
@@ -318,6 +328,7 @@ export const LOI_LAND_SECTIONS: FieldSection[] = [
       "property_address",
       "parcel_number",
       "acreage",
+      "zoning",
     ],
   },
   {
@@ -353,6 +364,7 @@ export const LOI_LAND_SECTIONS: FieldSection[] = [
   {
     title: "Title & PSA",
     tokens: [
+      "psa_drafted_by",
       "title_company",
       "title_agent",
       "psa_draft_days",

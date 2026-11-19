@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { summarizeParcels } from "@/lib/loi-parcels";
 
 // ── Types ──
 
@@ -10,6 +11,12 @@ export interface ParcelSelection {
   parcel_number: string;
   seller_entity: string;
   acreage: string;
+  /** Joined zoning from the selected parcels, when combineParcels is on */
+  zoning?: string;
+  /** True when the selected parcels do not share one owner */
+  ownersDiffer?: boolean;
+  /** True when the selected parcels do not share one address */
+  addressesDiffer?: boolean;
   /** The raw parcel objects so the parent can store them for re-opening */
   selectedParcels: SelectedParcel[];
   /** Base64 PNG of the map canvas (docs version only) */
@@ -30,6 +37,8 @@ export interface SelectedParcel {
   owner: string;
   /** Acreage (already converted) */
   acreage: string;
+  /** County zoning, when the source provides it */
+  zoning?: string;
   /** GeoJSON feature for map highlighting */
   feature: GeoJSON.Feature;
 }
@@ -112,6 +121,11 @@ function extractAcreage(props: Record<string, unknown>, source: string): string 
   return "";
 }
 
+function extractZoning(props: Record<string, unknown>, source: string): string {
+  if (source === "maricopa") return (props.CITY_ZONING as string) || "";
+  return "";
+}
+
 function extractId(props: Record<string, unknown>, source: string): string {
   if (source === "maricopa") return (props.APN as string) || "";
   if (source === "pinal") return (props.PARCELID as string) || "";
@@ -157,6 +171,7 @@ export default function ParcelPickerModal({
   onConfirm,
   onClose,
   includeAcreage = false,
+  combineParcels = false,
   mapboxToken,
   initialParcels,
 }: {
@@ -166,6 +181,8 @@ export default function ParcelPickerModal({
   onClose: () => void;
   /** Whether to populate acreage (true for LOI Land, false for LOI Building) */
   includeAcreage?: boolean;
+  /** LOI only: sum acres and list every APN, owner, and address */
+  combineParcels?: boolean;
   /** Mapbox public access token */
   mapboxToken: string;
   /** Previously selected parcels — restores selection and zooms to them on open */
@@ -479,6 +496,7 @@ export default function ParcelPickerModal({
               address: extractAddress(props, source),
               owner: extractOwner(props, source),
               acreage: extractAcreage(props, source),
+              zoning: extractZoning(props, source),
               feature: feature as unknown as GeoJSON.Feature,
             };
             const updated = [...prev, newParcel];
@@ -682,22 +700,35 @@ export default function ParcelPickerModal({
       }
     }
 
-    // First parcel provides address, owner, acreage
     const first = selectedParcels[0];
-    const selection: ParcelSelection = {
-      property_address: first.address,
-      parcel_number: selectedParcels.map((p) => p.id).join(", "),
-      seller_entity: first.owner,
-      acreage: includeAcreage ? first.acreage : "",
-      selectedParcels,
-      mapImage,
-    };
+    const summary = combineParcels ? summarizeParcels(selectedParcels) : null;
+    const selection: ParcelSelection = summary
+      ? {
+          property_address: summary.property_address || first.address,
+          parcel_number: summary.parcel_number,
+          seller_entity: summary.seller_entity || first.owner,
+          acreage: includeAcreage ? summary.acreage : "",
+          zoning: summary.zoning,
+          ownersDiffer: summary.ownersDiffer,
+          addressesDiffer: summary.addressesDiffer,
+          selectedParcels,
+          mapImage,
+        }
+      : {
+          property_address: first.address,
+          parcel_number: selectedParcels.map((p) => p.id).join(", "),
+          seller_entity: first.owner,
+          acreage: includeAcreage ? first.acreage : "",
+          selectedParcels,
+          mapImage,
+        };
 
     onConfirm(selection);
   }
 
   // ── Derived state for the selection bar ──
   const firstParcel = selectedParcels[0] || null;
+  const combined = combineParcels && selectedParcels.length > 0 ? summarizeParcels(selectedParcels) : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -777,25 +808,30 @@ export default function ParcelPickerModal({
               ))}
             </div>
 
-            {/* Summary from first parcel */}
             {firstParcel && (
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-medium-gray">
-                {firstParcel.address && (
+                {(combined?.property_address || firstParcel.address) && (
                   <span>
                     <span className="text-[#777]">Address:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.address}</span>
+                    <span className="text-[#1A1A1A]">{combined?.property_address || firstParcel.address}</span>
                   </span>
                 )}
-                {firstParcel.owner && (
+                {(combined?.seller_entity || firstParcel.owner) && (
                   <span>
                     <span className="text-[#777]">Owner:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.owner}</span>
+                    <span className="text-[#1A1A1A]">{combined?.seller_entity || firstParcel.owner}</span>
                   </span>
                 )}
-                {includeAcreage && firstParcel.acreage && (
+                {includeAcreage && (combined?.acreage || firstParcel.acreage) && (
                   <span>
                     <span className="text-[#777]">Acreage:</span>{" "}
-                    <span className="text-[#1A1A1A]">{firstParcel.acreage} ac</span>
+                    <span className="text-[#1A1A1A]">{combined?.acreage || firstParcel.acreage} ac</span>
+                  </span>
+                )}
+                {combined?.zoning && (
+                  <span>
+                    <span className="text-[#777]">Zoning:</span>{" "}
+                    <span className="text-[#1A1A1A]">{combined.zoning}</span>
                   </span>
                 )}
               </div>

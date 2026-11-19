@@ -27,6 +27,7 @@ import {
   dollarToWritten,
   formatCurrency,
 } from "@/lib/number-to-words";
+import { landPricePerUnit } from "@/lib/loi-wording";
 import LoadingSpinner from "@/components/LoadingSpinner";
 import DocPreview from "@/components/DocPreview";
 import FolderPicker from "@/components/FolderPicker";
@@ -34,6 +35,8 @@ import SharePointBreadcrumb from "@/components/SharePointBreadcrumb";
 import AIAssistBar from "@/components/AIAssistBar";
 import dynamic from "next/dynamic";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
+import LoiSectionList from "@/components/LoiSectionList";
+import { defaultLoiClauses, GENERAL_LOI_FIELDS, sectionsFor, type LoiClauseInput } from "@/lib/loi-sections";
 
 // Dynamic import — mapbox-gl accesses `window` so it can't render on the server
 const ParcelPickerModal = dynamic(() => import("@/components/ParcelPickerModal"), {
@@ -64,6 +67,103 @@ function isDollarToken(token: string): boolean {
 }
 
 // ── Collapsible section card for the field sidebar ──
+function FieldInputs({
+  tokens,
+  varMap,
+  writtenTokens,
+  fieldValues,
+  onFieldChange,
+  onFieldBlur,
+  aiFillingTokens,
+  strictMode,
+  verifiedFields,
+  onToggleVerify,
+}: {
+  tokens: string[];
+  varMap: Map<string, VariableDef>;
+  writtenTokens: Set<string>;
+  fieldValues: Record<string, string>;
+  onFieldChange: (token: string, value: string) => void;
+  onFieldBlur: (token: string) => void;
+  aiFillingTokens: Set<string>;
+  strictMode?: boolean;
+  verifiedFields?: Set<string>;
+  onToggleVerify?: (token: string) => void;
+}) {
+  const editable = tokens.filter((token) => {
+    if (writtenTokens.has(token) || token.endsWith("_written") || token === "price_per_unit") return false;
+    const def = varMap.get(token);
+    if (!def) return false;
+    if (def.source === "auto" && token !== "date") return false;
+    return true;
+  });
+  if (editable.length === 0) return null;
+  return (
+    <div className="space-y-3">
+      {editable.map((token) => {
+        const def = varMap.get(token);
+        const label = def?.label || token.replace(/_/g, " ");
+        const isFilling = aiFillingTokens.has(token);
+        const isDollar = !!(def?.numberField && isDollarToken(token));
+        const hasFillValue = !!(fieldValues[token] && fieldValues[token].trim());
+        const isVerified = verifiedFields?.has(token) ?? false;
+        return (
+          <div key={token} className={`transition-all duration-300 ${isFilling ? "ai-filling" : ""}`}>
+            <label className="block text-medium-gray text-xs mb-1">
+              {label}
+              {isDollar && (
+                <span className="text-[#777] ml-1 font-normal">— type number, formats on exit</span>
+              )}
+            </label>
+            <div className="flex items-center gap-1.5">
+              {token === "psa_drafted_by" ? (
+                <select
+                  value={fieldValues[token] === "Buyer" ? "Buyer" : "Seller"}
+                  onChange={(e) => onFieldChange(token, e.target.value)}
+                  className="flex-1 bg-white border border-[#E0E0E0] rounded px-3 py-1.5 text-[#1A1A1A] text-sm focus:border-green"
+                >
+                  <option value="Seller">Seller (default)</option>
+                  <option value="Buyer">Buyer</option>
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={fieldValues[token] || ""}
+                  onChange={(e) => onFieldChange(token, e.target.value)}
+                  onBlur={() => onFieldBlur(token)}
+                  placeholder={isDollar ? "e.g. 2500000" : ""}
+                  className={`flex-1 bg-white border rounded px-3 py-1.5 text-[#1A1A1A] text-sm transition-all duration-300 focus:border-green ${
+                    isFilling ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]" : "border-[#E0E0E0]"
+                  }`}
+                />
+              )}
+              {strictMode && onToggleVerify && (
+                <button
+                  type="button"
+                  onClick={() => onToggleVerify(token)}
+                  disabled={!hasFillValue}
+                  title={!hasFillValue ? "Fill field first" : isVerified ? "Verified — click to un-verify" : "Click to verify this field"}
+                  className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200 ${
+                    !hasFillValue
+                      ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
+                      : isVerified
+                        ? "bg-green/15 border border-green text-green hover:bg-green/25"
+                        : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
+                  }`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M20 6L9 17L4 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function CollapsibleSection({
   section,
   varMap,
@@ -145,74 +245,19 @@ function CollapsibleSection({
 
       {/* Fields — shown when expanded */}
       {expanded && (
-        <div className="px-4 pb-3 space-y-3">
-          {editableTokens.map((token) => {
-            const def = varMap.get(token);
-            const label = def?.label || token.replace(/_/g, " ");
-            const isFilling = aiFillingTokens.has(token);
-            const isDollar = !!(def?.numberField && isDollarToken(token));
-            const hasFillValue = !!(fieldValues[token] && fieldValues[token].trim());
-            const isVerified = verifiedFields?.has(token) ?? false;
-
-            return (
-              <div
-                key={token}
-                className={`transition-all duration-300 ${
-                  isFilling ? "ai-filling" : ""
-                }`}
-              >
-                <label className="block text-medium-gray text-xs mb-1">
-                  {label}
-                  {/* Small hint for dollar fields: formatting happens when you leave the input */}
-                  {isDollar && (
-                    <span className="text-[#777] ml-1 font-normal">
-                      — type number, formats on exit
-                    </span>
-                  )}
-                </label>
-                <div className="flex items-center gap-1.5">
-                  <input
-                    type="text"
-                    value={fieldValues[token] || ""}
-                    onChange={(e) => onFieldChange(token, e.target.value)}
-                    onBlur={() => onFieldBlur(token)}
-                    placeholder={isDollar ? "e.g. 2500000" : ""}
-                    className={`flex-1 bg-white border rounded px-3 py-1.5
-                               text-[#1A1A1A] text-sm transition-all duration-300
-                               focus:border-green
-                               ${isFilling
-                                 ? "border-green shadow-[0_0_8px_rgba(140,198,68,0.3)]"
-                                 : "border-[#E0E0E0]"
-                               }`}
-                  />
-                  {/* Verification checkmark — strict mode only */}
-                  {strictMode && onToggleVerify && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleVerify(token)}
-                      disabled={!hasFillValue}
-                      title={
-                        !hasFillValue ? "Fill field first" :
-                        isVerified ? "Verified — click to un-verify" :
-                        "Click to verify this field"
-                      }
-                      className={`flex-shrink-0 w-7 h-7 rounded flex items-center justify-center transition-all duration-200
-                        ${!hasFillValue
-                          ? "bg-[#F5F5F5] border border-[#E0E0E0] text-[#777] cursor-not-allowed"
-                          : isVerified
-                            ? "bg-green/15 border border-green text-green hover:bg-green/25"
-                            : "bg-yellow-500/10 border border-yellow-500/50 text-yellow-500 hover:bg-yellow-500/20"
-                        }`}
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M20 6L9 17L4 12" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="px-4 pb-3">
+          <FieldInputs
+            tokens={editableTokens}
+            varMap={varMap}
+            writtenTokens={writtenTokens}
+            fieldValues={fieldValues}
+            onFieldChange={onFieldChange}
+            onFieldBlur={onFieldBlur}
+            aiFillingTokens={aiFillingTokens}
+            strictMode={strictMode}
+            verifiedFields={verifiedFields}
+            onToggleVerify={onToggleVerify}
+          />
         </div>
       )}
     </div>
@@ -489,6 +534,9 @@ function FieldSidebar({
   hasParcelMapImage,
   includeParcelMap,
   onToggleParcelMap,
+  ownerWarning,
+  clauses,
+  onClausesChange,
 }: {
   docTypeId: string;
   sections: FieldSection[];
@@ -525,6 +573,9 @@ function FieldSidebar({
   includeParcelMap?: boolean;
   /** Toggle handler for including the parcel map in the document */
   onToggleParcelMap?: () => void;
+  ownerWarning?: string;
+  clauses?: LoiClauseInput[];
+  onClausesChange?: (next: LoiClauseInput[]) => void;
 }) {
   return (
     <div className="space-y-3 overflow-y-auto pr-1" style={{ maxHeight: "calc(100vh - 180px)" }}>
@@ -557,9 +608,87 @@ function FieldSidebar({
       <h2 className="font-bebas text-lg tracking-wide text-medium-gray mb-1">
         EDIT FIELDS
       </h2>
+      {ownerWarning && (
+        <p className="mb-3 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2.5 py-1.5">
+          {ownerWarning}
+        </p>
+      )}
+      {onClausesChange && clauses && sectionsFor(docTypeId).length > 0 && (
+        <>
+          <div className="bg-white border border-[#E0E0E0] rounded-card px-3 py-3 space-y-3">
+            <FieldInputs
+              tokens={GENERAL_LOI_FIELDS}
+              varMap={varMap}
+              writtenTokens={writtenTokens}
+              fieldValues={fieldValues}
+              onFieldChange={onFieldChange}
+              onFieldBlur={onFieldBlur}
+              aiFillingTokens={aiFillingTokens}
+              strictMode={strictMode}
+              verifiedFields={verifiedFields}
+              onToggleVerify={onToggleVerify}
+            />
+            <button
+              onClick={onOpenParcelPicker}
+              className="flex items-center gap-1.5 text-green text-xs font-medium hover:brightness-125 transition-all"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                <circle cx="12" cy="10" r="3" />
+              </svg>
+              Select from Map
+            </button>
+            {hasParcelMapImage && onToggleParcelMap && (
+              <label className="flex items-center gap-2 cursor-pointer">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={includeParcelMap}
+                  onClick={onToggleParcelMap}
+                  className={`relative w-8 h-[18px] rounded-full transition-colors duration-200 ${includeParcelMap ? "bg-green" : "bg-[#E0E0E0]"}`}
+                >
+                  <span className={`absolute top-[2px] left-[2px] w-[14px] h-[14px] rounded-full bg-white transition-transform duration-200 ${includeParcelMap ? "translate-x-[14px]" : ""}`} />
+                </button>
+                <span className="text-xs text-medium-gray">Attach parcel map to document</span>
+              </label>
+            )}
+          </div>
+          {!strictMode && (
+            <CmsDropdowns
+              teamMembers={teamMembers}
+              listings={listings}
+              loadingCms={loadingCms}
+              selectedCre8Broker={selectedCre8Broker}
+              selectedListing={selectedListing}
+              onCre8BrokerChange={onCre8BrokerChange}
+              onSellerBrokerChange={onSellerBrokerChange}
+              onListingChange={onListingChange}
+            />
+          )}
+          <LoiSectionList
+            docTypeId={docTypeId}
+            clauses={clauses}
+            onChange={onClausesChange}
+            renderFields={(tokens) => (
+              <FieldInputs
+                tokens={tokens}
+                varMap={varMap}
+                writtenTokens={writtenTokens}
+                fieldValues={fieldValues}
+                onFieldChange={onFieldChange}
+                onFieldBlur={onFieldBlur}
+                aiFillingTokens={aiFillingTokens}
+                strictMode={strictMode}
+                verifiedFields={verifiedFields}
+                onToggleVerify={onToggleVerify}
+              />
+            )}
+          />
+        </>
+      )}
 
-      {/* Field sections — inject helpers before Property and Date & Brokers sections */}
-      {sections.map((section) => (
+      {/* Listing agreements keep their own field groups. LOI fields live under each section. */}
+      {sectionsFor(docTypeId).length === 0 && sections.map((section) => (
         <div key={section.title}>
           {/* CMS Dropdowns right before the Date & Brokers section — flexible mode only */}
           {!strictMode && section.title === "Date & Brokers" && (
@@ -661,9 +790,7 @@ export default function CompletePage() {
 
   // Field editing state
   const [fieldValues, setFieldValues] = useState<Record<string, string>>({});
-  const [clausePayload, setClausePayload] = useState<
-    { id: string; included: boolean; variables: Record<string, string>; customText?: string }[]
-  >([]);
+  const [clausePayload, setClausePayload] = useState<LoiClauseInput[]>([]);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isExporting] = useState(false); // Kept for button disabled state (always false now — parcel map downloads separately)
   const [showMapPreview, setShowMapPreview] = useState(false); // Parcel map preview modal
@@ -680,7 +807,7 @@ export default function CompletePage() {
 
   // Track which per-unit price was last manually entered (for LOI Land display)
   // "per_acre" | "per_sqft" | null — determines what shows in {{price_per_unit}}
-  const lastPriceModeRef = useRef<string | null>(null);
+  const lastPriceModeRef = useRef<"per_acre" | "per_sqft" | null>(null);
 
   // Team members (hardcoded) + CMS listings
   const teamMembers = CRE8_TEAM;
@@ -695,6 +822,8 @@ export default function CompletePage() {
 
   // Debounce timer ref
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
+  const regenSeq = useRef(0);
+  const [ownerWarning, setOwnerWarning] = useState("");
 
   // Track if initial generation has been triggered
   const initialGenTriggered = useRef(false);
@@ -868,30 +997,35 @@ export default function CompletePage() {
       setFileName(parsedDoc.fileName);
       setFieldValues(parsedPayload.variables || {});
       fieldValuesRef.current = parsedPayload.variables || {};
-      setClausePayload(parsedPayload.clauses || []);
+      const restoredClauses = parsedPayload.clauses?.length
+        ? parsedPayload.clauses
+        : defaultLoiClauses(docType.id);
+      setClausePayload(restoredClauses);
       // Generate a clean preview (no parcel map image) from the restored values
       if (!initialGenTriggered.current) {
         initialGenTriggered.current = true;
-        generateInitialPreview(parsedPayload.variables || {}, parsedPayload.clauses || []);
+        generateInitialPreview(parsedPayload.variables || {}, restoredClauses);
       }
     } else {
       // Fresh visit — build defaults and generate initial preview
       const defaults = buildDefaultValues();
+      const clauses = defaultLoiClauses(docType.id);
       setFieldValues(defaults);
       fieldValuesRef.current = defaults;
+      setClausePayload(clauses);
       setFileName(buildFileName(defaults));
 
       // Generate the initial preview with defaults
       if (!initialGenTriggered.current) {
         initialGenTriggered.current = true;
-        generateInitialPreview(defaults);
+        generateInitialPreview(defaults, clauses);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [docType]);
 
   // ── Generate the first preview on mount ──
-  async function generateInitialPreview(defaults: Record<string, string>, clauses: { id: string; title: string; text: string }[] = []) {
+  async function generateInitialPreview(defaults: Record<string, string>, clauses: { id: string; included?: boolean; variables?: Record<string, string>; customText?: string }[] = []) {
     if (!docType) return;
 
     try {
@@ -1033,9 +1167,12 @@ export default function CompletePage() {
     return bytes.buffer;
   }
 
-  // ── Regenerate the document with updated field values ──
+  // Rebuilds the docx and hands it to DocPreview. Field edits already call
+  // this. Clause include/exclude and edited wording must too — see the
+  // effect on clausePayload below. There is no second preview path.
   const regenerateDocument = useCallback(async () => {
     if (!docType) return;
+    const seq = ++regenSeq.current;
     setIsRegenerating(true);
 
     try {
@@ -1061,6 +1198,8 @@ export default function CompletePage() {
           if (varDef.writtenVariant) {
             currentValues[varDef.writtenVariant] = dollarToWritten(raw);
           }
+        } else if (varDef.numberField && varDef.writtenVariant && currentValues[varDef.token]) {
+          currentValues[varDef.writtenVariant] = numberToWritten(currentValues[varDef.token]);
         }
       }
 
@@ -1110,8 +1249,10 @@ export default function CompletePage() {
 
       // Convert the response blob to base64 for DocPreview
       const blob = await res.blob();
+      if (seq !== regenSeq.current) return;
       const reader = new FileReader();
       reader.onload = () => {
+        if (seq !== regenSeq.current) return;
         const base64 = reader.result as string;
         setFileBase64(base64);
         setIsRegenerating(false);
@@ -1137,7 +1278,7 @@ export default function CompletePage() {
       reader.readAsDataURL(blob);
     } catch (err) {
       console.error("Regeneration error:", err);
-      setIsRegenerating(false);
+      if (seq === regenSeq.current) setIsRegenerating(false);
     }
   }, [docType, clausePayload, buildFileName, varDefs]);
 
@@ -1168,8 +1309,21 @@ export default function CompletePage() {
     }
     debounceRef.current = setTimeout(() => {
       regenerateDocument();
-    }, 1500);
+    }, 400);
   }, [regenerateDocument]);
+
+  // Checking or editing a clause updates clausePayload. After the first
+  // preview has loaded, that change rebuilds the docx the same way a
+  // form field does, so the preview follows the wording live.
+  const clauseRegenReady = useRef(false);
+  useEffect(() => {
+    if (initialLoading) return;
+    if (!clauseRegenReady.current) {
+      clauseRegenReady.current = true;
+      return;
+    }
+    triggerDebouncedRegen();
+  }, [clausePayload, initialLoading, triggerDebouncedRegen]);
 
   // ── Handle a field value change (with debounced regen) ──
   // NOTE: Dollar fields (price, money, deposit) are NOT formatted here —
@@ -1215,9 +1369,10 @@ export default function CompletePage() {
               updated.price_per_acre = formatCurrency(String(Math.round(perSqft * 43560)));
             }
           } else if (token === "purchase_price" && acreage > 0) {
-            // User typed total → calc per acre and per SF (but don't set display mode)
+            // User typed the total. Keep the calculated per-acre figure on the letter.
             const total = stripCurrency(value);
             if (total > 0) {
+              if (!lastPriceModeRef.current) lastPriceModeRef.current = "per_acre";
               updated.price_per_acre = formatCurrency(String(Math.round(total / acreage)));
               // PSF: keep 2 decimals for precision (e.g. "$5.75")
               const psf = total / totalSqft;
@@ -1227,22 +1382,20 @@ export default function CompletePage() {
             // Acreage changed — recalc per-unit from total if available
             const total = stripCurrency(updated.purchase_price || "");
             if (total > 0 && acreage > 0) {
+              if (!lastPriceModeRef.current) lastPriceModeRef.current = "per_acre";
               updated.price_per_acre = formatCurrency(String(Math.round(total / acreage)));
               const psf = total / totalSqft;
               updated.price_per_sqft = "$" + psf.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             }
           }
 
-          // Compute the display token for the template
-          // Only shows if user explicitly entered per acre or per SF
-          const mode = lastPriceModeRef.current;
-          if (mode === "per_acre" && updated.price_per_acre) {
-            updated.price_per_unit = `(${updated.price_per_acre} per acre)`;
-          } else if (mode === "per_sqft" && updated.price_per_sqft) {
-            updated.price_per_unit = `(${updated.price_per_sqft} PSF)`;
-          } else {
-            updated.price_per_unit = "";
-          }
+          // Per-acre stays on the letter when it was calculated from the total.
+          // Per-SF wins only when that is the field the broker is editing.
+          updated.price_per_unit = landPricePerUnit({
+            mode: lastPriceModeRef.current,
+            pricePerAcre: updated.price_per_acre || "",
+            pricePerSqft: updated.price_per_sqft || "",
+          });
         }
 
         // ── Listing Agreement: auto-compute listing_price_display ──
@@ -1353,12 +1506,11 @@ export default function CompletePage() {
         }
 
         // Update price_per_unit display after formatting
-        const mode = lastPriceModeRef.current;
-        if (mode === "per_acre" && updated.price_per_acre) {
-          updated.price_per_unit = `(${updated.price_per_acre} per acre)`;
-        } else if (mode === "per_sqft" && updated.price_per_sqft) {
-          updated.price_per_unit = `(${updated.price_per_sqft} PSF)`;
-        }
+        updated.price_per_unit = landPricePerUnit({
+          mode: lastPriceModeRef.current,
+          pricePerAcre: updated.price_per_acre || "",
+          pricePerSqft: updated.price_per_sqft || "",
+        });
 
         // Recompute listing_price_display after formatting
         const isListingDoc = docType?.id === "listing_sale" || docType?.id === "listing_sale_lease";
@@ -1505,9 +1657,15 @@ export default function CompletePage() {
           }
         }
         if (selection.acreage) updated.acreage = selection.acreage;
+        if (!isListingDoc && selection.zoning) updated.zoning = selection.zoning;
         fieldValuesRef.current = updated;
         return updated;
       });
+      if (!isListingDoc && selection.ownersDiffer) {
+        setOwnerWarning("These parcels have different owners. Each owner is listed on the seller line.");
+      } else {
+        setOwnerWarning("");
+      }
       // Trigger doc regeneration so the preview updates immediately
       triggerDebouncedRegen();
     },
@@ -2024,9 +2182,6 @@ export default function CompletePage() {
           )}
 
           {/* Preview background note */}
-          <p className="text-medium-gray text-xs mt-2 hidden lg:block">
-            Template backgrounds will appear in the downloaded file.
-          </p>
 
           {/* File name below preview */}
           {fileName && (
@@ -2075,6 +2230,9 @@ export default function CompletePage() {
               setIncludeParcelMap(newVal);
               // No regen needed — parcel map downloads as a separate .jpg file.
             }}
+            ownerWarning={ownerWarning}
+            clauses={clausePayload}
+            onClausesChange={setClausePayload}
           />
         </div>
       </div>
@@ -2151,6 +2309,7 @@ export default function CompletePage() {
           onConfirm={handleParcelConfirm}
           onClose={() => setShowParcelPicker(false)}
           includeAcreage={docType.id === "loi_land" || docType.id === "listing_sale" || docType.id === "listing_sale_lease"}
+          combineParcels={docType.id === "loi_land" || docType.id === "loi_building" || docType.id === "loi_lease"}
           mapboxToken={process.env.NEXT_PUBLIC_MAPBOX_TOKEN || ""}
           initialParcels={storedParcels.length > 0 ? storedParcels : undefined}
         />
