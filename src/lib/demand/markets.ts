@@ -439,3 +439,15 @@ export function checkMarket(markets: string[] | null | undefined, place: { city:
   }
   return "miss";
 }
+
+// ============================================================
+// LISTS FOR DROPDOWNS (used by the listing form)
+// ============================================================
+
+/** Every Arizona county, as shown to people: "Maricopa", "Pinal", … (A–Z). */
+export const AZ_COUNTY_NAMES: string[] = COUNTIES.map((name) => titleCase(name)).sort();
+
+/** Every city Demand knows, with its county, as shown to people (A–Z). */
+export const AZ_CITY_OPTIONS: { city: string; county: string }[] = Object.entries(CITY_TABLE)
+  .map(([name, info]) => ({ city: titleCase(name), county: titleCase(info.county) }))
+  .sort((a, b) => a.city.localeCompare(b.city));

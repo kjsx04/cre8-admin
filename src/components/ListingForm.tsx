@@ -23,6 +23,8 @@ import PhotoUploader from "@/components/PhotoUploader";
 import PublishModal from "@/components/PublishModal";
 import ChecklistCard from "@/components/checklist/ChecklistCard";
 import InternalSection from "@/components/InternalSection";
+import { CityCountyField, MunicipalityField, PriceField } from "@/components/listing-fields/StandardFields";
+import { ZONING_SUGGESTIONS, formatCityCounty } from "@/lib/listings/standard-options";
 import type { ParcelSelection, SelectedParcel } from "@/components/ParcelPickerModal";
 import { EMPTY_ITEMS } from "@/lib/checklist/constants";
 import type { ListingChecklist } from "@/lib/checklist/types";
@@ -62,9 +64,16 @@ interface ListingFormProps {
 interface FieldDef {
   key: keyof ListingFieldData | "listing-type-2" | "property-type";
   label: string;
-  type: "text" | "number" | "select" | "brokers" | "toggle";
+  /**
+   * "city-county", "municipality" and "price" are the standard dropdown fields
+   * (src/components/listing-fields/StandardFields.tsx). They still save plain
+   * text to the same Webflow field.
+   */
+  type: "text" | "number" | "select" | "brokers" | "toggle" | "city-county" | "municipality" | "price";
   required?: boolean;
   placeholder?: string;
+  /** For text fields: type-ahead suggestions. Anything can still be typed. */
+  suggestions?: string[];
   /** For select fields: array of { value, label } */
   options?: { value: string; label: string }[];
   /** For toggle fields: mutually exclusive with this other toggle key */
@@ -129,9 +138,9 @@ const SECTIONS: SectionDef[] = [
       {
         key: "city-county",
         label: "City / County",
-        type: "text",
+        // Dropdowns — saved as "Mesa, Maricopa County, AZ"
+        type: "city-county",
         required: true,
-        placeholder: "Phoenix, Maricopa",
         half: true,
       },
       {
@@ -158,9 +167,9 @@ const SECTIONS: SectionDef[] = [
       {
         key: "list-price",
         label: "List Price",
-        type: "text",
+        // "Call for Pricing" dropdown, or a typed price tidied to "$2,500,000"
+        type: "price",
         required: true,
-        placeholder: "e.g. $2,500,000 or Call for Pricing",
         half: true,
       },
     ],
@@ -187,15 +196,17 @@ const SECTIONS: SectionDef[] = [
       {
         key: "zoning",
         label: "Zoning",
+        // Stays a text box (codes differ in every city) with common codes suggested
         type: "text",
         placeholder: "e.g. C-2",
+        suggestions: ZONING_SUGGESTIONS,
         half: true,
       },
       {
         key: "zoning-municipality",
         label: "Zoning Municipality",
-        type: "text",
-        placeholder: "e.g. City of Phoenix",
+        // Dropdown of cities and counties — saved as "Mesa" or "Pinal County"
+        type: "municipality",
         half: true,
       },
     ],
@@ -1012,7 +1023,8 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           next["full-address"] = address;
         }
         if (cityName || countyName) {
-          next["city-county"] = [cityName, countyName].filter(Boolean).join(", ");
+          // Standard spelling: "Mesa, Maricopa County, AZ"
+          next["city-county"] = formatCityCounty(cityName, countyName);
         }
         if (selection.acreage) {
           next["square-feet"] = selection.acreage;
@@ -1526,6 +1538,22 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
     const isDupeName = key === "name" && dupeNameWarn;
     const isDupeSlug = key === "slug" && dupeSlugWarn;
 
+    // ---- Standard dropdown fields (still saved as plain text) ----
+    if (f.type === "city-county" || f.type === "municipality" || f.type === "price") {
+      const StandardField =
+        f.type === "city-county" ? CityCountyField : f.type === "municipality" ? MunicipalityField : PriceField;
+      return (
+        <StandardField
+          key={key}
+          label={f.label}
+          required={f.required}
+          value={value}
+          onChange={(next) => updateField(key, next)}
+          hasError={hasError}
+        />
+      );
+    }
+
     if (f.type === "select") {
       return (
         <div key={key} className="mb-4">
@@ -1567,10 +1595,19 @@ export default function ListingForm({ item, allItems }: ListingFormProps) {
           value={value}
           onChange={(e) => updateField(key, e.target.value)}
           placeholder={f.placeholder}
+          // Type-ahead suggestions, when this field has them (see <datalist> below)
+          list={f.suggestions ? `suggest-${key}` : undefined}
           className={`w-full bg-white border rounded-btn px-3 py-2 text-sm text-[#333]
                       placeholder:text-[#BBB] outline-none focus:border-green transition-colors
                       ${hasError || isDupeName || isDupeSlug ? "border-[#CC3333]" : "border-[#E5E5E5]"}`}
         />
+        {f.suggestions && (
+          <datalist id={`suggest-${key}`}>
+            {f.suggestions.map((option) => (
+              <option key={option} value={option} />
+            ))}
+          </datalist>
+        )}
         {hasError && !isDupeName && !isDupeSlug && (
           <p className="text-[10px] text-[#CC3333] mt-1">Required</p>
         )}
