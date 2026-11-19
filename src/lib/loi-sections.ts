@@ -82,7 +82,7 @@ export const LOI_SECTIONS: LoiSectionDef[] = [
     label: "Closing Extension",
     docs: ["loi_land", "loi_building"],
     required: false,
-    defaultOn: { loi_land: true, loi_building: true },
+    defaultOn: { loi_land: false, loi_building: false },
     variants: libraryVariants("closing_extension"),
     fields: ["extension_count", "extension_days", "extension_deposit"],
   },
