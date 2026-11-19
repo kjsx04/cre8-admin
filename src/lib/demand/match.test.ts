@@ -185,7 +185,11 @@ const wrongMarket = classifySpace(
   [],
   null
 );
-assert(wrongMarket.bucket === "excluded" && wrongMarket.reasons.includes("Not in this market"), "a city that is not listed is out of market");
+// Markets are not a matching rule: a Tucson-only tenant is not ruled out of a Mesa listing.
+assert(
+  wrongMarket.bucket !== "excluded" && !wrongMarket.reasons.some((reason) => /market/i.test(reason)),
+  "a tenant's markets never exclude it and never show as a reason"
+);
 assert(marketMatches(["Phoenix metro"], "Mesa", "Maricopa"), "Phoenix metro covers Mesa");
 assert(!marketMatches(["Phoenix"], "Mesa", "Maricopa"), "Phoenix the city does not cover Mesa");
 
@@ -818,39 +822,41 @@ assert(derivedSfPad[0].spaceType === "pad" && derivedSfPad[0].acres === 1.2 && d
 const sfPadMatches = matchSpaces({ listing, spaces: [sfPad], tenants: [ownRange], defaults: [], tiers, locations: [], overrides: [] });
 assert(groupSpaceMatches(sfPadMatches, tiers)[0].tierName === "0-1.5 ac", "a pad typed in SF is grouped under its acre tier");
 
-// ---- Markets ----
-const anywhere = tenant({ id: "az", brandName: "Statewide", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Arizona"] });
-assert(classifySpace(listing, onePointOne, anywhere, null, tiers, [], null).bucket === "optimal", "a tenant whose market is Arizona is not excluded from a Mesa listing");
-const eastValley = tenant({ id: "ev", brandName: "East Valley", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["East Valley (Gilbert, Mesa)"] });
-assert(classifySpace(listing, onePointOne, eastValley, null, tiers, [], null).bucket === "optimal", "East Valley covers a Mesa listing");
-const tucsonOnly = tenant({ id: "tus", brandName: "Tucson Only", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Tucson"] });
-assert(
-  classifySpace(listing, onePointOne, tucsonOnly, null, tiers, [], null).reasons.includes("Not in this market"),
-  "a Tucson-only tenant is still Not a fit in Mesa"
-);
-const vague = tenant({ id: "vague", brandName: "Vague", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Various"] });
-assert(classifySpace(listing, onePointOne, vague, null, tiers, [], null).bucket === "optimal", "a market that says nothing (Various) excludes nobody");
+// ---- Markets are NOT a matching rule (Kevin, Nov 19 2026) ----
+// Whatever a tenant's markets say, the result is the same as having none.
+const noMarkets = tenant({ id: "nomk", brandName: "No Markets", formats: ["pad"], acresMin: 1, acresMax: 2 });
+const baseline = classifySpace(listing, onePointOne, noMarkets, null, tiers, [], null);
+for (const markets of [["Arizona"], ["Tucson"], ["Texas"], ["East Valley (Gilbert, Mesa)"], ["Various"], ["Mesa"]]) {
+  const withMarkets = classifySpace(listing, onePointOne, { ...noMarkets, azMarkets: markets }, null, tiers, [], null);
+  assert(
+    withMarkets.bucket === baseline.bucket && withMarkets.score === baseline.score && withMarkets.reasons.join("|") === baseline.reasons.join("|"),
+    `markets [${markets.join(", ")}] change nothing: same bucket, score and reasons`
+  );
+}
+assert(baseline.bucket === "optimal", "a sized pad tenant with no markets is Top");
 
+// A listing with no city at all is matched exactly like any other.
 const noCityListing: ListingContext = { ...listing, city: null, county: null };
 const metro = tenant({ id: "metro", brandName: "Metro", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Phoenix metro"] });
-const noCityFit = classifySpace(noCityListing, onePointOne, metro, null, tiers, [], null);
-assert(
-  noCityFit.bucket === "possible" && noCityFit.reasons.includes("Listing has no city on file; market not checked"),
-  "a listing with no city is Possible for a tenant with city markets, not excluded"
-);
-const pinalOnly: ListingContext = { ...listing, city: null, county: "Pinal" };
-assert(
-  classifySpace(pinalOnly, onePointOne, tucsonOnly, null, tiers, [], null).reasons.includes("Not in this market"),
-  "a Pinal County listing with no city is still outside a Tucson-only tenant's market"
-);
+assert(classifySpace(noCityListing, onePointOne, metro, null, tiers, [], null).bucket === "optimal", "a listing with no city is not held back");
 
+// A tenant whose only data is a markets list still counts as having nothing on file.
+const marketsOnly = tenant({
+  id: "mk-only",
+  brandName: "Markets Only",
+  azMarkets: ["Mesa"],
+  dealLease: null,
+  dealBuy: null,
+  dealGroundLease: null,
+  dealBts: null,
+  freestanding: null,
+  inline: null,
+});
+assert(effectiveRequirement(marketsOnly, null, tiers).nothingOnFile === true, "markets alone do not make a tenant 'on file'");
+
+// The standard city is still worked out for display (the map pin fills in a missing city).
 const pinContext = listingContext({ id: "pin", name: "SWC Hunt & Thompson", cityCounty: "Pinal County", fullAddress: "SWC Hunt Highway & Thompson Road", latitude: 33.19, longitude: -111.55 });
 assert(pinContext.city === "San Tan Valley" && pinContext.county === "Pinal" && pinContext.cityGuessed === true, "a listing with only a county gets its city from the map pin");
-const stv = tenant({ id: "stv", brandName: "STV", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["San Tan Valley"] });
-assert(
-  classifySpace(pinContext, onePointOne, stv, null, tiers, [], null).reasons.includes("In this market (near San Tan Valley)"),
-  "a guessed city is labelled as near, not as fact"
-);
 
 if (failed) {
   console.error(`\n${failed} failed`);

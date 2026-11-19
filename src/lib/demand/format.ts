@@ -72,7 +72,7 @@ export function requirementLabel(req: EffectiveRequirement, tiers: SizeTier[]): 
   const tierNames = tiers.filter((t) => req.tierIds.includes(t.id)).map((t) => t.name);
   if (tierNames.length) parts.push(tierNames.join(", "));
   if (req.driveThruRequired === true) parts.push("drive-thru");
-  if (req.azMarkets.length) parts.push(req.azMarkets.join(", "));
+  // Markets are deliberately left out: they are not a matching rule (see MARKETS_ARE_A_RULE in match.ts).
   if (req.spacingMiles != null) parts.push(`spacing ${trimNumber(req.spacingMiles)} mi`);
   if (req.treatedAsInline) parts.push("inline shop");
   return parts.join(" · ") || "No requirement on file";

@@ -162,11 +162,12 @@ export function effectiveRequirement(
 
   const azMarkets = (tenant.azMarkets || []).map((m) => String(m || "").trim()).filter(Boolean);
 
-  // Nothing of the tenant's own: no formats, no size, no deal types, no markets.
+  // Nothing of the tenant's own: no formats, no size, no deal types.
+  // (Markets don't count — they are not a matching rule.)
   const anyDealFlag = [tenant.dealLease, tenant.dealBuy, tenant.dealGroundLease, tenant.dealBts, tenant.freestanding, tenant.inline].some(
     (flag) => flag != null
   );
-  const nothingOnFile = ownFormats.length === 0 && !sfSize.own && !acreSize.own && unknownOwnTiers.length === 0 && !anyDealFlag && azMarkets.length === 0;
+  const nothingOnFile = ownFormats.length === 0 && !sfSize.own && !acreSize.own && unknownOwnTiers.length === 0 && !anyDealFlag;
 
   return {
     formats: resolved,
@@ -347,6 +348,20 @@ function spaceNoun(space: DemandSpace): string {
   return "shop space";
 }
 
+/**
+ * Should a tenant's markets list (where it wants new stores) affect the match?
+ *
+ * OFF (Kevin, Nov 19 2026): most tenants just want good sites, and every CRE8
+ * listing is a fit as long as there isn't one of their stores nearby — that
+ * part is the spacing rule, which is separate and still on. With this off,
+ * markets never exclude a tenant, never lower its rank, and never appear as a
+ * reason. The markets stored on each tenant are left untouched.
+ *
+ * To bring markets back as a rule later, change this to true. The reading of
+ * city / county names (markets.ts) is already built and tested.
+ */
+export const MARKETS_ARE_A_RULE: boolean = false;
+
 export function classifySpace(
   listing: ListingContext,
   rawSpace: DemandSpace,
@@ -406,16 +421,18 @@ export function classifySpace(
     else if (space.driveThru === true) notes.push("Drive-thru available");
   }
 
-  // Markets = where the tenant wants NEW stores (not where its stores are now).
-  // Both sides are read into standard city / county names first (markets.ts).
-  const market = checkMarket(requirement.azMarkets, listing);
-  if (market === "miss") {
-    hard.push("Not in this market");
-  } else if (market === "match" && listing.city) {
-    notes.push(listing.cityGuessed ? `In this market (near ${listing.city})` : `In this market (${listing.city})`);
-  } else if (market === "unknown") {
-    // The listing has no city, so a city-by-city market list can't be checked.
-    soft.push("Listing has no city on file; market not checked");
+  // Markets (where a tenant wants new stores) are NOT a matching rule.
+  // Most tenants just want good sites, so a listing is never ruled in or out,
+  // or moved down, by city or county. See MARKETS_ARE_A_RULE above.
+  if (MARKETS_ARE_A_RULE) {
+    const market = checkMarket(requirement.azMarkets, listing);
+    if (market === "miss") {
+      hard.push("Not in this market");
+    } else if (market === "match" && listing.city) {
+      notes.push(listing.cityGuessed ? `In this market (near ${listing.city})` : `In this market (${listing.city})`);
+    } else if (market === "unknown") {
+      soft.push("Listing has no city on file; market not checked");
+    }
   }
 
   const spacingReason = spacingConflict(listing, requirement.spacingMiles, locations);

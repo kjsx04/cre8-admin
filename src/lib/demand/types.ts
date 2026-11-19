@@ -162,7 +162,7 @@ export interface EffectiveRequirement {
   treatedAsInline: boolean;
   /**
    * True when the tenant has nothing of its own on file: no formats, no size,
-   * no size tier, no deal types, no markets. Everything shown came from its category.
+   * no size tier, no deal types. Everything shown came from its category.
    */
   nothingOnFile: boolean;
   inherited: string[];
