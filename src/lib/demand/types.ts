@@ -126,8 +126,12 @@ export interface DemandSpace {
 export interface ListingContext {
   id: string;
   name: string;
+  /** Standard city name, e.g. "Queen Creek". */
   city: string | null;
+  /** Standard county name without the word County, e.g. "Pinal". */
   county: string | null;
+  /** True when the city was worked out from the map pin because none was typed on the listing. */
+  cityGuessed?: boolean;
   marketLabel: string;
   lat: number | null;
   lng: number | null;
@@ -156,6 +160,11 @@ export interface EffectiveRequirement {
   spacingMiles: number | null;
   /** True when an SF-only requirement was treated as inline shop, not pad / ground lease / BTS. */
   treatedAsInline: boolean;
+  /**
+   * True when the tenant has nothing of its own on file: no formats, no size,
+   * no size tier, no deal types, no markets. Everything shown came from its category.
+   */
+  nothingOnFile: boolean;
   inherited: string[];
 }
 

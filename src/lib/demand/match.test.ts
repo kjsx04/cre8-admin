@@ -5,7 +5,7 @@
 import { readFileSync } from "fs";
 import { DEFAULT_TIERS, tierForValue } from "./tiers";
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, haversineMiles, spacingCue, withinListingRadius } from "./geo";
-import { deriveSpaces, parseSpacesHtml } from "./spaces";
+import { deriveSpaces, listingContext, parseSpacesHtml, standardizeSpaceSize } from "./spaces";
 import { groupTitle } from "./format";
 import { CONTACT_CSV_HEADERS, TENANT_CSV_HEADERS, parseContactCsv, parseTenantCsv } from "./csv";
 import { classifySpace, dealTypeFit, effectiveRequirement, groupSpaceMatches, marketMatches, matchSpaces, suggestAlsoPitch } from "./match";
@@ -375,7 +375,14 @@ const bare = tenant({
   inline: null,
 });
 const bareResult = classifySpace(listing, salePad, bare, null, [], [], null);
-assert(bareResult.bucket === "optimal" && !bareResult.reasons.includes("No format on the requirement") && !bareResult.reasons.includes("deal type unknown"), "blank format, size, and deal type stay optimal");
+// A tenant with nothing at all on file is a lead to research, never a Top fit.
+assert(
+  bareResult.bucket === "possible" &&
+    bareResult.reasons[0] === "Nothing on file for this tenant; category defaults used" &&
+    !bareResult.reasons.includes("No format on the requirement") &&
+    !bareResult.reasons.includes("deal type unknown"),
+  "a tenant with nothing on file is Possible, not Top, and is not excluded"
+);
 
 const pads = ["A", "B", "C", "D"].map((letter, i) =>
   space({
@@ -709,6 +716,141 @@ for (const column of ["deal_lease", "deal_buy", "deal_ground_lease", "deal_bts",
   assert(researchSql.includes(column), `research migration includes ${column}`);
 }
 assert(researchSql.includes("add column if not exists") && researchSql.includes("create table if not exists"), "research migration is idempotent");
+
+// ============================================================
+// Nov 19 2026 fixes: blank tenants, size priority, pads in acres, markets
+// ============================================================
+
+// ---- A tenant's own size beats its category's ----
+const acreTierCategory: CategoryDefault = {
+  category: "QSR",
+  formats: ["pad"],
+  sfMin: null,
+  sfMax: null,
+  acresMin: 0.5,
+  acresMax: 6,
+  tierIds: [tier("2.5-5 ac").id, tier("5-10 ac").id],
+  driveThruTypical: null,
+  spacingMiles: null,
+};
+const fourAcrePad = space({ id: "four", label: "Pad 4", spaceType: "pad", acres: 4 });
+const ownRange = tenant({ id: "own-range", brandName: "Own Range", category: "QSR", formats: ["pad"], acresMin: 1, acresMax: 2 });
+const ownRangeReq = effectiveRequirement(ownRange, acreTierCategory, tiers);
+assert(ownRangeReq.acresMin === 1 && ownRangeReq.acresMax === 2, "the tenant's own acre range is used as is");
+assert(ownRangeReq.tierIds.length === 0, "a tenant with its own acre range does not inherit the category's acre tiers");
+const ownRangeFit = classifySpace(listing, fourAcrePad, ownRange, acreTierCategory, tiers, [], null);
+assert(
+  ownRangeFit.bucket === "excluded" && ownRangeFit.reasons.some((reason) => reason.includes("Needs 1-2 ac")),
+  "a 4 ac pad is Not a fit for a 1-2 ac tenant even though the category is tagged 2.5-5 ac"
+);
+
+const minOnly = tenant({ id: "min-only", brandName: "Min Only", category: "QSR", formats: ["pad"], acresMin: 1.3 });
+const minOnlyReq = effectiveRequirement(minOnly, acreTierCategory, tiers);
+assert(minOnlyReq.acresMin === 1.3 && minOnlyReq.acresMax === 6, "a blank max is filled from the category; the tenant's own min stays");
+assert(minOnlyReq.tierIds.length === 0, "the category tiers are still ignored when only one bound is the tenant's own");
+
+const bigMin = tenant({ id: "big-min", brandName: "Big Min", category: "QSR", formats: ["pad"], acresMin: 8 });
+const bigMinReq = effectiveRequirement(bigMin, acreTierCategory, tiers);
+assert(bigMinReq.acresMin === 8 && bigMinReq.acresMax === null, "a category max below the tenant's own min is not applied");
+
+const noSize = tenant({ id: "no-size", brandName: "No Size", category: "QSR", formats: ["pad"] });
+const noSizeReq = effectiveRequirement(noSize, acreTierCategory, tiers);
+assert(noSizeReq.acresMin === 0.5 && noSizeReq.acresMax === 6 && noSizeReq.tierIds.length === 2, "a tenant with no size of its own takes the category range and tiers");
+
+const sfOwn = tenant({ id: "sf-own", brandName: "SF Own", category: "QSR", formats: ["pad"], sfMin: 2000, sfMax: 3000 });
+const sfOwnReq = effectiveRequirement(sfOwn, acreTierCategory, tiers);
+assert(sfOwnReq.sfMin === 2000 && sfOwnReq.acresMax === 6 && sfOwnReq.tierIds.length === 2, "own SF does not block the category's acreage (units are separate)");
+
+const ownTier = tenant({ id: "own-tier", brandName: "Own Tier", category: "QSR", formats: ["pad"], tierIds: [tier("0-1.5 ac").id] });
+const ownTierReq = effectiveRequirement(ownTier, acreTierCategory, tiers);
+assert(ownTierReq.tierIds.join() === tier("0-1.5 ac").id, "a tenant's own acre tier replaces the category's acre tiers");
+
+// ---- Blank tenants ----
+assert(effectiveRequirement(ownRange, null, tiers).nothingOnFile === false, "a tenant with a size is not blank");
+const blankWithCategory = tenant({
+  id: "blank-cat",
+  brandName: "Blank",
+  category: "QSR",
+  dealLease: null,
+  dealBuy: null,
+  dealGroundLease: null,
+  dealBts: null,
+  freestanding: null,
+  inline: null,
+});
+const onePointOne = space({ id: "p11", label: "Pad A", spaceType: "pad", acres: 1.1 });
+const blankFit = classifySpace(listing, onePointOne, blankWithCategory, acreTierCategory, tiers, [], null);
+assert(
+  blankFit.bucket === "possible" && blankFit.reasons[0] === "Nothing on file for this tenant; category defaults used",
+  "a blank tenant that fits only through its category is Possible, with the reason first"
+);
+
+// ---- No size to compare = not Top ----
+const formatOnly = tenant({ id: "format-only", brandName: "Format Only", formats: ["pad"] });
+const formatOnlyFit = classifySpace(listing, onePointOne, formatOnly, null, tiers, [], null);
+assert(
+  formatOnlyFit.bucket === "possible" && formatOnlyFit.reasons.includes("No acreage requirement on file"),
+  "a pad tenant with no acreage on file (own or category) is Possible, not Top"
+);
+const noAcresPad = space({ id: "noac", label: "Pad Z", spaceType: "pad" });
+const unsizedSpaceFit = classifySpace(listing, noAcresPad, formatOnly, null, tiers, [], null);
+assert(!unsizedSpaceFit.reasons.includes("No acreage requirement on file"), "a pad with no size of its own does not blame the tenant");
+
+// ---- Pads are always in acres ----
+const sfPad = space({ id: "sfpad", label: "Pad B", spaceType: "pad", sf: 43560 * 1.2 });
+const sfPadStd = standardizeSpaceSize(sfPad);
+assert(sfPadStd.acres === 1.2 && sfPadStd.sf === null, "a pad typed in SF is converted to acres");
+const padWithBuilding = standardizeSpaceSize(space({ id: "pb", label: "Pad C", spaceType: "pad", acres: 1, sf: 3000 }));
+assert(padWithBuilding.acres === 1 && padWithBuilding.sf === 3000, "a pad that already has acres keeps its building SF");
+const shopStd = standardizeSpaceSize(space({ id: "shop", label: "Suite 1", spaceType: "inline", sf: 2000 }));
+assert(shopStd.acres === null && shopStd.sf === 2000, "shop space stays in SF");
+const sfPadFit = classifySpace(listing, sfPad, ownRange, null, tiers, [], null);
+assert(sfPadFit.bucket === "optimal" && sfPadFit.reasons.some((reason) => reason.includes("1.2 ac")), "a pad typed in SF is size-checked in acres");
+const sfPadMiss = classifySpace(listing, space({ id: "bigsf", label: "Pad D", spaceType: "pad", sf: 43560 * 5 }), ownRange, null, tiers, [], null);
+assert(sfPadMiss.bucket === "excluded", "a 5 ac pad typed in SF is Not a fit for a 1-2 ac tenant (it used to pass with no size check)");
+const derivedSfPad = deriveSpaces({
+  id: "d",
+  name: "Pads",
+  propertyType: "Retail Pads",
+  spacesHtml: "<table><tr><td>Pad A</td><td>52,272 SF</td></tr></table>",
+});
+assert(derivedSfPad[0].spaceType === "pad" && derivedSfPad[0].acres === 1.2 && derivedSfPad[0].sf === null, "a pad row in SF is seeded in acres");
+const sfPadMatches = matchSpaces({ listing, spaces: [sfPad], tenants: [ownRange], defaults: [], tiers, locations: [], overrides: [] });
+assert(groupSpaceMatches(sfPadMatches, tiers)[0].tierName === "0-1.5 ac", "a pad typed in SF is grouped under its acre tier");
+
+// ---- Markets ----
+const anywhere = tenant({ id: "az", brandName: "Statewide", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Arizona"] });
+assert(classifySpace(listing, onePointOne, anywhere, null, tiers, [], null).bucket === "optimal", "a tenant whose market is Arizona is not excluded from a Mesa listing");
+const eastValley = tenant({ id: "ev", brandName: "East Valley", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["East Valley (Gilbert, Mesa)"] });
+assert(classifySpace(listing, onePointOne, eastValley, null, tiers, [], null).bucket === "optimal", "East Valley covers a Mesa listing");
+const tucsonOnly = tenant({ id: "tus", brandName: "Tucson Only", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Tucson"] });
+assert(
+  classifySpace(listing, onePointOne, tucsonOnly, null, tiers, [], null).reasons.includes("Not in this market"),
+  "a Tucson-only tenant is still Not a fit in Mesa"
+);
+const vague = tenant({ id: "vague", brandName: "Vague", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Various"] });
+assert(classifySpace(listing, onePointOne, vague, null, tiers, [], null).bucket === "optimal", "a market that says nothing (Various) excludes nobody");
+
+const noCityListing: ListingContext = { ...listing, city: null, county: null };
+const metro = tenant({ id: "metro", brandName: "Metro", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["Phoenix metro"] });
+const noCityFit = classifySpace(noCityListing, onePointOne, metro, null, tiers, [], null);
+assert(
+  noCityFit.bucket === "possible" && noCityFit.reasons.includes("Listing has no city on file; market not checked"),
+  "a listing with no city is Possible for a tenant with city markets, not excluded"
+);
+const pinalOnly: ListingContext = { ...listing, city: null, county: "Pinal" };
+assert(
+  classifySpace(pinalOnly, onePointOne, tucsonOnly, null, tiers, [], null).reasons.includes("Not in this market"),
+  "a Pinal County listing with no city is still outside a Tucson-only tenant's market"
+);
+
+const pinContext = listingContext({ id: "pin", name: "SWC Hunt & Thompson", cityCounty: "Pinal County", fullAddress: "SWC Hunt Highway & Thompson Road", latitude: 33.19, longitude: -111.55 });
+assert(pinContext.city === "San Tan Valley" && pinContext.county === "Pinal" && pinContext.cityGuessed === true, "a listing with only a county gets its city from the map pin");
+const stv = tenant({ id: "stv", brandName: "STV", formats: ["pad"], acresMin: 1, acresMax: 2, azMarkets: ["San Tan Valley"] });
+assert(
+  classifySpace(pinContext, onePointOne, stv, null, tiers, [], null).reasons.includes("In this market (near San Tan Valley)"),
+  "a guessed city is labelled as near, not as fact"
+);
 
 if (failed) {
   console.error(`\n${failed} failed`);

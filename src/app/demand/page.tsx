@@ -52,6 +52,11 @@ function DemandDesktop() {
   const [defaults, setDefaults] = useState(false);
   const [match, setMatch] = useState<MatchResponse | null>(null);
   const [brandEpoch, setBrandEpoch] = useState(0);
+  // Goes up by one each time a tenant is edited, which re-runs the match below.
+  const [matchEpoch, setMatchEpoch] = useState(0);
+  // The listing the current match belongs to — so a refresh after an edit
+  // keeps the old results on screen instead of blanking the list.
+  const matchedListing = useRef("");
   const gearRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -73,11 +78,15 @@ function DemandDesktop() {
 
   useEffect(() => {
     if (!listingId) {
+      matchedListing.current = "";
       setMatch(null);
       return;
     }
     let cancelled = false;
-    setMatch(null);
+    // A different listing: clear the old results. Same listing (a refresh after
+    // a tenant edit): leave them up until the new ones arrive.
+    if (matchedListing.current !== listingId) setMatch(null);
+    matchedListing.current = listingId;
     apiFetch(`/api/demand/match?listingId=${listingId}`)
       .then(async (res) => {
         const body = await res.json().catch(() => null);
@@ -95,7 +104,7 @@ function DemandDesktop() {
     return () => {
       cancelled = true;
     };
-  }, [listingId, toast]);
+  }, [listingId, toast, matchEpoch]);
 
   useEffect(() => {
     if (!gear) return;
@@ -140,7 +149,16 @@ function DemandDesktop() {
         </div>
       )}
       <div className="relative flex-1 min-h-0">
-        {view === "list" && <TenantTable query={query} listingId={listingId} match={match} />}
+        {view === "list" && <TenantTable
+            query={query}
+            listingId={listingId}
+            match={match}
+            onTenantSaved={() => {
+              // Refresh the Top fits, and the map's brand list (name, category, spacing).
+              setMatchEpoch((value) => value + 1);
+              setBrandEpoch((value) => value + 1);
+            }}
+          />}
         {view === "map" && (
           <>
             <BrandMap

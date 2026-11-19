@@ -22,6 +22,8 @@ import { taggedTierDistance, tierForValue, tiersOfKind } from "./tiers";
 import { formatAc, formatSf, groupTitle, isFormat, rangeText, requirementLabel, sharedTierName } from "./format";
 import { categoryKey, indexByCategory, isMedicalDental, sameCategory } from "./categories";
 import { formatMiles, haversineMiles, usableLocations } from "./geo";
+import { checkMarket } from "./markets";
+import { standardizeSpaceSize } from "./spaces";
 
 const FORMAT_ALIASES: Record<string, Format> = {
   pad: "pad",
@@ -64,7 +66,22 @@ function pick<T>(own: T | null | undefined, fallback: T | null | undefined, name
 }
 
 /**
- * A tenant's own numbers win. Empty / null fields fall back to the category.
+ * What a tenant needs, after filling blanks from its category.
+ *
+ * SIZE RULE — the tenant's own size always takes priority over its category:
+ *   - A min or max the tenant has is used as is. The category can only fill in
+ *     a bound the tenant left blank (tenant says "at least 1.3 ac", category
+ *     typical max is 2 ac → 1.3-2 ac), and never one that contradicts it.
+ *   - If the tenant has ANY size of its own in a unit (an SF or acre min or
+ *     max, or its own size tier in that unit), the category's size TIERS for
+ *     that unit are ignored completely.
+ * SF and acres are decided separately, so a tenant with its own building SF
+ * still gets its category's acreage.
+ *
+ * (Before this, a tenant with its own 1-2 ac range still inherited its
+ * category's size tiers, and a 4 ac pad sitting in one of those tiers was
+ * scored "close" instead of "outside".)
+ *
  * An SF range with no acreage and no pad, ground lease, or BTS is inline shop.
  */
 export function effectiveRequirement(
@@ -78,27 +95,57 @@ export function effectiveRequirement(
     ? ownFormats
     : (inherited.push("formats"), normalizeFormats(category?.formats));
 
-  let sfMin = pick(tenant.sfMin, category?.sfMin, "sfMin", inherited);
-  let sfMax = pick(tenant.sfMax, category?.sfMax, "sfMax", inherited);
-  let acresMin = pick(tenant.acresMin, category?.acresMin, "acresMin", inherited);
-  let acresMax = pick(tenant.acresMax, category?.acresMax, "acresMax", inherited);
-  if (sfMin != null && sfMax != null && sfMin > sfMax) {
-    if (tenant.sfMin != null) sfMax = tenant.sfMax;
-    else sfMin = tenant.sfMin;
-  }
-  if (acresMin != null && acresMax != null && acresMin > acresMax) {
-    if (tenant.acresMin != null) acresMax = tenant.acresMax;
-    else acresMin = tenant.acresMin;
+  // Which unit each size tier is in.
+  const kindOf = new Map(tiers.map((tier) => [tier.id, tier.kind]));
+  const ownTiers = tenant.tierIds || [];
+  const categoryTiers = category?.tierIds || [];
+
+  /** One unit (SF or acres). The tenant's own numbers first; the category only fills blanks. */
+  function sizeFor(kind: "sf" | "acres") {
+    const ownMin = (kind === "sf" ? tenant.sfMin : tenant.acresMin) ?? null;
+    const ownMax = (kind === "sf" ? tenant.sfMax : tenant.acresMax) ?? null;
+    const ownTierIds = ownTiers.filter((id) => kindOf.get(id) === kind);
+    const own = ownMin != null || ownMax != null || ownTierIds.length > 0;
+
+    const catMin = (kind === "sf" ? category?.sfMin : category?.acresMin) ?? null;
+    const catMax = (kind === "sf" ? category?.sfMax : category?.acresMax) ?? null;
+
+    // A blank bound is filled from the category...
+    let min = ownMin ?? catMin;
+    let max = ownMax ?? catMax;
+    // ...unless that would contradict the tenant's own number (min above max).
+    if (min != null && max != null && min > max) {
+      if (ownMin != null) max = ownMax;
+      else min = ownMin;
+    }
+    if (ownMin == null && min != null) inherited.push(`${kind}Min`);
+    if (ownMax == null && max != null) inherited.push(`${kind}Max`);
+
+    // Size tiers: the tenant's own, or — only when the tenant has no size of
+    // its own in this unit at all — the category's.
+    let tierIds = ownTierIds;
+    if (!own) {
+      tierIds = categoryTiers.filter((id) => kindOf.get(id) === kind);
+      if (tierIds.length && !inherited.includes("tiers")) inherited.push("tiers");
+    }
+    return { min, max, tierIds, own };
   }
 
-  const ownTiers = tenant.tierIds || [];
-  const fallbackTiers = category?.tierIds || [];
-  const tierIds = ownTiers.length ? ownTiers : fallbackTiers.length ? (inherited.push("tiers"), fallbackTiers) : [];
+  const sfSize = sizeFor("sf");
+  const acreSize = sizeFor("acres");
+  const sfMin = sfSize.min;
+  const sfMax = sfSize.max;
+  const acresMin = acreSize.min;
+  const acresMax = acreSize.max;
+  // Tier ids that are not in the tier list at all are kept, so nothing is silently lost.
+  const unknownOwnTiers = ownTiers.filter((id) => !kindOf.has(id));
+  const tierIds = [...sfSize.tierIds, ...acreSize.tierIds, ...unknownOwnTiers];
+
   const driveThruRequired = pick(tenant.driveThruRequired, category?.driveThruTypical ?? null, "driveThru", inherited);
   const spacingMiles = pick(tenant.spacingMiles, category?.spacingMiles ?? null, "spacing", inherited);
 
-  const hasSfTier = tiers.some((t) => t.kind === "sf" && tierIds.includes(t.id));
-  const hasAcreTier = tiers.some((t) => t.kind === "acres" && tierIds.includes(t.id));
+  const hasSfTier = sfSize.tierIds.length > 0;
+  const hasAcreTier = acreSize.tierIds.length > 0;
   const hasSf = sfMin != null || sfMax != null || hasSfTier;
   const hasAcres = acresMin != null || acresMax != null || hasAcreTier;
   const landish = formats.filter((f) => LAND_FORMATS.includes(f));
@@ -113,6 +160,14 @@ export function effectiveRequirement(
     resolved = ["pad", "ground lease", "BTS"];
   }
 
+  const azMarkets = (tenant.azMarkets || []).map((m) => String(m || "").trim()).filter(Boolean);
+
+  // Nothing of the tenant's own: no formats, no size, no deal types, no markets.
+  const anyDealFlag = [tenant.dealLease, tenant.dealBuy, tenant.dealGroundLease, tenant.dealBts, tenant.freestanding, tenant.inline].some(
+    (flag) => flag != null
+  );
+  const nothingOnFile = ownFormats.length === 0 && !sfSize.own && !acreSize.own && unknownOwnTiers.length === 0 && !anyDealFlag && azMarkets.length === 0;
+
   return {
     formats: resolved,
     sfMin,
@@ -121,9 +176,10 @@ export function effectiveRequirement(
     acresMax,
     tierIds,
     driveThruRequired,
-    azMarkets: (tenant.azMarkets || []).map((m) => String(m || "").trim()).filter(Boolean),
+    azMarkets,
     spacingMiles,
     treatedAsInline,
+    nothingOnFile,
     inherited,
   };
 }
@@ -176,32 +232,13 @@ export function evaluateSize(
   return { fit: "outside", by: "range", tierName, against };
 }
 
-const METRO = new Set([
-  "phoenix", "scottsdale", "mesa", "tempe", "chandler", "gilbert", "glendale", "peoria",
-  "surprise", "goodyear", "avondale", "buckeye", "queen creek", "san tan valley",
-  "apache junction", "fountain hills", "paradise valley", "cave creek", "carefree",
-  "el mirage", "tolleson", "litchfield park", "sun city", "youngtown", "maricopa",
-]);
-
-function norm(value: string): string {
-  return value.toLowerCase().replace(/\./g, "").replace(/\s+/g, " ").trim();
-}
-
+/**
+ * True when the listing is in one of the tenant's markets, or when there is
+ * nothing to check. The reading of both sides is in markets.ts.
+ */
 export function marketMatches(markets: string[], city: string | null, county: string | null): boolean {
-  if (markets.length === 0) return true;
-  const cityKey = city ? norm(city) : "";
-  const countyKey = county ? norm(county.replace(/\s+county$/i, "")) : "";
-  return markets.some((market) => {
-    const key = norm(market);
-    if (!key) return false;
-    if (["phoenix metro", "metro phoenix", "phoenix msa", "phoenix valley", "the valley", "valley"].includes(key)) {
-      return METRO.has(cityKey);
-    }
-    if (cityKey && key === cityKey) return true;
-    if (countyKey && (key === countyKey || key === `${countyKey} county`)) return true;
-    if (cityKey && key.length >= 4 && (key.includes(cityKey) || cityKey.includes(key))) return true;
-    return false;
-  });
+  const result = checkMarket(markets, { city, county });
+  return result === "match" || result === "none";
 }
 
 function dimension(space: DemandSpace): "acres" | "sf" {
@@ -312,13 +349,15 @@ function spaceNoun(space: DemandSpace): string {
 
 export function classifySpace(
   listing: ListingContext,
-  space: DemandSpace,
+  rawSpace: DemandSpace,
   tenant: TenantInput,
   category: CategoryDefault | null,
   tiers: SizeTier[],
   locations: TenantLocation[],
   override: SpaceOverride | null
 ): ClassifiedTenant {
+  // Pads and land are always compared in acres (a pad typed in SF is converted).
+  const space = standardizeSpaceSize(rawSpace);
   const requirement = effectiveRequirement(tenant, category, tiers);
   const hard: string[] = [];
   const soft: string[] = [];
@@ -356,15 +395,27 @@ export function classifySpace(
   if (size.fit === "outside") hard.push(sizeReason);
   else if (size.fit === "close") soft.push(sizeReason);
   else if (size.fit === "inside") notes.push(sizeReason);
+  // The space has a size but there is nothing to compare it with (not on the
+  // tenant, not on its category). That is not a size fit, so it cannot be Top.
+  else if (value != null && !requirement.nothingOnFile) {
+    soft.push(kind === "acres" ? "No acreage requirement on file" : "No SF requirement on file");
+  }
 
   if (requirement.driveThruRequired === true) {
     if (space.driveThru === false) hard.push(`Needs drive-thru; ${subject(space)} has none`);
     else if (space.driveThru === true) notes.push("Drive-thru available");
   }
 
-  if (requirement.azMarkets.length) {
-    if (!marketMatches(requirement.azMarkets, listing.city, listing.county)) hard.push("Not in this market");
-    else if (listing.city) notes.push(`In this market (${listing.city})`);
+  // Markets = where the tenant wants NEW stores (not where its stores are now).
+  // Both sides are read into standard city / county names first (markets.ts).
+  const market = checkMarket(requirement.azMarkets, listing);
+  if (market === "miss") {
+    hard.push("Not in this market");
+  } else if (market === "match" && listing.city) {
+    notes.push(listing.cityGuessed ? `In this market (near ${listing.city})` : `In this market (${listing.city})`);
+  } else if (market === "unknown") {
+    // The listing has no city, so a city-by-city market list can't be checked.
+    soft.push("Listing has no city on file; market not checked");
   }
 
   const spacingReason = spacingConflict(listing, requirement.spacingMiles, locations);
@@ -390,6 +441,10 @@ export function classifySpace(
   // storeCount is the per-tenant total from one grouped count, not a scan of
   // every location row. Zero locations can never be Top. A hard miss still excludes.
   if (tenant.storeCount <= 0) soft.unshift("No locations");
+
+  // A tenant with nothing of its own on file was only ever compared with its
+  // category's typical numbers. That is a lead to research, not a Top fit.
+  if (requirement.nothingOnFile) soft.unshift("Nothing on file for this tenant; category defaults used");
 
   let bucket: Bucket = hard.length ? "excluded" : soft.length ? "possible" : "optimal";
   if (override?.decision === "exclude") {
@@ -491,7 +546,7 @@ export function matchSpaces(args: {
         )
       )
       .sort(byScore);
-    return { space, tenants };
+    return { space: standardizeSpaceSize(space), tenants };
   });
 }
 
@@ -512,7 +567,8 @@ function signature(tenants: ClassifiedTenant[]): string {
  * tenant list. A parcel whose set differs stays on its own.
  * Interest does not change the set; an override does.
  */
-function tierKey(space: DemandSpace, tiers: SizeTier[]): string {
+function tierKey(rawSpace: DemandSpace, tiers: SizeTier[]): string {
+  const space = standardizeSpaceSize(rawSpace);
   const kind = space.spaceType === "inline" || space.spaceType === "endcap" ? "sf" : "acres";
   const value = kind === "sf" ? space.sf : space.acres;
   if (value == null) return `${kind}:unknown`;

@@ -58,10 +58,13 @@ export default function TenantTable({
   query,
   listingId,
   match,
+  onTenantSaved,
 }: {
   query: string;
   listingId: string;
   match: MatchResponse | null;
+  /** Called after the edit window saves, so the page can re-run the match for the chosen listing. */
+  onTenantSaved?: () => void;
 }) {
   const [catalog, setCatalog] = useState<DemandListTenant[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -131,7 +134,13 @@ export default function TenantTable({
           />
         </div>
       </div>
-      <TenantEditModal tenant={editing} onClose={() => setEditingId(null)} onSaved={() => refresh().catch(() => undefined)} />
+      <TenantEditModal tenant={editing} onClose={() => setEditingId(null)} onSaved={() => {
+          // Reload the list, and let the page refresh the Top fits — an edit to
+          // size or deal types changes who fits the chosen listing.
+          refresh().catch(() => undefined);
+          onTenantSaved?.();
+        }}
+      />
     </>
   );
 }

@@ -8,7 +8,7 @@ import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
-import { categoryIsOpen, categoryRows, fitOnFirstShow, groupMapCategories, toggleCategoryDisclosure, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
+import { categoryIsOpen, categoryRows, fitOnFirstShow, groupMapCategories, toggleCategoryDisclosure, type MapFit } from "@/lib/demand/active-tenants";
 import { applyStoreEdits, type StoreEdit } from "@/lib/demand/store-edits";
 
 export type BaseMap = "light" | "dark" | "satellite";
@@ -89,6 +89,9 @@ export default function BrandMap({
   const editN = useRef(0);
   const addingRef = useRef(addingId);
   const pendingRef = useRef(pending);
+  // True while a new pin is being saved. Stops a double-click on the status
+  // buttons from saving the same pin twice.
+  const placingRef = useRef(false);
   storesRef.current = stores;
   addingRef.current = addingId;
   pendingRef.current = pending;
@@ -102,6 +105,8 @@ export default function BrandMap({
     addingRef.current = null;
     setAddingId(null);
     setPending(null);
+    // Undo only ever applies to the pin just placed in this add session.
+    setLastPin(null);
   }, []);
 
   useEffect(() => {
@@ -176,8 +181,11 @@ export default function BrandMap({
     for (const fit of fits) map.set(fit.id, { bucket: fit.bucket, score: fit.score });
     return map;
   }, [fits]);
+  // Every brand is listed, including ones with no stores yet (they show
+  // "No locations"). They used to be hidden, which meant a brand with no stores
+  // could never be given its first pin.
   const groups = useMemo(
-    () => groupMapCategories(withMapLocations(brands), query, listingId ? fitById : null),
+    () => groupMapCategories(brands, query, listingId ? fitById : null),
     [brands, query, listingId, fitById]
   );
 
@@ -270,6 +278,9 @@ export default function BrandMap({
   }
 
   function selectForAdd(id: string) {
+    // Switching to another brand: forget the last pin, so Undo can never
+    // remove a pin that belongs to the brand you were on before.
+    if (addingRef.current !== id) setLastPin(null);
     addingRef.current = id;
     setAddingId(id);
     setPending(null);
@@ -295,6 +306,16 @@ export default function BrandMap({
     const tenantId = addingRef.current;
     const point = pendingRef.current;
     if (!tenantId || !point) return;
+    // Already saving this click — ignore the second click of a double-click.
+    if (placingRef.current) return;
+    placingRef.current = true;
+    // Close the status picker straight away so it can't be clicked again.
+    pendingRef.current = null;
+    setPending(null);
+    // If the save fails, put the picker back where it was (only if still adding this brand).
+    const reopen = () => {
+      if (addingRef.current === tenantId) setPending(point);
+    };
     try {
       const res = await apiFetch("/api/demand/locations", {
         method: "POST",
@@ -303,11 +324,13 @@ export default function BrandMap({
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         toast.error(body?.error || "Could not save the location.");
+        reopen();
         return;
       }
       const saved = body as Store;
       if (!saved?.id || saved.lat == null || saved.lng == null) {
         toast.error("Could not save the location.");
+        reopen();
         return;
       }
       const store = { ...saved, status: locationStatus(saved.status) };
@@ -317,10 +340,13 @@ export default function BrandMap({
         [tenantId]: [...(current[tenantId] || []).filter((item) => item.id !== store.id), store],
       }));
       bumpLocations(tenantId, 1);
-      setLastPin({ id: store.id, tenantId, store });
-      setPending(null);
+      // Only offer Undo if we are still adding pins for this same brand.
+      if (addingRef.current === tenantId) setLastPin({ id: store.id, tenantId, store });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not save the location.");
+      reopen();
+    } finally {
+      placingRef.current = false;
     }
   }
 
@@ -339,6 +365,9 @@ export default function BrandMap({
         bumpLocations(pin.tenantId, -1);
         return;
       }
+      // 404 = the pin was already deleted some other way. It stays gone;
+      // putting it back on the map would show a pin that doesn't exist.
+      if (res.status === 404) return;
       const body = await res.json().catch(() => null);
       pushEdit(pin.tenantId, { op: "add", store: pin.store });
       setStores((current) => ({
@@ -397,6 +426,8 @@ export default function BrandMap({
 
   async function deletePin(store: Store) {
     setSelection(null);
+    // If this is the pin Undo points at, Undo no longer has anything to do.
+    setLastPin((current) => (current?.id === store.id ? null : current));
     pushEdit(store.tenantId, { op: "remove", id: store.id });
     setStores((current) => ({
       ...current,
@@ -464,6 +495,9 @@ export default function BrandMap({
       />
       {selected && selection && (
         <PinCard
+          // key = a brand-new card for each pin, so a half-finished
+          // "Delete this pin?" never carries over to the next pin clicked.
+          key={selected.id}
           store={selected}
           color={colors.get(selected.tenantId) || brandColor(selected.tenantId)}
           x={selection.x}
@@ -500,7 +534,8 @@ export default function BrandMap({
           {addingId && (
             <div className="flex items-center gap-2 px-1">
               <p className="min-w-0 flex-1 text-xs text-text truncate">{brands.find((brand) => brand.id === addingId)?.brandName}</p>
-              {lastPin && (
+              {/* Undo removes the pin just placed — and only for the brand being added now */}
+              {lastPin && lastPin.tenantId === addingId && (
                 <Button variant="ghost" size="sm" onClick={undo}>Undo</Button>
               )}
             </div>

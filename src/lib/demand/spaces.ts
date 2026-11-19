@@ -1,4 +1,26 @@
 import type { Deal, DemandSpace, ListingContext, SpaceType } from "./types";
+import { standardPlace } from "./markets";
+
+/** Square feet in one acre. */
+export const SF_PER_ACRE = 43560;
+
+/**
+ * Pads and land are always sized in ACRES.
+ *
+ * A pad typed as "45,000 SF" in the listing's Spaces table used to reach the
+ * matcher with no acreage, so it was matched against every tenant with no size
+ * check at all. This converts it (45,000 SF = 1.03 ac) and clears the SF, so
+ * the pad is shown, grouped and matched in acres like every other pad.
+ *
+ * A pad that already has acres keeps both numbers as they are (the SF there is
+ * a building on the pad). Shop space (inline / endcap) is left alone: it is
+ * sized in SF.
+ */
+export function standardizeSpaceSize<T extends { spaceType: SpaceType; acres: number | null; sf: number | null }>(space: T): T {
+  const land = space.spaceType === "pad" || space.spaceType === "land parcel";
+  if (!land || space.acres != null || space.sf == null || space.sf <= 0) return space;
+  return { ...space, acres: Math.round((space.sf / SF_PER_ACRE) * 100) / 100, sf: null };
+}
 
 export interface ListingRow {
   id: string;
@@ -65,26 +87,15 @@ function parseSize(raw: string): { amount: number; unit: "sf" | "acres" } | null
   return { amount, unit: /^ac/i.test(match[2]) ? "acres" : "sf" };
 }
 
+/**
+ * City and county from the listing's hand-typed City / County field.
+ * The real work is in markets.ts (standardPlace); this is the short form used
+ * where only the typed text is available.
+ */
 export function parseCityCounty(raw: string | null | undefined): { city: string | null; county: string | null } {
-  if (!raw || !raw.trim()) return { city: null, county: null };
-  const parts = raw.split(/[,/]/).map((s) => s.replace(/\bAZ\b/i, "").trim()).filter(Boolean);
-  let county: string | null = null;
-  const cities: string[] = [];
-  for (const part of parts) {
-    const cleaned = part.replace(/\s+county$/i, "").trim();
-    if (/county$/i.test(part) || COUNTIES.has(cleaned.toLowerCase())) {
-      if (!county) county = cleaned;
-      continue;
-    }
-    cities.push(part);
-  }
-  return { city: cities[0] || null, county };
+  const place = standardPlace(raw);
+  return { city: place.city, county: place.county };
 }
-
-const COUNTIES = new Set([
-  "maricopa", "pinal", "gila", "pima", "yavapai", "coconino", "yuma", "mohave",
-  "cochise", "santa cruz", "graham", "greenlee", "la paz", "navajo", "apache",
-]);
 
 export function dealFromListingType(listingType: string | null | undefined): Deal {
   const text = (listingType || "").toLowerCase();
@@ -144,7 +155,7 @@ export function deriveSpaces(row: ListingRow): Omit<DemandSpace, "id">[] {
   const propertyType = row.propertyType || "";
 
   if (parsed.length > 0) {
-    return parsed.map((space, index) => ({
+    return parsed.map((space, index) => standardizeSpaceSize({
       label: space.label,
       spaceType: spaceTypeFor(space.label, space.unit, propertyType),
       acres: space.unit === "acres" ? space.amount : null,
@@ -187,13 +198,15 @@ export function deriveSpaces(row: ListingRow): Omit<DemandSpace, "id">[] {
 
 export function listingContext(row: ListingRow): ListingContext {
   const propertyType = row.propertyType || "";
-  const { city, county } = parseCityCounty(row.cityCounty);
+  // Standard city and county: typed field first, then the address, then the map pin.
+  const { city, county, cityGuessed } = standardPlace(row.cityCounty, row.fullAddress, row.latitude, row.longitude);
   return {
     id: row.id,
     name: row.name,
     city,
     county,
-    marketLabel: [city, county].filter(Boolean).join(", ") || row.cityCounty || "",
+    cityGuessed,
+    marketLabel: [city, county ? `${county} County` : null].filter(Boolean).join(", ") || row.cityCounty || "",
     lat: row.latitude ?? null,
     lng: row.longitude ?? null,
     zoning: row.zoning ?? null,

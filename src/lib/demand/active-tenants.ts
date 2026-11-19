@@ -2,7 +2,8 @@
  * The map's left column and the Demand list group tenants by category.
  * Search narrows every category. Who is on the map is tracked separately.
  * Case variants and retired labels share one header via categoryKey.
- * The map drops tenants with no stored locations before grouping.
+ * The map lists every tenant; one with no stored locations shows "No locations"
+ * and can be given its first pin with the + button.
  */
 
 import { categoryKey, categoryLabel } from "./categories";
@@ -34,7 +35,11 @@ export function fitOnFirstShow(shownBefore: number): boolean {
   return shownBefore === 0;
 }
 
-/** A tenant with no rows in tenant_locations cannot be drawn, so the map list skips them. */
+/**
+ * Tenants that have at least one stored location.
+ * The Demand map no longer uses this (it lists everyone, so a tenant with no
+ * stores can get its first pin); kept for views that only want drawable tenants.
+ */
 export function withMapLocations<T extends { locationCount: number }>(brands: T[]): T[] {
   return brands.filter((brand) => brand.locationCount > 0);
 }

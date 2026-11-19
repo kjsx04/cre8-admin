@@ -64,7 +64,11 @@ assert(map.includes("text-base font-semibold"), "category headers are at least a
 assert(map.includes("border-y border-border"), "category headers have a divider above and below");
 assert(map.includes("pl-4"), "tenant rows sit in from the header");
 assert(map.includes("opacity-40"), "add location stays faint until the row is hovered");
-assert(map.includes("withMapLocations"), "tenants with no locations are left off the map list");
+assert(!map.includes("withMapLocations"), "tenants with no locations are listed, so they can get a first pin");
+assert(map.includes("placingRef"), "a double-click cannot save the same pin twice");
+assert(map.includes("lastPin.tenantId === addingId"), "Undo only shows for the brand being added");
+assert(map.includes("key={selected.id}"), "each pin gets a fresh card, so a delete confirm does not carry over");
+assert(map.includes("res.status === 404"), "undoing a pin that is already gone does not bring it back");
 assert(map.includes("applyStoreEdits"), "a location fetch cannot wipe a pin that just saved");
 assert(map.includes("bumpLocations"), "saving a location updates the tenant count");
 assert(map.includes('"fill-color": ["get", "color"]'), "spacing rings fill with the tenant pin color");

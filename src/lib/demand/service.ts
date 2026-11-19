@@ -7,7 +7,7 @@ import { parcelAtPoint } from "./parcels";
 import { locationStatus, type LocationStatus } from "./location-status";
 import { categoryKey, indexByCategory, isDemandCategory, lookupCategory } from "./categories";
 import { effectiveSpacing } from "./spacing";
-import { deriveSpaces, listingContext } from "./spaces";
+import { deriveSpaces, listingContext, standardizeSpaceSize } from "./spaces";
 import type { ListingRow } from "./spaces";
 import type {
   CategoryDefault,
@@ -96,7 +96,8 @@ function listingRow(row: Row): ListingRow & { status: string } {
 }
 
 function summary(row: ReturnType<typeof listingRow>): ListingSummary {
-  const place = row.cityCounty ? splitPlace(row.cityCounty) : { city: null, county: null };
+  // Standard city / county: typed field first, then the address, then the map pin.
+  const place = listingContext(row);
   return {
     id: row.id,
     name: row.name,
@@ -114,15 +115,11 @@ function summary(row: ReturnType<typeof listingRow>): ListingSummary {
   };
 }
 
-function splitPlace(raw: string): { city: string | null; county: string | null } {
-  const ctx = listingContext({ id: "", name: "", cityCounty: raw });
-  return { city: ctx.city, county: ctx.county };
-}
-
 function spaceFrom(row: Row): DemandSpace {
   const type = String(row.space_type || "");
   const deal = String(row.deal || "both");
-  return {
+  // standardizeSpaceSize: a pad or parcel stored with only SF is read back in acres.
+  return standardizeSpaceSize({
     id: String(row.id),
     label: String(row.label || "Space"),
     spaceType: (SPACE_TYPES.has(type) ? type : "inline") as SpaceType,
@@ -135,7 +132,7 @@ function spaceFrom(row: Row): DemandSpace {
     notes: asString(row.notes),
     sortOrder: asNumber(row.sort_order) ?? 0,
     geometry: row.geometry ?? undefined,
-  };
+  });
 }
 
 function spaceView(space: DemandSpace): SpaceView {
@@ -715,8 +712,9 @@ export async function saveSpaces(listingId: string, spaces: SpaceInput[]): Promi
   const existing = await spaceRows(listingId);
   const keep = new Set<string>();
   for (let index = 0; index < spaces.length; index++) {
-    const space = spaces[index];
-    if (!SPACE_TYPES.has(space.spaceType)) throw new DemandError("Unknown space type.", 400);
+    if (!SPACE_TYPES.has(spaces[index].spaceType)) throw new DemandError("Unknown space type.", 400);
+    // Pads and land are stored in acres, even if SF was typed.
+    const space = standardizeSpaceSize(spaces[index]);
     const payload = {
       listing_id: listingId,
       label: space.label.trim() || "Space",

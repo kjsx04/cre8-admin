@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-fetch";
 import { Button, Field, Input, Modal, Select, useToast } from "@/components/ui";
 import { CANONICAL_CATEGORIES, isCanonicalCategory } from "@/lib/demand/categories";
 import { DEAL_TYPE_FIELDS, FORMAT_FLAG_FIELDS, type DealFlagKey } from "@/lib/demand/deals";
+import { readTypedNumber } from "@/lib/demand/number-input";
 import type { DealFlags } from "@/lib/demand/types";
 import type { ContactType } from "@/lib/demand/types";
 import type { ContactView, DemandListTenant } from "@/lib/demand/view";
@@ -18,12 +19,6 @@ interface ContactDraft {
   title: string;
   email: string;
   phone: string;
-}
-
-function num(value: string): number | null {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function draftFrom(contact: ContactView): ContactDraft {
@@ -119,6 +114,23 @@ export default function TenantEditModal({
 
   async function save() {
     if (!tenant || !flags) return;
+
+    // Read every number box first. "2,500" and "3 mi" are accepted; anything
+    // that isn't a number stops the save, so a typo can never wipe a value.
+    const boxes = [
+      { label: "SF min", text: sfMin },
+      { label: "SF max", text: sfMax },
+      { label: "Acres min", text: acresMin },
+      { label: "Acres max", text: acresMax },
+      { label: "Site spacing", text: spacing },
+    ].map((box) => ({ ...box, ...readTypedNumber(box.text) }));
+    const bad = boxes.find((box) => !box.ok);
+    if (bad) {
+      toast.error(`${bad.label}: "${bad.text.trim()}" isn't a number. Nothing was saved.`);
+      return;
+    }
+    const [sfMinValue, sfMaxValue, acresMinValue, acresMaxValue, spacingValue] = boxes.map((box) => box.value);
+
     setSaving(true);
     try {
       const res = await apiFetch(`/api/demand/tenants/${tenant.id}/editor`, {
@@ -126,11 +138,11 @@ export default function TenantEditModal({
         body: JSON.stringify({
           brandName: name,
           category,
-          sfMin: num(sfMin),
-          sfMax: num(sfMax),
-          acresMin: num(acresMin),
-          acresMax: num(acresMax),
-          spacingMiles: num(spacing),
+          sfMin: sfMinValue,
+          sfMax: sfMaxValue,
+          acresMin: acresMinValue,
+          acresMax: acresMaxValue,
+          spacingMiles: spacingValue,
           ...flags,
           contacts: contacts.map((row) => ({
             id: row.id,
