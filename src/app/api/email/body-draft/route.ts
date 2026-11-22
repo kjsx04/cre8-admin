@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import OpenAI from "openai";
 import { API_BASE, ListingItem } from "@/lib/admin-constants";
+import { completeText } from "@/lib/ai/client";
 import { requireUser } from "@/lib/email/auth";
 import {
   isBodyLength,
@@ -13,14 +13,14 @@ export const dynamic = "force-dynamic";
 /**
  * POST /api/email/body-draft
  * Generate plain-text listing copy for the composer Body field.
- * Uses gpt-4o-mini (existing OpenAI key) — cheapest fast model already in this stack.
+ * Uses the fast Grok model (grok-4.3) — short marketing copy, not extraction.
  */
 export async function POST(request: NextRequest) {
   const auth = requireUser(request);
   if (auth.response) return auth.response;
 
-  if (!process.env.OPENAI_API_KEY) {
-    return NextResponse.json({ error: "OPENAI_API_KEY not configured" }, { status: 500 });
+  if (!process.env.XAI_API_KEY) {
+    return NextResponse.json({ error: "XAI_API_KEY not configured" }, { status: 500 });
   }
 
   let payload: { listingIds?: unknown; length?: unknown; kind?: unknown };
@@ -64,40 +64,31 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      temperature: 0.3,
-      max_tokens: 350,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write listing copy for CRE8 Advisors, a Phoenix commercial real estate brokerage. " +
-            "Use ONLY the facts provided. Never invent prices, acres, zoning, addresses, or other numbers. " +
-            "If a fact is missing, omit it — do not guess. Voice: confident, concise, marketing-but-factual. " +
-            "No hype, no superlatives unless they appear in the source. Output plain text only: no title, bullets, or markdown.",
-        },
-        {
-          role: "user",
-          content:
-            `${LENGTH_INSTRUCTIONS[length]}\n\n` +
-            (kind === "group"
-              ? "This is a multi-listing email. Write one coherent intro for the set. Lead with listing 1, then briefly note the others. Do not invent a combined price.\n\n"
-              : "Write a short body for a single-listing email, under the hero photo.\n\n") +
-            sheets.join("\n\n"),
-        },
-      ],
-    });
-
-    const text = (completion.choices[0]?.message?.content || "").trim();
+    const text = (
+      await completeText({
+        tier: "fast",
+        temperature: 0.3,
+        maxTokens: 350,
+        system:
+          "You write listing copy for CRE8 Advisors, a Phoenix commercial real estate brokerage. " +
+          "Use ONLY the facts provided. Never invent prices, acres, zoning, addresses, or other numbers. " +
+          "If a fact is missing, omit it — do not guess. Voice: confident, concise, marketing-but-factual. " +
+          "No hype, no superlatives unless they appear in the source. Output plain text only: no title, bullets, or markdown.",
+        user:
+          `${LENGTH_INSTRUCTIONS[length]}\n\n` +
+          (kind === "group"
+            ? "This is a multi-listing email. Write one coherent intro for the set. Lead with listing 1, then briefly note the others. Do not invent a combined price.\n\n"
+            : "Write a short body for a single-listing email, under the hero photo.\n\n") +
+          sheets.join("\n\n"),
+      })
+    ).trim();
     if (!text) {
       return NextResponse.json({ error: "The model returned an empty draft" }, { status: 502 });
     }
 
     return NextResponse.json({ text });
   } catch (err) {
-    console.error("[body-draft] openai", err);
+    console.error("[body-draft]", err);
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Draft failed" },
       { status: 502 }

@@ -1,18 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
-import OpenAI from "openai";
+import { completeText } from "@/lib/ai/client";
 import { supabase } from "@/lib/flow/supabase";
 
 /**
  * POST /api/intel/process
  * Two modes:
- *   1. Reprocess: { id, text } — takes a needs_text brief + pasted article text → GPT summary
+ *   1. Reprocess: { id, text } — takes a needs_text brief + pasted article text → model summary
  *   2. Manual submit: { headline, text } — creates a new brief from scratch
  *
- * Uses the same GPT prompt as cre8-site's process route.
+ * Same prompt the route has always used. The fast Grok model writes the brief.
  */
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
+export const maxDuration = 60;
 
 /* Generate URL-safe slug from title */
 function slugify(text: string): string {
@@ -80,6 +80,9 @@ async function getFewShotExamples(): Promise<string> {
 export async function POST(req: NextRequest) {
   const auth = requireUser(req);
   if (auth.response) return auth.response;
+  if (!process.env.XAI_API_KEY) {
+    return NextResponse.json({ error: "XAI_API_KEY not configured" }, { status: 500 });
+  }
   try {
     const body = await req.json();
     const { id, headline, text, source_name, source_url, source_date } = body;
@@ -131,16 +134,12 @@ Always respond with valid JSON only.`;
       systemPrompt += `\n\nHere are recent briefs approved by the editor. Match this style exactly.\n\n${fewShotExamples}`;
     }
 
-    /* Run through GPT */
-    const completion = await openai.chat.completions.create({
-      model: "gpt-5-mini",
-      max_completion_tokens: 1024,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Analyze this article and produce a market intelligence brief.
+    const responseText = await completeText({
+      tier: "fast",
+      maxTokens: 1024,
+      json: true,
+      system: systemPrompt,
+      user: `Analyze this article and produce a market intelligence brief.
 
 ARTICLE HEADLINE: ${articleHeadline}
 ARTICLE TEXT: ${text}
@@ -154,11 +153,7 @@ Respond in this exact JSON format:
   "tags": ["array", "of", "relevant", "tags"],
   "relevance_score": 0-100
 }`,
-        },
-      ],
     });
-
-    const responseText = completion.choices[0]?.message?.content || "";
     const brief = JSON.parse(responseText);
 
     if (existingBrief) {

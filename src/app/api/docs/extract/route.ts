@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { completeText } from "@/lib/ai/client";
 import { getVariableMap } from "@/lib/constants";
 import { CLAUSE_LIBRARY } from "@/lib/clause-library";
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-});
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const auth = requireUser(request);
@@ -87,35 +85,24 @@ Return format:
   "custom_terms": ["any non-standard term descriptions"]
 }`;
 
-    const message = await anthropic.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      messages: [
-        {
-          role: "user",
-          content: rawInput,
-        },
-      ],
+    const text = await completeText({
+      tier: "flagship",
+      maxTokens: 4096,
       system: systemPrompt,
+      user: rawInput,
     });
-
-    // Extract the text response
-    const textBlock = message.content.find((block) => block.type === "text");
-    if (!textBlock || textBlock.type !== "text") {
-      throw new Error("No text response from Claude");
-    }
 
     // Parse the JSON response
     let result;
     try {
-      result = JSON.parse(textBlock.text);
+      result = JSON.parse(text);
     } catch {
       // Try to extract JSON from the response if it has extra text
-      const jsonMatch = textBlock.text.match(/\{[\s\S]*\}/);
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (jsonMatch) {
         result = JSON.parse(jsonMatch[0]);
       } else {
-        throw new Error("Failed to parse Claude response as JSON");
+        throw new Error("Failed to parse the model response as JSON");
       }
     }
 
