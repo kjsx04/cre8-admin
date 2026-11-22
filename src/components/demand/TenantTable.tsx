@@ -4,12 +4,13 @@ import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useStat
 import { ChevronDown, ChevronRight, Pencil } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { IconButton, cn, FOCUS_RING } from "@/components/ui";
+import FitHover from "@/components/demand/FitHover";
 import PersonHover from "@/components/demand/PersonHover";
 import TenantEditModal from "@/components/demand/TenantEditModal";
 import { categoryIsOpen, categoryRows, groupMapCategories, toggleCategoryDisclosure, type MapFit } from "@/lib/demand/active-tenants";
 import { yesDealLabels } from "@/lib/demand/deals";
 import { rangeText } from "@/lib/demand/format";
-import type { Bucket, DealFlags } from "@/lib/demand/types";
+import type { Bucket, DealFlags, FitCheck } from "@/lib/demand/types";
 import type { ContactView, DemandListTenant, MatchResponse, TenantMatchView } from "@/lib/demand/view";
 
 const COLS =
@@ -24,6 +25,7 @@ type Row = {
   space: string;
   reason: string;
   storeCount: number | null;
+  checks: FitCheck[];
 };
 
 type Item =
@@ -148,7 +150,7 @@ function buildItems(
   const fits = listingSelected && match ? fitsFrom(match) : null;
   const bases = new Map<string, Row>();
   for (const tenant of catalog) {
-    bases.set(tenant.id, { tenant, bucket: null, score: 0, space: "", reason: "", storeCount: null });
+    bases.set(tenant.id, { tenant, bucket: null, score: 0, space: "", reason: "", storeCount: null, checks: [] });
   }
   const best = new Map<string, Row>();
   if (match && listingId) {
@@ -197,13 +199,14 @@ function fitsFrom(match: MatchResponse): Map<string, MapFit> {
   return map;
 }
 
-function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" | "score" | "space" | "reason" | "storeCount"> {
+function fromMatch(tenant: TenantMatchView, space: string): Pick<Row, "bucket" | "score" | "space" | "reason" | "storeCount" | "checks"> {
   return {
     bucket: tenant.bucket,
     score: tenant.score,
     space,
     reason: tenant.reasons[0] || "",
     storeCount: tenant.storeCount,
+    checks: tenant.checks || [],
   };
 }
 
@@ -230,7 +233,12 @@ const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { 
   const deals = yesDealLabels(flagsOf(row.tenant)).join(", ");
   const noLocations = row.storeCount === 0 || row.reason === "No locations";
   return (
-    <div className={cn(`grid ${COLS} items-center border-b border-border min-h-11`, top && "bg-accent-soft")}>
+    <FitHover
+      space={row.space}
+      checks={row.checks}
+      placement="below"
+      className={cn(`grid ${COLS} items-center border-b border-border min-h-11`, top && "bg-accent-soft")}
+    >
       <div className="px-3 text-xs text-text-3 tabular-nums">{rank ?? ""}</div>
       <div className="py-2 pl-8 pr-3 font-medium text-sm text-text">
         {row.tenant.brandName}
@@ -254,7 +262,7 @@ const DataRow = memo(function DataRow({ item, onEdit }: { item: Extract<Item, { 
       <div className="flex justify-end pr-1">
         <IconButton label={`Edit ${row.tenant.brandName}`} size="sm" icon={<Pencil size={16} strokeWidth={1.75} />} onClick={() => onEdit(row.tenant.id)} />
       </div>
-    </div>
+    </FitHover>
   );
 });
 

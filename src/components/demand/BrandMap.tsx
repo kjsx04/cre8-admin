@@ -5,10 +5,12 @@ import { ChevronDown, ChevronRight, Copy, Plus } from "lucide-react";
 import { apiFetch } from "@/lib/api-fetch";
 import { MAPBOX_TOKEN, PHX_CENTER } from "@/lib/admin-constants";
 import { Button, Input, Select, cn, FOCUS_RING, useToast } from "@/components/ui";
+import FitHover from "@/components/demand/FitHover";
 import { circlePolygon, DEMAND_LISTING_RADIUS_MILES, withinListingRadius } from "@/lib/demand/geo";
 import { LOCATION_STATUSES, LOCATION_STATUS_LABEL, locationStatus, ringDash, type LocationStatus } from "@/lib/demand/location-status";
 import { brandColor, googleMapsUrl, pinImageId, pinPlaceLabel, pinStrokeDash, PIN_MAX_DIAMETER, PIN_MIN_ZOOM, PIN_STREET_ZOOM, PIN_STROKE } from "@/lib/demand/pins";
 import { categoryIsOpen, categoryRows, fitOnFirstShow, groupMapCategories, toggleCategoryDisclosure, withMapLocations, type MapFit } from "@/lib/demand/active-tenants";
+import type { ListingFit } from "@/lib/demand/view";
 import { applyStoreEdits, type StoreEdit } from "@/lib/demand/store-edits";
 
 export type BaseMap = "light" | "dark" | "satellite";
@@ -69,7 +71,7 @@ export default function BrandMap({
   query: string;
   onQuery: (value: string) => void;
   base: BaseMap;
-  fits: { id: string; bucket: "optimal" | "possible" | "excluded"; score: number }[];
+  fits: ListingFit[];
   brandEpoch: number;
 }) {
   const toast = useToast();
@@ -172,13 +174,18 @@ export default function BrandMap({
   }, [stopAdding]);
 
   const fitById = useMemo(() => {
+    const map = new Map<string, ListingFit>();
+    for (const fit of fits) map.set(fit.id, fit);
+    return map;
+  }, [fits]);
+  const rankById = useMemo(() => {
     const map = new Map<string, MapFit>();
     for (const fit of fits) map.set(fit.id, { bucket: fit.bucket, score: fit.score });
     return map;
   }, [fits]);
   const groups = useMemo(
-    () => groupMapCategories(withMapLocations(brands), query, listingId ? fitById : null),
-    [brands, query, listingId, fitById]
+    () => groupMapCategories(withMapLocations(brands), query, listingId ? rankById : null),
+    [brands, query, listingId, rankById]
   );
 
   const origin = focus?.lat != null && focus.lng != null ? { lat: focus.lat, lng: focus.lng } : null;
@@ -427,11 +434,13 @@ export default function BrandMap({
 
   function renderBrand(brand: Brand) {
     const onMap = active.includes(brand.id);
-    const top = Boolean(listingId && fitById.get(brand.id)?.bucket === "optimal");
+    const fit = listingId ? fitById.get(brand.id) || null : null;
+    const top = fit?.bucket === "optimal";
     return (
       <BrandRow
         key={brand.id}
         brand={brand}
+        fit={fit}
         color={onMap ? colors.get(brand.id) || brandColor(brand.brandName) : undefined}
         on={onMap}
         top={top}
@@ -538,6 +547,7 @@ export default function BrandMap({
 
 function BrandRow({
   brand,
+  fit,
   color,
   on,
   top,
@@ -549,6 +559,7 @@ function BrandRow({
   onDone,
 }: {
   brand: Brand;
+  fit: ListingFit | null;
   color?: string;
   on: boolean;
   top: boolean;
@@ -560,8 +571,11 @@ function BrandRow({
   onDone: () => void;
 }) {
   return (
-    <div
+    <FitHover
       role="listitem"
+      space={fit?.space}
+      checks={fit?.checks}
+      placement="side"
       className={cn(
         "group flex w-full items-center pl-4",
         top && "bg-accent-soft",
@@ -607,7 +621,7 @@ function BrandRow({
           <Plus size={16} strokeWidth={1.75} />
         </button>
       )}
-    </div>
+    </FitHover>
   );
 }
 
