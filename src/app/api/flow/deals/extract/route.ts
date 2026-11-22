@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireUser } from "@/lib/email/auth";
-import Anthropic from "@anthropic-ai/sdk";
+import { completeText } from "@/lib/ai/client";
+import { extractPdfText, PDF_TEXT_CHAR_LIMIT, PdfTextError } from "@/lib/flow/pdf-text";
+
+export const maxDuration = 60;
 
 // System prompt — extracts deal data including dynamic date milestones + document type detection
 const SYSTEM_PROMPT = `You extract commercial real estate deal data from documents (LOIs, PSAs, escrow timelines, listing agreements).
@@ -47,13 +50,12 @@ Rules:
 - If you see both an inside close and outside close, include both as separate entries.
 - Return valid JSON only. No markdown, no explanation.`;
 
-// POST /api/flow/deals/extract — parse a PDF or DOCX file and extract deal fields via Claude
+// POST /api/flow/deals/extract — parse a PDF or DOCX file and extract deal fields
 export async function POST(request: NextRequest) {
   const auth = requireUser(request);
   if (auth.response) return auth.response;
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not configured" }, { status: 500 });
+  if (!process.env.XAI_API_KEY) {
+    return NextResponse.json({ error: "XAI_API_KEY not configured" }, { status: 500 });
   }
 
   let body: { filename: string; data: string };
@@ -69,76 +71,28 @@ export async function POST(request: NextRequest) {
   }
 
   const ext = filename.toLowerCase().split(".").pop();
-  const client = new Anthropic({ apiKey });
+
+  let documentText: string;
+  try {
+    documentText = await documentToText(ext, data);
+  } catch (err) {
+    if (err instanceof PdfTextError || err instanceof DocumentTextError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
+    console.error("[extract] Could not read the file:", err);
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Could not read the file" },
+      { status: 400 }
+    );
+  }
 
   try {
-    let message;
-
-    if (ext === "pdf") {
-      // Send PDF directly to Claude — it reads PDFs natively via base64
-      message = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: { type: "base64", media_type: "application/pdf", data },
-              },
-              {
-                type: "text",
-                text: "Extract deal data from this document.",
-              },
-            ],
-          },
-        ],
-      });
-    } else if (ext === "doc") {
-      // Legacy binary .doc — mammoth can't parse it; fail with a clear message
-      return NextResponse.json(
-        { error: "Legacy .doc files aren't supported — save the file as .docx or PDF and try again." },
-        { status: 400 }
-      );
-    } else if (ext === "docx") {
-      // DOCX: extract text with mammoth, then send text to Claude
-      const buffer = Buffer.from(data, "base64");
-      const mammoth = await import("mammoth");
-      const result = await mammoth.extractRawText({ buffer });
-      const text = result.value;
-
-      if (!text.trim()) {
-        return NextResponse.json({ error: "No text content found in file" }, { status: 400 });
-      }
-
-      // Truncate to ~30k chars to stay within token limits
-      const truncated = text.slice(0, 30000);
-
-      message = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 1024,
-        system: SYSTEM_PROMPT,
-        messages: [
-          {
-            role: "user",
-            content: `Extract deal data from this document:\n\n${truncated}`,
-          },
-        ],
-      });
-    } else {
-      return NextResponse.json({ error: `Unsupported file type: .${ext}` }, { status: 400 });
-    }
-
-    // Parse Claude's response
-    const responseText = message.content
-      .filter((block) => block.type === "text")
-      .map((block) => {
-        if (block.type === "text") return block.text;
-        return "";
-      })
-      .join("");
+    const responseText = await completeText({
+      tier: "flagship",
+      maxTokens: 1024,
+      system: SYSTEM_PROMPT,
+      user: `Extract deal data from this document:\n\n${documentText}`,
+    });
 
     // Strip any markdown code fences if present
     const cleaned = responseText.replace(/```json\s*/g, "").replace(/```\s*/g, "").trim();
@@ -154,15 +108,66 @@ export async function POST(request: NextRequest) {
     console.error("[extract] Extraction failed:", err);
     // Surface the real cause instead of a generic message so failures are debuggable
     let message = "AI extraction failed";
-    if (err instanceof Anthropic.APIError) {
-      // Anthropic API rejected the request (bad PDF, too many pages, rate limit, etc.)
-      message = `AI extraction failed: ${err.message}`;
-    } else if (err instanceof SyntaxError) {
-      // Claude's response wasn't valid JSON
+    if (err instanceof SyntaxError) {
+      // The model's response wasn't valid JSON
       message = "AI extraction failed: couldn't parse the AI response — try dropping the file again.";
     } else if (err instanceof Error && err.message) {
       message = `AI extraction failed: ${err.message}`;
     }
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+class DocumentTextError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "DocumentTextError";
+  }
+}
+
+/**
+ * Turn the upload into plain text. PDFs go through pdf.js (Grok has no native
+ * PDF input here). Word files still go through mammoth. Both are cut at the
+ * same character limit.
+ */
+async function documentToText(ext: string | undefined, data: string): Promise<string> {
+  if (ext === "pdf") {
+    const buffer = Buffer.from(data, "base64");
+    let extracted;
+    try {
+      extracted = await extractPdfText(buffer);
+    } catch (err) {
+      if (err instanceof PdfTextError) throw err;
+      throw new PdfTextError(err instanceof Error ? err.message : "Could not read this PDF");
+    }
+    if (extracted.imageOnly || !extracted.text.trim()) {
+      throw new PdfTextError(
+        "This PDF has no text we can read. It looks like a scan made of page images only. A normal text PDF works, and so does a scan that was saved as a searchable PDF. An image-only scan needs to be exported as a searchable PDF or a Word file."
+      );
+    }
+    if (extracted.sparsePages > 0) {
+      console.info(
+        `[extract] ${extracted.sparsePages} of ${extracted.pageCount} PDF pages had no text layer`
+      );
+    }
+    return extracted.text;
+  }
+
+  if (ext === "doc") {
+    // Legacy binary .doc — mammoth can't parse it; fail with a clear message
+    throw new DocumentTextError(
+      "Legacy .doc files aren't supported — save the file as .docx or PDF and try again."
+    );
+  }
+
+  if (ext === "docx") {
+    const buffer = Buffer.from(data, "base64");
+    const mammoth = await import("mammoth");
+    const result = await mammoth.extractRawText({ buffer });
+    const text = result.value;
+    if (!text.trim()) throw new DocumentTextError("No text content found in file");
+    return text.slice(0, PDF_TEXT_CHAR_LIMIT);
+  }
+
+  throw new DocumentTextError(`Unsupported file type: .${ext}`);
 }

@@ -9,7 +9,7 @@
  * handler. That was wrong three ways:
  *
  *   1. Both routes were reachable from the public internet with no auth, so
- *      anyone could spend Anthropic tokens on this account at will.
+ *      anyone could spend model tokens on this account at will.
  *   2. Authenticating them would have broken the scheduler, because the
  *      server has no user token to present — which would have meant
  *      inventing an internal shared secret for a call the process was making
@@ -26,12 +26,8 @@
  * without removing a feature.
  */
 
-import Anthropic from "@anthropic-ai/sdk";
+import { completeText } from "@/lib/ai/client";
 import { MAX_SENDS_PER_DAY } from "@/lib/email/constants";
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-
-const MODEL = "claude-sonnet-4-6";
 
 /** One campaign as the prompt sees it. */
 export type CalendarItem = {
@@ -99,8 +95,8 @@ function phoenixNow() {
 }
 
 /**
- * Claude is asked for bare JSON, but a stray sentence before the object still
- * happens. Fall back to the first {...} span before giving up.
+ * The model is asked for bare JSON, but a stray sentence before the object
+ * still happens. Fall back to the first {...} span before giving up.
  */
 function parseJsonResponse(text: string, what: string): unknown {
   try {
@@ -112,17 +108,13 @@ function parseJsonResponse(text: string, what: string): unknown {
   }
 }
 
-async function askClaude(systemPrompt: string, userMessage: string): Promise<string> {
-  const message = await anthropic.messages.create({
-    model: MODEL,
-    max_tokens: 2048,
+async function askModel(systemPrompt: string, userMessage: string): Promise<string> {
+  return completeText({
+    tier: "flagship",
+    maxTokens: 2048,
     system: systemPrompt,
-    messages: [{ role: "user", content: userMessage }],
+    user: userMessage,
   });
-
-  const textBlock = message.content.find((block) => block.type === "text");
-  if (!textBlock || textBlock.type !== "text") throw new Error("No text response from Claude");
-  return textBlock.text;
 }
 
 /**
@@ -212,7 +204,7 @@ Return ONLY valid JSON (no markdown, no preamble):
 
 If no calendar changes are needed, return an empty array for calendar_changes.`;
 
-  const text = await askClaude(
+  const text = await askModel(
     systemPrompt,
     `Schedule this campaign: "${email_label}: ${listing_name}" (${campaign_type}, frequency: ${frequency || "one-time"})`
   );
@@ -282,7 +274,7 @@ Return ONLY valid JSON (no markdown, no preamble):
   ]
 }`;
 
-  const text = await askClaude(systemPrompt, "Rebalance this week.");
+  const text = await askModel(systemPrompt, "Rebalance this week.");
   const result = parseJsonResponse(text, "optimizer") as { moves?: unknown };
 
   const moves = Array.isArray(result.moves)
