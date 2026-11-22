@@ -66,7 +66,33 @@ assert(land.includes("ninety (90)"), "due diligence days are written out");
 assert(land.includes("thirty (30)"), "the hardcoded 30 days is written out");
 assert(land.includes("Exclusive Dealings") && land.includes("Confidentiality"), "land defaults include both sections");
 assert(land.includes("Offer Expiration:"), "land starts with offer expiration checked");
-assert(defaultLoiClauses("loi_land").every((clause) => clause.id === "financing_contingency" || clause.id === "as_is_purchase" || clause.id === "exchange_1031" || clause.id === "right_of_first_refusal" || clause.id === "seller_carryback" || clause.included), "template sections start checked");
+assert(defaultLoiClauses("loi_land").every((clause) => clause.id === "closing_extension" || clause.id === "financing_contingency" || clause.id === "as_is_purchase" || clause.id === "exchange_1031" || clause.id === "right_of_first_refusal" || clause.id === "seller_carryback" || clause.included), "template sections start checked except Closing Extension");
+assert(defaultLoiClauses("loi_land").find((clause) => clause.id === "closing_extension")?.included === false, "land Closing Extension starts unchecked");
+assert(defaultLoiClauses("loi_building").find((clause) => clause.id === "closing_extension")?.included === false, "building Closing Extension starts unchecked");
+assert(!land.includes("Closing Extension"), "the default land letter omits Closing Extension");
+assert(!textOf("loi_building").includes("Closing Extension"), "the default building letter omits Closing Extension");
+function itemNumber(docType: string, label: string, clauses?: { id: string; included?: boolean }[]) {
+  const model = loiPreviewModel(generateDocxBuffer({
+    docType,
+    variables: {
+      buyer_entity: "A",
+      seller_entity: "B",
+      property_address: "4040 E Camelback",
+      purchase_price: "$1",
+      earnest_money: "$2",
+      acreage: "1",
+    },
+    clauses,
+  }));
+  return model?.blocks.find((block) => block.left.some((run) => run.text.includes(label)))?.number;
+}
+{
+  for (const docType of ["loi_land", "loi_building"]) {
+    assert(itemNumber(docType, "Disclosures") === "7.", `${docType}: disclosures is item 7 when Closing Extension is off`);
+    assert(itemNumber(docType, "Closing Extension", [{ id: "closing_extension", included: true }]) === "7.", `${docType}: checking Closing Extension makes it item 7`);
+    assert(itemNumber(docType, "Disclosures", [{ id: "closing_extension", included: true }]) === "8.", `${docType}: disclosures becomes item 8 when the extension is on`);
+  }
+}
 assert(land.includes("“Confidentiality” and “Exclusive Dealings” provisions"), "land carve-out cites both");
 assert(!land.includes("loi_sec_"), "section markers are not visible");
 assert(!land.includes("zoned"), "blank zoning adds nothing");
