@@ -28,7 +28,8 @@
  * boundary itself.
  */
 
-import { InteractionRequiredAuthError } from "@azure/msal-browser";
+import { CacheLookupPolicy, InteractionRequiredAuthError } from "@azure/msal-browser";
+import { idTokenNeedsRefresh } from "@/lib/id-token-expiry";
 import { msalInstance } from "@/lib/msal-instance";
 import { readBotSession } from "@/lib/bot-session";
 
@@ -64,7 +65,7 @@ export class NotSignedInError extends Error {
  * the middleware would reject it. MSAL serves this from cache when the token is
  * still good, so the common path costs nothing.
  */
-async function getIdToken(): Promise<string> {
+async function getIdToken(forceRefresh = false): Promise<string> {
   const bot = readBotSession();
   if (bot) return bot.token;
 
@@ -72,10 +73,23 @@ async function getIdToken(): Promise<string> {
   if (!account) throw new NotSignedInError("You are not signed in.");
 
   try {
-    const result = await msalInstance.acquireTokenSilent({
-      scopes: ID_TOKEN_SCOPES,
-      account,
-    });
+    let result = forceRefresh ? null : await msalInstance.acquireTokenSilent({ scopes: ID_TOKEN_SCOPES, account });
+
+    // MSAL decides whether its cache is fresh by the ACCESS token, not the ID token.
+    // So it can hand back an ID token that has already expired (or is about to),
+    // and the server then answers 401: the "Failed to load: API 401" staff kept
+    // seeing about an hour into a session. When that happens, get a new one with
+    // the refresh token. RefreshToken (not the default) skips the hidden-iframe
+    // renewal, which this SPA cannot serve.
+    const exp = (result?.idTokenClaims as { exp?: number } | undefined)?.exp;
+    if (!result || !result.idToken || idTokenNeedsRefresh(exp)) {
+      result = await msalInstance.acquireTokenSilent({
+        scopes: ID_TOKEN_SCOPES,
+        account,
+        forceRefresh: true,
+        cacheLookupPolicy: CacheLookupPolicy.RefreshToken,
+      });
+    }
     if (!result.idToken) throw new NotSignedInError();
     return result.idToken;
   } catch (err) {
@@ -106,20 +120,31 @@ export function currentUserEmail(): string {
  * token to Graph would just be rejected.
  */
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
-  const token = await getIdToken();
+  const send = async (token: string) => {
+    const headers = new Headers(init.headers);
+    headers.set("Authorization", `Bearer ${token}`);
 
-  const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${token}`);
+    // Set a JSON content type only when it would be right: a string body with no
+    // explicit type. FormData must keep the browser's own multipart header,
+    // which includes the boundary.
+    const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
+    if (!isFormData && !headers.has("Content-Type") && typeof init.body === "string") {
+      headers.set("Content-Type", "application/json");
+    }
+    return fetch(path, { ...init, headers });
+  };
 
-  // Set a JSON content type only when it would be right: a string body with no
-  // explicit type. FormData must keep the browser's own multipart header,
-  // which includes the boundary.
-  const isFormData = typeof FormData !== "undefined" && init.body instanceof FormData;
-  if (!isFormData && !headers.has("Content-Type") && typeof init.body === "string") {
-    headers.set("Content-Type", "application/json");
+  const res = await send(await getIdToken());
+
+  // A 401 almost always means the token went stale between checking it and the
+  // server reading it. Renew once and try again, so a page doesn't fail to load
+  // over it. Only for Microsoft sign-ins (the bot's token can't be renewed here)
+  // and only when the body can be sent twice (a stream can't).
+  const canResend = !(typeof ReadableStream !== "undefined" && init.body instanceof ReadableStream);
+  if (res.status === 401 && !readBotSession() && canResend) {
+    return send(await getIdToken(true));
   }
-
-  return fetch(path, { ...init, headers });
+  return res;
 }
 
 /**
