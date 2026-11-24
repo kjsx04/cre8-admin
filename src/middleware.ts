@@ -16,6 +16,10 @@
  * why it is the ID token and not an access token. Only a request that passes
  * reaches a route handler, carrying the verified identity in `x-cre8-user`.
  *
+ * The automation bot (src/app/bot-login) sends its own HS256 token instead.
+ * It arrives as admin-bot@cre8advisors.com and may only read, plus the calls in
+ * BOT_WRITE_ALLOWLIST (src/lib/bot-auth.ts).
+ *
  * SPOOFING
  * `x-cre8-user` is what the route handlers trust, so this middleware strips any
  * inbound value on EVERY matched request — including the two it otherwise lets
@@ -25,7 +29,10 @@
  */
 
 import { NextRequest, NextResponse } from "next/server";
+import { decodeProtectedHeader } from "jose";
 import { verifyIdToken } from "@/lib/verify-id-token";
+import { botMayCall, configuredBotPassword, verifyBotToken } from "@/lib/bot-auth";
+import { isBotEmail } from "@/lib/bot-identity";
 
 /**
  * Routes that authenticate themselves and must NOT require a user token.
@@ -45,7 +52,19 @@ const SELF_AUTHENTICATED = [
   // Hourly Webflow → Supabase listings copy. Same CRON_SECRET check as the
   // email cron, fails closed, and only reads Webflow / writes Supabase.
   "/api/listings/mirror",
+  // The automation bot's password sign-in (src/lib/bot-auth.ts). Rate-limited,
+  // and off unless ADMIN_BOT_PASSWORD is set.
+  "/api/auth/bot-login",
 ];
+
+/** Bot tokens are HS256; Microsoft ID tokens are RS256 and take the other path. */
+function isHs256(token: string): boolean {
+  try {
+    return decodeProtectedHeader(token).alg === "HS256";
+  } catch {
+    return false;
+  }
+}
 
 function unauthorized(reason: string) {
   // The reason is deliberately coarse. A caller that fails auth doesn't need to
@@ -71,8 +90,19 @@ export async function middleware(request: NextRequest) {
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
   if (!token) return unauthorized("missing bearer token");
 
+  if (isHs256(token)) {
+    const botEmail = await verifyBotToken(token, configuredBotPassword());
+    if (!botEmail) return unauthorized("invalid token");
+    if (!botMayCall(request.method, pathname)) {
+      return NextResponse.json({ error: "The automation bot is read-only." }, { status: 403 });
+    }
+    headers.set("x-cre8-user", botEmail);
+    return NextResponse.next({ request: { headers } });
+  }
+
   try {
     const { email } = await verifyIdToken(token);
+    if (isBotEmail(email)) return unauthorized("reserved identity");
     headers.set("x-cre8-user", email);
     return NextResponse.next({ request: { headers } });
   } catch (err) {
