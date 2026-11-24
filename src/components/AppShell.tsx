@@ -11,6 +11,8 @@ import { ToastProvider, ConfirmProvider } from "@/components/ui";
  *   main      → scrolls on its own, so sticky table headers work and
  *               sub-layouts (Marketing sidebar) can be `h-full` with no calc()
  *   Toast / Confirm providers → `useToast()` and `useConfirm()` work anywhere below
+ *   (The CRE8 Assistant orb is mounted once in src/app/layout.tsx, not here, so it
+ *   never reloads when you move between sections.)
  */
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (

@@ -9,6 +9,11 @@ later phases). Plan: `CRE8_ADMIN_ASSISTANT_PLAN.md` (kept by Kevin).
 |---|---|
 | `docs/HOW-CRE8-WORKS.md` | The guide the assistant reads. Update it when a tab or process changes. Kevin writes the `[KEVIN: PROCESSES]` sections. |
 | `supabase/migrations/2026-11-24_assistant_usage.sql` | The usage log. One row per model call. Undo with the `_rollback.sql` next to it. |
+| `src/components/assistant/Assistant.tsx` | The orb and the chat it opens. Mounted once in `src/app/layout.tsx`, so it is on every signed-in page, above modals, and never reloads between sections. The orb is 16px in the bottom-right corner with a 44px tap area. Tapping opens the chat with the keyboard up. Full screen on phones, a right-hand panel on desktop. |
+| `src/components/assistant/AssistantOrb.tsx` + `globals.css` ("Assistant orb") | The spinning glass orb. States: idle (slow spin), thinking (fast + glow), done (pop, ripple, green dot). Stops moving under "reduce motion". |
+| `src/lib/assistant/client-store.ts` | The chat in the browser. Lives outside React so closing the panel or changing pages does not lose an answer in progress. |
+| `src/lib/assistant/chat-memory.ts` | Keeps the chat through a refresh, in this browser only (localStorage, keyed by email). Wiped by `/clear` (also `/new`, `/reset`), New chat, or signing out. Nothing is saved on the server. |
+| `src/lib/assistant/sse-client.ts` | Reads the stream from `/api/assistant/chat`. Tested in `sse-client.test.ts`. |
 | `src/lib/assistant/budget.ts` | Cost estimate, the Arizona month and day, the monthly cap, the rate limit and the staff-email check. Pure functions, tested in `budget.test.ts`. |
 
 ## Changing the cap or a model
@@ -22,7 +27,7 @@ later phases). Plan: `CRE8_ADMIN_ASSISTANT_PLAN.md` (kept by Kevin).
 - Only `@cre8advisors.com` Microsoft accounts (`isStaffEmail`). A token with no email is refused.
 - Read-only everywhere. No send, draft, edit or export.
 - At most 5 contacts and 10 messages per answer.
-- Chat is never saved.
+- Chat is never saved on the server. The browser keeps it until /clear, New chat or sign-out.
 
 ## Known to check later
 
