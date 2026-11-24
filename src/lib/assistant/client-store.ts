@@ -147,6 +147,29 @@ export function closeAssistant() {
   setState({ open: false });
 }
 
+// ── Going to a page ─────────────────────────────────────────
+// The Assistant component registers Next's router here, so the store (outside
+// React) can move the page when the assistant opens one.
+
+let navigator: ((href: string) => void) | null = null;
+
+export function setAssistantNavigator(fn: ((href: string) => void) | null) {
+  navigator = fn;
+}
+
+/** Only this admin's own pages: a path starting with one "/". */
+export function isAdminPath(href: string): boolean {
+  return /^\/(?!\/)/.test(href);
+}
+
+/** Go to an admin page. On a phone the chat closes so the page is visible; on desktop it stays open beside it. */
+export function navigateTo(href: string) {
+  if (!isAdminPath(href)) return;
+  if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) closeAssistant();
+  if (navigator) navigator(href);
+  else if (typeof window !== "undefined") window.location.assign(href);
+}
+
 /** Start over: stops an answer in progress and forgets the saved chat. */
 export function newChat() {
   controller?.abort();
@@ -239,6 +262,9 @@ export async function sendMessage(text: string) {
             break;
           case "sources":
             updateMessage(answerId, () => ({ sources: event.sources }));
+            break;
+          case "navigate":
+            navigateTo(event.href);
             break;
           case "tool_error":
             updateMessage(answerId, (m) => ({ toolErrors: [...(m.toolErrors ?? []), event.message] }));

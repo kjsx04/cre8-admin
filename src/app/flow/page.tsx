@@ -99,6 +99,31 @@ export default function FlowPage() {
   // Track whether auto-move has run for this data load
   const autoMoveRanRef = useRef(false);
 
+  // ── Deep link: /flow?deal=<id> opens that deal (used by the CRE8 Assistant's links) ──
+  // Read from window.location rather than useSearchParams, which would need a Suspense
+  // boundary. Re-checked when the deals load and whenever the assistant navigates,
+  // because Flow does not remount if it is already on screen.
+  useEffect(() => {
+    const openFromUrl = () => {
+      const params = new URLSearchParams(window.location.search);
+      const id = params.get("deal");
+      if (!id || deals.length === 0) return;
+      const deal = deals.find((d) => d.id === id);
+      if (!deal) return;
+      setDealTypeTab(deal.deal_type === "lease" ? "lease" : "sale");
+      setSelectedDeal(deal);
+      // Drop the ?deal= so closing the deal and refreshing doesn't reopen it.
+      params.delete("deal");
+      const rest = params.toString();
+      window.history.replaceState(null, "", `/flow${rest ? `?${rest}` : ""}`);
+    };
+    openFromUrl();
+    // The assistant's router.push lands a tick later, so check again just after its event.
+    const onNavigate = () => setTimeout(openFromUrl, 50);
+    window.addEventListener("cre8-assistant-navigate", onNavigate);
+    return () => window.removeEventListener("cre8-assistant-navigate", onNavigate);
+  }, [deals]);
+
   // Persist view mode + deal type toggle
   useEffect(() => {
     localStorage.setItem("flow_view_mode", viewMode);

@@ -105,7 +105,7 @@ const ctx = { db, email: "andy@cre8advisors.com", isOwner: false, guide: "GUIDE"
     assert(events.filter((e) => e.type === "token").map((e) => (e as { text: string }).text).join("") === "Mesa Dr is live.", "the answer streams in pieces and joins into the full text");
     assert(events.some((e) => e.type === "status"), "a status line is sent while a tool runs");
     const sources = events.find((e) => e.type === "sources") as { sources: { href?: string }[] } | undefined;
-    assert(sources?.sources[0]?.href === "/listings/11111111-1111-4111-8111-111111111111", "the listing is cited under the answer");
+    assert(sources?.sources[0]?.href === "/listings/11111111-1111-4111-8111-111111111111/edit", "the listing is cited under the answer");
     assert(events[events.length - 1].type === "done", "the stream ends with done");
     assert(requests.length === 2, "two model calls: one to ask for the tool, one to answer");
     assert(usage.length === 2 && usage.every((u) => u.ok && u.estimatedCostUsd > 0), "both calls are logged with a cost");

@@ -58,6 +58,7 @@ export const LISTING_COLUMNS =
 export type ListingRow = {
   id: string;
   name: string | null;
+  slug?: string | null;
   full_address: string | null;
   city_county: string | null;
   acres: number | null;
@@ -93,11 +94,113 @@ export function listingStatus(row: Pick<ListingRow, "sold" | "under_contract" | 
   return "Live";
 }
 
+// ── Links ───────────────────────────────────────────────────
+
+export const PUBLIC_SITE = "https://cre8advisors.com";
+
+/** The listing's edit page in the admin. */
+export function listingAdminUrl(id: string): string {
+  return `/listings/${id}/edit`;
+}
+
+/** The public website page. Only for a published listing with a slug; a draft has no public page. */
+export function listingPublicUrl(row: Pick<ListingRow, "slug" | "published_at">): string | null {
+  return row.slug && row.published_at ? `${PUBLIC_SITE}/listings/${encodeURIComponent(row.slug)}` : null;
+}
+
+/** Flow, opened on this deal. */
+export function dealAdminUrl(id: string): string {
+  return `/flow?deal=${encodeURIComponent(id)}`;
+}
+
+/**
+ * The admin pages the assistant may open for someone. Anything else is refused,
+ * so a model can never send a person to a made-up or outside address.
+ */
+const OPENABLE_PAGES: { pattern: RegExp; label: string }[] = [
+  { pattern: /^\/$/, label: "Listings" },
+  { pattern: /^\/listings\/new$/, label: "New listing" },
+  { pattern: /^\/listings\/[0-9a-f-]{36}\/edit$/i, label: "Listing" },
+  { pattern: /^\/flow$/, label: "Flow" },
+  { pattern: /^\/flow\?deal=[0-9a-f-]{36}$/i, label: "Deal in Flow" },
+  { pattern: /^\/docs$/, label: "Docs" },
+  { pattern: /^\/marketing$/, label: "Marketing" },
+  { pattern: /^\/logos$/, label: "Logos" },
+  { pattern: /^\/demand$/, label: "Demand" },
+  { pattern: /^\/intel$/, label: "Intel" },
+];
+
+/** The path if it is an admin page the assistant may open, else null. */
+export function openablePath(value: unknown): { path: string; label: string } | null {
+  if (typeof value !== "string") return null;
+  let path = value.trim();
+  // Accept a full admin URL too, but only for this admin.
+  path = path.replace(/^https?:\/\/admin\.cre8advisors\.com/i, "");
+  if (path.length > 1) path = path.replace(/\/+$/, "");
+  const hit = OPENABLE_PAGES.find((p) => p.pattern.test(path));
+  return hit ? { path, label: hit.label } : null;
+}
+
+// ── Plain text from the website's HTML ──────────────────────
+
+const ENTITIES: Record<string, string> = { "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": '"', "&#39;": "'", "&nbsp;": " " };
+
+/**
+ * Listing descriptions come from Webflow as HTML. The model reads plain text:
+ * table rows become "Pad 1: 1.2 acres" lines, list items and paragraphs become lines.
+ */
+export function htmlToText(html: unknown, max = MAX_TEXT): string | null {
+  if (typeof html !== "string" || !html.trim()) return null;
+  const text = html
+    .replace(/<(script|style)[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<\/t[dh]>\s*<t[dh][^>]*>/gi, ": ")
+    .replace(/<\/(p|div|li|tr|h[1-6])>|<br\s*\/?>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&(amp|lt|gt|quot|#39|nbsp);/g, (m) => ENTITIES[m] ?? m)
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{2,}/g, "\n")
+    .trim();
+  return clampText(text, max);
+}
+
+// ── Pads and spaces ─────────────────────────────────────────
+
+export type SpaceRow = {
+  listing_id?: string;
+  label: string | null;
+  space_type: string | null;
+  acres: number | string | null;
+  sf: number | null;
+  drive_thru: boolean | null;
+  deal: string | null;
+  price_rate: string | null;
+  status: string | null;
+  notes?: string | null;
+};
+
+export function shapeSpace(s: SpaceRow) {
+  return {
+    label: s.label,
+    type: s.space_type,
+    acres: s.acres === null || s.acres === undefined ? null : Number(s.acres),
+    sf: s.sf,
+    driveThru: s.drive_thru,
+    deal: s.deal,
+    price: s.price_rate,
+    status: s.status,
+    notes: s.notes ? clampText(s.notes, 200) : undefined,
+  };
+}
+
 export function shapeListing(row: ListingRow, brokerNames: Record<string, string> = {}) {
   return {
     id: row.id,
     name: row.name,
     status: listingStatus(row),
+    adminUrl: listingAdminUrl(row.id),
+    publicUrl: listingPublicUrl(row),
     address: row.full_address,
     cityCounty: row.city_county,
     acres: row.acres,
@@ -147,6 +250,7 @@ export function shapeDeal(row: DealRow) {
   return {
     id: row.id,
     name: row.deal_name,
+    adminUrl: dealAdminUrl(row.id),
     address: row.property_address,
     type: row.deal_type,
     status: row.status,

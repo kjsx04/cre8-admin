@@ -10,6 +10,7 @@ export type ServerEvent =
   | { type: "token"; text: string }
   | { type: "sources"; sources: ChatSource[] }
   | { type: "tool_error"; tool: string; message: string }
+  | { type: "navigate"; href: string }
   | { type: "done" }
   | { type: "error"; message: string };
 

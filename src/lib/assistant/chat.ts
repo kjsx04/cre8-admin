@@ -24,6 +24,8 @@ export type StreamEvent =
   | { type: "sources"; sources: Source[] }
   /** A lookup failed. The UI should show it, so a failed read is never read as "not found". */
   | { type: "tool_error"; tool: string; message: string }
+  /** Take the browser to this admin path (from open_page). */
+  | { type: "navigate"; href: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -181,6 +183,7 @@ export async function runChat(opts: {
       opts.emit({ type: "status", text: statusFor(call.name) });
       const result = await runTool(call.name, call.args, opts.ctx);
       sources.push(...result.sources);
+      if (result.navigate) opts.emit({ type: "navigate", href: result.navigate });
       if (result.failure) {
         opts.emit({
           type: "tool_error",
@@ -207,6 +210,8 @@ function statusFor(tool: string): string {
     case "search_deals":
     case "get_deal":
       return "Looking up deals…";
+    case "open_page":
+      return "Opening the page…";
     case "lookup_how_cre8_works":
       return "Checking the guide…";
     default:

@@ -7,21 +7,77 @@
  */
 
 import Link from "next/link";
-import { AlertTriangle, ArrowUpRight } from "lucide-react";
-import type { ChatMessage } from "@/lib/assistant/client-store";
+import { AlertTriangle, ArrowUpRight, ExternalLink } from "lucide-react";
+import { closeAssistant, isAdminPath, type ChatMessage } from "@/lib/assistant/client-store";
 
-/** **bold** → <strong>. Everything else stays text. */
+/** http(s) links open in a new tab; nothing else (javascript:, data:…) is ever a link. */
+const isWebUrl = (href: string) => /^https?:\/\//i.test(href);
+
+/**
+ * A link in an answer or a source chip.
+ *   Admin page ("/flow?deal=…") → opens right here. On a phone the chat closes so you see the page.
+ *   Website ("https://…")       → opens in a new tab.
+ * Anything else renders as plain text.
+ */
+export function SmartLink({ href, className, children }: { href: string; className?: string; children: React.ReactNode }) {
+  if (isAdminPath(href)) {
+    return (
+      <Link
+        href={href}
+        className={className}
+        onClick={() => {
+          if (window.matchMedia("(max-width: 767px)").matches) closeAssistant();
+          window.dispatchEvent(new CustomEvent("cre8-assistant-navigate", { detail: href }));
+        }}
+      >
+        {children}
+      </Link>
+    );
+  }
+  if (isWebUrl(href)) {
+    return (
+      <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+        {children}
+      </a>
+    );
+  }
+  return <span className={className}>{children}</span>;
+}
+
+const LINK_CLASS = "text-accent-strong underline underline-offset-2 decoration-accent/50 hover:decoration-accent-strong";
+
+/** **bold**, [text](url) and bare https:// links. Everything else stays text. */
 function inline(text: string, keyPrefix: string) {
-  const parts = text.split(/(\*\*[^*]+\*\*)/g);
-  return parts.map((part, i) =>
-    part.startsWith("**") && part.endsWith("**") && part.length > 4 ? (
-      <strong key={`${keyPrefix}-${i}`} className="font-semibold text-text">
-        {part.slice(2, -2)}
-      </strong>
-    ) : (
-      <span key={`${keyPrefix}-${i}`}>{part}</span>
-    ),
-  );
+  const parts = text.split(/(\*\*[^*]+\*\*|\[[^\]]+\]\([^)\s]+\)|https?:\/\/[^\s)]+)/g);
+  return parts.map((part, i) => {
+    const key = `${keyPrefix}-${i}`;
+    if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
+      return (
+        <strong key={key} className="font-semibold text-text">
+          {part.slice(2, -2)}
+        </strong>
+      );
+    }
+    const md = part.match(/^\[([^\]]+)\]\(([^)\s]+)\)$/);
+    if (md) {
+      return (
+        <SmartLink key={key} href={md[2]} className={LINK_CLASS}>
+          {md[1].replace(/\*\*/g, "")}
+        </SmartLink>
+      );
+    }
+    if (/^https?:\/\//.test(part)) {
+      // A bare URL: drop trailing punctuation from the link itself.
+      const url = part.replace(/[.,;:!?]+$/, "");
+      return (
+        <span key={key}>
+          <SmartLink href={url} className={LINK_CLASS}>{url}</SmartLink>
+          {part.slice(url.length)}
+        </span>
+      );
+    }
+    return <span key={key}>{part}</span>;
+  });
 }
 
 /** Group lines into paragraphs and lists. */
@@ -118,14 +174,15 @@ export default function AssistantMessage({ message }: { message: ChatMessage }) 
         <div className="flex flex-wrap gap-1.5 pt-0.5">
           {message.sources.map((s, i) =>
             s.href ? (
-              <Link
+              <SmartLink
                 key={i}
                 href={s.href}
                 className="inline-flex items-center gap-1 rounded-pill border border-border bg-surface px-2.5 py-1 text-xs text-text-2 hover:bg-surface-2 hover:text-text transition-colors"
               >
                 {s.label}
-                <ArrowUpRight size={12} />
-              </Link>
+                {/* Arrow out of the box = opens a new tab; plain arrow = a page in the admin */}
+                {isWebUrl(s.href) ? <ExternalLink size={12} /> : <ArrowUpRight size={12} />}
+              </SmartLink>
             ) : (
               <span key={i} className="inline-flex items-center rounded-pill border border-border bg-surface-2 px-2.5 py-1 text-xs text-text-3">
                 {s.label}
