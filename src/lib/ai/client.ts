@@ -119,6 +119,9 @@ export async function completeText(params: CompleteTextParams): Promise<string> 
   return completeXai(params);
 }
 
+/** The shared xAI client, for callers that need streaming or tool calls (the staff assistant). */
+export { xaiClient as createXaiClient };
+
 function xaiClient(): OpenAI {
   const apiKey = process.env.XAI_API_KEY;
   if (!apiKey) throw new AiConfigError("XAI_API_KEY not configured");

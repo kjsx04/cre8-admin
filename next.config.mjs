@@ -11,6 +11,8 @@ const nextConfig = {
         // Letterhead PNG read from disk while embedding the LOI watermark.
         "./src/templates/assets/**/*",
       ],
+      // The staff assistant reads this guide from disk for its instructions.
+      "/api/assistant/chat": ["./docs/HOW-CRE8-WORKS.md"],
       // Standard fonts and cmaps are read from disk while extracting PDF text.
       "/api/flow/deals/extract": [
         "./node_modules/pdfjs-dist/package.json",
