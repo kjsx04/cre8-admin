@@ -6,10 +6,11 @@
  * network.
  */
 
+import { createHash } from "crypto";
 import { jwtVerify } from "jose";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { isOwnerEmail } from "./access";
-import { AssistantDbConfigError, buildClaims, createAssistantDb, signAssistantToken, TOKEN_TTL_SECONDS } from "./db";
+import { AssistantDbConfigError, buildClaims, cleanJwtSecret, createAssistantDb, secretFingerprint, signAssistantToken, TOKEN_TTL_SECONDS } from "./db";
 import {
   ROW_CAP,
   asEnum,
@@ -35,7 +36,7 @@ function assert(cond: unknown, msg: string) {
 // ── A fake database that records every call ─────────────────
 
 type Call = [string, unknown[]];
-type Canned = { data: unknown; count?: number | null; error?: { message: string } | null };
+type Canned = { data: unknown; count?: number | null; error?: { message: string; code?: string } | null };
 
 function fakeDb(tables: Record<string, Canned>) {
   const log: Record<string, Call[]> = {};
@@ -123,6 +124,16 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     wrongSecretRejected = true;
   }
   assert(wrongSecretRejected, "a token signed with one secret is refused by another");
+
+  // A secret pasted with a newline, spaces or an invisible character signs the same token as the clean one.
+  assert(cleanJwtSecret(`  ${secret}\n`) === secret, "the JWT secret loses surrounding whitespace and newlines");
+  assert(cleanJwtSecret(`\uFEFF${secret}\u200B`) === secret, "the JWT secret loses a byte-order mark and zero-width characters");
+  const dirty = await signAssistantToken(cleanJwtSecret(`${secret}\r\n`), "andy@cre8advisors.com", false, 1_000_000);
+  assert(dirty === token, "a cleaned secret signs exactly the same token");
+  const fp = secretFingerprint(secret);
+  assert(fp.length === secret.length, "the fingerprint reports the length");
+  assert(fp.sha256Prefix === createHash("sha256").update(secret).digest("hex").slice(0, 8), "the fingerprint is the first 8 hex of the SHA-256");
+  assert(!JSON.stringify(fp).includes(secret.slice(0, 6)), "the fingerprint never contains the secret");
 
   const saved = { ...process.env };
   delete process.env.SUPABASE_JWT_SECRET;
@@ -217,6 +228,30 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     const { db } = fakeDb({ listings: { data: [], error: { message: "permission denied for table x" } } });
     const out = await runTool("search_listings", "{}", { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
     assert(/permission denied/.test((out.data as { error: string }).error), "a database error becomes a readable tool error");
+    assert((out.data as { status: string }).status === "error" && out.failure?.tool === "search_listings", "a database error is marked as a failure, not an empty result");
+    assert(!("listings" in (out.data as object)), "a failed search does not look like a search that found nothing");
+  }
+
+  {
+    // The Nov 24 failure: PostgREST refuses the token. It must read as a failed lookup.
+    const { db } = fakeDb({ listings: { data: null, error: { message: "JWSError JWSInvalidSignature", code: "PGRST301" } } });
+    const errors: string[] = [];
+    const realError = console.error;
+    console.error = (...args: unknown[]) => void errors.push(args.join(" "));
+    const out = await runTool("get_listing", JSON.stringify({ name: "Mesa Dr" }), { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
+    console.error = realError;
+    const data = out.data as { found?: boolean; lookupFailed: boolean; error: string; instruction: string };
+    assert(data.found === undefined && data.lookupFailed, "a rejected token is a failed lookup, not found:false");
+    assert(/sign-in token/.test(data.error) && out.failure?.code === "PGRST301", "the error names the rejected token and keeps the code");
+    assert(/Do not say it was not found/.test(data.instruction), "the model is told not to report a failure as not found");
+    assert(errors.some((e) => /tool get_listing failed/.test(e) && /PGRST301/.test(e)), "the failure is written to the server log with its code");
+  }
+
+  {
+    const { db, log } = fakeDb({ deals: { data: [], count: 0 } });
+    await runTool("search_deals", JSON.stringify({ status: "under_contract" }), { db, email: "a@cre8advisors.com", isOwner: true, guide: GUIDE });
+    assert(JSON.stringify(calledWith(log, "deals", "in")[0]) === JSON.stringify(["status", ["due_diligence", "closing"]]), "deals under contract means due diligence or closing");
+    assert(calledWith(log, "deals", "eq").length === 0, "under_contract is never sent as a literal deal status");
   }
 
   {

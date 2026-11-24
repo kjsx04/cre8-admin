@@ -25,7 +25,9 @@ import {
 } from "./shape";
 
 export type Source = { label: string; href?: string };
-export type ToolResult = { data: unknown; sources: Source[] };
+/** Set when the tool could not do its job. The data then says so; it is never an empty result. */
+export type ToolFailure = { tool: string; message: string; code?: string };
+export type ToolResult = { data: unknown; sources: Source[]; failure?: ToolFailure };
 export type ToolContext = { db: SupabaseClient; email: string; isOwner: boolean; guide: string };
 
 export type AssistantTool = {
@@ -37,11 +39,29 @@ export type AssistantTool = {
 };
 
 const LISTING_STATUSES = ["draft", "live", "under_contract", "sold"] as const;
-const DEAL_STATUSES = ["active", "due_diligence", "closing", "closed", "cancelled"] as const;
+// "under_contract" is not a stored deal status: it means due diligence or closing.
+const DEAL_STATUSES = ["active", "due_diligence", "closing", "closed", "cancelled", "under_contract"] as const;
+const UNDER_CONTRACT_DEAL_STATUSES = ["due_diligence", "closing"];
 const DEAL_TYPES = ["sale", "lease"] as const;
 
-function fail(error: { message: string } | null): never {
-  throw new Error(`Database error: ${error?.message ?? "unknown"}`);
+/** A database read failed. Carries PostgREST's code (for example PGRST301, a rejected token). */
+export class ToolDbError extends Error {
+  code?: string;
+  constructor(message: string, code?: string) {
+    super(message);
+    this.name = "ToolDbError";
+    this.code = code;
+  }
+}
+
+type DbError = { message?: string; code?: string; details?: string | null; hint?: string | null };
+
+function fail(error: DbError | null): never {
+  const code = error?.code || undefined;
+  if (code === "PGRST301" || code === "PGRST302" || code === "PGRST303") {
+    throw new ToolDbError(`Database rejected the assistant's sign-in token (${code}: ${error?.message ?? "no message"})`, code);
+  }
+  throw new ToolDbError(`Database error${code ? ` ${code}` : ""}: ${error?.message ?? "unknown"}`, code);
 }
 
 /** broker id -> name, for the ids that appear in these rows. */
@@ -200,7 +220,8 @@ const searchDeals: AssistantTool = {
   name: "search_deals",
   description:
     "Find deals in Flow that the asker can see (their own; the owner sees all). Filter by words in the deal name or address, " +
-    "status, sale or lease, or a broker's name. Returns at most 10, newest first, with key dates and brokers.",
+    "status, sale or lease, or a broker's name. Status under_contract means due diligence or closing. " +
+    "Returns at most 10, newest first, with key dates and brokers.",
   parameters: {
     type: "object",
     properties: {
@@ -218,7 +239,8 @@ const searchDeals: AssistantTool = {
     if (query) q = q.or(`deal_name.ilike.%${query}%,property_address.ilike.%${query}%`);
 
     const status = asEnum(args.status, DEAL_STATUSES);
-    if (status) q = q.eq("status", status);
+    if (status === "under_contract") q = q.in("status", UNDER_CONTRACT_DEAL_STATUSES);
+    else if (status) q = q.eq("status", status);
     const dealType = asEnum(args.deal_type, DEAL_TYPES);
     if (dealType) q = q.eq("deal_type", dealType);
 
@@ -337,20 +359,46 @@ export function toolByName(name: string): AssistantTool | undefined {
   return ASSISTANT_TOOLS.find((t) => t.name === name);
 }
 
-/** Run one tool call from the model. A bad call becomes an error message the model can read, not a crash. */
+/**
+ * What the model reads when a tool fails. Worded so it cannot be mistaken for
+ * "nothing matched": a failed lookup says nothing about whether the thing exists.
+ */
+export function failedToolData(message: string) {
+  return {
+    status: "error",
+    lookupFailed: true,
+    error: message,
+    instruction:
+      "This lookup FAILED. It returned no data, so it says nothing about whether the item exists. " +
+      "Tell the person the lookup failed and to try again or tell Kevin. Do not say it was not found or does not exist.",
+  };
+}
+
+function failure(tool: string, message: string, code?: string): ToolResult {
+  return { data: failedToolData(message), sources: [], failure: { tool, message, code } };
+}
+
+/**
+ * Run one tool call from the model. A bad call or a failed read becomes an
+ * explicit error the model can read (never an empty result), and is logged.
+ */
 export async function runTool(name: string, rawArgs: string, ctx: ToolContext): Promise<ToolResult> {
   const tool = toolByName(name);
-  if (!tool) return { data: { error: `There is no tool called ${name}.` }, sources: [] };
+  if (!tool) return { data: { status: "error", error: `There is no tool called ${name}.` }, sources: [], failure: { tool: name, message: "unknown tool" } };
   let args: Record<string, unknown> = {};
   try {
     const parsed = rawArgs ? JSON.parse(rawArgs) : {};
     if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) args = parsed as Record<string, unknown>;
   } catch {
-    return { data: { error: "The arguments were not valid JSON." }, sources: [] };
+    return { data: { status: "error", error: "The arguments were not valid JSON." }, sources: [], failure: { tool: name, message: "invalid arguments" } };
   }
   try {
     return await tool.run(args, ctx);
   } catch (err) {
-    return { data: { error: err instanceof Error ? err.message : "The tool failed." }, sources: [] };
+    const message = err instanceof Error ? err.message : "The tool failed.";
+    const code = err instanceof ToolDbError ? err.code : undefined;
+    // Loud on purpose: a failed read must show up in Vercel's logs, not only in the chat.
+    console.error(`[assistant] tool ${name} failed for ${ctx.email}${code ? ` [${code}]` : ""}: ${message}`);
+    return failure(name, message, code);
   }
 }

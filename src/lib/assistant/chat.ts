@@ -22,6 +22,8 @@ export type StreamEvent =
   | { type: "status"; text: string }
   | { type: "token"; text: string }
   | { type: "sources"; sources: Source[] }
+  /** A lookup failed. The UI should show it, so a failed read is never read as "not found". */
+  | { type: "tool_error"; tool: string; message: string }
   | { type: "done" }
   | { type: "error"; message: string };
 
@@ -179,6 +181,15 @@ export async function runChat(opts: {
       opts.emit({ type: "status", text: statusFor(call.name) });
       const result = await runTool(call.name, call.args, opts.ctx);
       sources.push(...result.sources);
+      if (result.failure) {
+        opts.emit({
+          type: "tool_error",
+          tool: call.name,
+          message: result.failure.code
+            ? `A lookup failed (database error ${result.failure.code}). Any answer below may be incomplete.`
+            : "A lookup failed. Any answer below may be incomplete.",
+        });
+      }
       let payload = JSON.stringify(result.data);
       if (payload.length > MAX_TOOL_RESULT_CHARS) {
         payload = `${payload.slice(0, MAX_TOOL_RESULT_CHARS)}… (result cut; ask a narrower question)`;

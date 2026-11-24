@@ -61,6 +61,12 @@ assert(
     estimateCostUsd("grok-4.3", { inputTokens: 100_000, cachedTokens: 0, outputTokens: 0, reasoningTokens: 0 }),
   "an unknown model is never priced below grok-4.3",
 );
+// The Nov 24 spread: ~3,100 prompt tokens logged as $0.0037 or $0.0008. Same prompt,
+// one a cache miss and one a cache hit (xAI caches a repeated prompt prefix automatically).
+const miss = estimateCostUsd("grok-4.3", { inputTokens: 3100, cachedTokens: 150, outputTokens: 10, reasoningTokens: 0 });
+const hit = estimateCostUsd("grok-4.3", { inputTokens: 3100, cachedTokens: 3072, outputTokens: 60, reasoningTokens: 0 });
+assert(Math.abs(miss - 0.0037) < 0.0001 && Math.abs(hit - 0.0008) < 0.0001, `a cache miss and a cache hit on the same prompt cost $${miss} and $${hit}`);
+
 // A typical lookup is a fraction of a cent.
 const lookup = estimateCostUsd("grok-4.3", { inputTokens: 5000, cachedTokens: 3000, outputTokens: 400, reasoningTokens: 0 });
 assert(lookup > 0 && lookup < 0.01, `a typical lookup costs under a cent ($${lookup})`);
