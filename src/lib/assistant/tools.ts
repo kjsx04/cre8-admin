@@ -18,8 +18,12 @@ import {
   asString,
   capRows,
   clampText,
+  anyWordFilter,
   cleanSearchTerm,
   dealAdminUrl,
+  everyWordFilters,
+  searchWords,
+  wordScore,
   findGuideSections,
   htmlToText,
   listingAdminUrl,
@@ -80,6 +84,49 @@ function fail(error: DbError | null): never {
   throw new ToolDbError(`Database error${code ? ` ${code}` : ""}: ${error?.message ?? "unknown"}`, code);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AnyQuery = any;
+
+/**
+ * Run a word search. First every word must match (in any field); if that finds
+ * nothing and there was more than one word, fall back to rows matching ANY word,
+ * ranked by how many words they contain. `base()` builds the query with every
+ * other filter, so both passes apply them.
+ */
+async function wordSearch<T extends { id: string }>(opts: {
+  base: () => AnyQuery;
+  words: string[];
+  fields: string[];
+  orderBy: string;
+  limit: number;
+  score: (row: T) => number;
+}): Promise<{ rows: T[]; count: number | null; closestMatches: boolean }> {
+  let q = opts.base();
+  for (const f of everyWordFilters(opts.words, opts.fields)) q = q.or(f);
+  const { data, count, error } = await q.order(opts.orderBy, { ascending: false }).limit(opts.limit);
+  if (error) fail(error);
+  const rows = (data ?? []) as T[];
+  if (rows.length > 0 || opts.words.length < 2) return { rows, count: count ?? null, closestMatches: false };
+
+  const loose = await opts
+    .base()
+    .or(anyWordFilter(opts.words, opts.fields))
+    .order(opts.orderBy, { ascending: false })
+    .limit(40);
+  if (loose.error) fail(loose.error);
+  const ranked = ((loose.data ?? []) as T[])
+    .map((row) => ({ row, score: opts.score(row) }))
+    .filter((r) => r.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((r) => r.row);
+  return { rows: ranked.slice(0, opts.limit), count: ranked.length, closestMatches: ranked.length > 0 };
+}
+
+const CLOSEST_NOTE = "Nothing matched every word, so these are the closest matches (most words in common first). Say they are close matches.";
+
+const LISTING_TEXT_FIELDS = ["name", "full_address", "property_overview", "spaces_available"];
+const DEAL_TEXT_FIELDS = ["deal_name", "property_address"];
+
 /** broker id -> name, for the ids that appear in these rows. */
 async function brokerNamesFor(db: SupabaseClient, ids: string[]): Promise<Record<string, string>> {
   const unique = Array.from(new Set(ids)).filter(Boolean);
@@ -135,52 +182,56 @@ const searchListings: AssistantTool = {
     additionalProperties: false,
   },
   async run(args, { db }) {
-    let q = db.from("listings").select(LISTING_COLUMNS, { count: "exact" });
-
-    const query = cleanSearchTerm(args.query);
-    if (query) {
-      q = q.or(
-        `name.ilike.%${query}%,full_address.ilike.%${query}%,property_overview.ilike.%${query}%,spaces_available.ilike.%${query}%`,
-      );
-    }
-
+    const words = searchWords(args.query);
     const city = cleanSearchTerm(args.city);
-    if (city) q = q.or(`full_address.ilike.%${city}%,city_county.ilike.%${city}%`);
-
     const propertyType = cleanSearchTerm(args.property_type);
-    if (propertyType) q = q.ilike("property_type", `%${propertyType}%`);
+    const status = asEnum(args.status, LISTING_STATUSES);
 
-    switch (asEnum(args.status, LISTING_STATUSES)) {
-      case "sold":
-        q = q.eq("sold", true);
-        break;
-      case "under_contract":
-        q = q.eq("under_contract", true).eq("sold", false);
-        break;
-      case "draft":
-        q = q.is("published_at", null).eq("sold", false);
-        break;
-      case "live":
-        q = q.not("published_at", "is", null).eq("sold", false).eq("under_contract", false);
-        break;
-      default:
-        break;
-    }
-
+    let brokerIds: string[] | null = null;
     const brokerName = asString(args.broker);
     if (brokerName) {
-      const ids = await brokerIdsByName(db, brokerName);
-      if (ids.length === 0) {
+      brokerIds = await brokerIdsByName(db, brokerName);
+      if (brokerIds.length === 0) {
         return { data: { listings: [], matchCount: 0, truncated: false, note: `No broker named "${brokerName}".` }, sources: [] };
       }
-      q = q.overlaps("broker_ids", ids);
     }
 
-    const { data, count, error } = await q.order("updated_at", { ascending: false }).limit(ROW_CAP);
-    if (error) fail(error);
+    // Every filter except the search words.
+    const base = () => {
+      let q = db.from("listings").select(LISTING_COLUMNS, { count: "exact" });
+      if (city) q = q.or(`full_address.ilike.%${city}%,city_county.ilike.%${city}%`);
+      if (propertyType) q = q.ilike("property_type", `%${propertyType}%`);
+      switch (status) {
+        case "sold":
+          q = q.eq("sold", true);
+          break;
+        case "under_contract":
+          q = q.eq("under_contract", true).eq("sold", false);
+          break;
+        case "draft":
+          q = q.is("published_at", null).eq("sold", false);
+          break;
+        case "live":
+          q = q.not("published_at", "is", null).eq("sold", false).eq("under_contract", false);
+          break;
+        default:
+          break;
+      }
+      if (brokerIds) q = q.overlaps("broker_ids", brokerIds);
+      return q;
+    };
 
-    const rows = (data ?? []) as unknown as ListingRow[];
-    const capped = capRows(rows, count);
+    const found = await wordSearch<ListingRow>({
+      base,
+      words,
+      fields: LISTING_TEXT_FIELDS,
+      orderBy: "updated_at",
+      limit: ROW_CAP,
+      score: (r) => wordScore(words, r.name, r.full_address, r.property_overview, r.spaces_available),
+    });
+
+    const rows = found.rows;
+    const capped = capRows(rows, found.count);
     const [names, spaces] = await Promise.all([
       brokerNamesFor(db, capped.rows.flatMap((r) => r.broker_ids ?? [])),
       spacesFor(db, capped.rows.map((r) => r.id)),
@@ -193,7 +244,12 @@ const searchListings: AssistantTool = {
       description: htmlToText(r.property_overview, 400),
     }));
     return {
-      data: { listings, matchCount: capped.matchCount, truncated: capped.truncated },
+      data: {
+        listings,
+        matchCount: capped.matchCount,
+        truncated: capped.truncated,
+        ...(found.closestMatches ? { closestMatches: true, note: CLOSEST_NOTE } : {}),
+      },
       sources: listings.map((l) => ({ label: `Listing: ${l.name ?? l.address ?? l.id}`, href: l.adminUrl })),
     };
   },
@@ -214,11 +270,26 @@ const getListing: AssistantTool = {
     const name = cleanSearchTerm(args.name);
     if (!id && !name) throw new Error("Give an id or a name.");
 
-    let q = db.from("listings").select(LISTING_COLUMNS);
-    q = id && isUuid(id) ? q.eq("id", id) : q.ilike("name", `%${name || cleanSearchTerm(id)}%`);
-    const { data, error } = await q.order("updated_at", { ascending: false }).limit(2);
-    if (error) fail(error);
-    const rows = (data ?? []) as unknown as ListingRow[];
+    let rows: ListingRow[];
+    let closestMatches = false;
+    if (id && isUuid(id)) {
+      const { data, error } = await db.from("listings").select(LISTING_COLUMNS).eq("id", id).limit(1);
+      if (error) fail(error);
+      rows = (data ?? []) as unknown as ListingRow[];
+    } else {
+      const words = searchWords(name || id);
+      if (words.length === 0) throw new Error("Give an id or a name.");
+      const found = await wordSearch<ListingRow>({
+        base: () => db.from("listings").select(LISTING_COLUMNS),
+        words,
+        fields: ["name", "full_address"],
+        orderBy: "updated_at",
+        limit: 2,
+        score: (r) => wordScore(words, r.name, r.full_address),
+      });
+      rows = found.rows;
+      closestMatches = found.closestMatches;
+    }
     if (rows.length === 0) return { data: { found: false }, sources: [] };
 
     const row = rows[0];
@@ -248,7 +319,8 @@ const getListing: AssistantTool = {
       data: {
         found: true,
         listing: { ...shapeListing(row, names), overview: htmlToText(row.property_overview), spacesAvailable: htmlToText(row.spaces_available) },
-        otherMatches: rows.length > 1 ? "More than one listing matched; this is the most recently updated." : undefined,
+        otherMatches: rows.length > 1 ? "More than one listing matched; this is the best match." : undefined,
+        closestMatch: closestMatches ? "Not every word matched; this is the closest listing. Say so." : undefined,
         spaces: ((spaces.data ?? []) as SpaceRow[]).map(shapeSpace),
         internalNotes: note
           ? { askingPrice: note.asking_price, zoningAndUses: clampText(note.zoning_uses), other: clampText(note.other), updatedAt: note.updated_at, visibility: "staff only" }
@@ -283,16 +355,10 @@ const searchDeals: AssistantTool = {
     additionalProperties: false,
   },
   async run(args, { db }) {
-    let q = db.from("deals").select(DEAL_SEARCH_COLUMNS, { count: "exact" });
-
-    const query = cleanSearchTerm(args.query);
-    if (query) q = q.or(`deal_name.ilike.%${query}%,property_address.ilike.%${query}%`);
-
+    const words = searchWords(args.query);
     const status = asEnum(args.status, DEAL_STATUSES);
-    if (status === "under_contract") q = q.in("status", UNDER_CONTRACT_DEAL_STATUSES);
-    else if (status) q = q.eq("status", status);
     const dealType = asEnum(args.deal_type, DEAL_TYPES);
-    if (dealType) q = q.eq("deal_type", dealType);
+    let dealIds: string[] | null = null;
 
     const brokerName = asString(args.broker);
     if (brokerName) {
@@ -302,17 +368,35 @@ const searchDeals: AssistantTool = {
       }
       const { data: members, error } = await db.from("deal_members").select("deal_id").in("broker_id", brokerIds).limit(200);
       if (error) fail(error);
-      const dealIds = Array.from(new Set((members ?? []).map((m: { deal_id: string }) => m.deal_id)));
+      dealIds = Array.from(new Set((members ?? []).map((m: { deal_id: string }) => m.deal_id)));
       if (dealIds.length === 0) return { data: { deals: [], matchCount: 0, truncated: false }, sources: [] };
-      q = q.in("id", dealIds);
     }
 
-    const { data, count, error } = await q.order("created_at", { ascending: false }).limit(ROW_CAP);
-    if (error) fail(error);
-    const capped = capRows((data ?? []) as unknown as DealRow[], count);
+    const base = () => {
+      let q = db.from("deals").select(DEAL_SEARCH_COLUMNS, { count: "exact" });
+      if (status === "under_contract") q = q.in("status", UNDER_CONTRACT_DEAL_STATUSES);
+      else if (status) q = q.eq("status", status);
+      if (dealType) q = q.eq("deal_type", dealType);
+      if (dealIds) q = q.in("id", dealIds);
+      return q;
+    };
+    const found = await wordSearch<DealRow>({
+      base,
+      words,
+      fields: DEAL_TEXT_FIELDS,
+      orderBy: "created_at",
+      limit: ROW_CAP,
+      score: (r) => wordScore(words, r.deal_name, r.property_address),
+    });
+    const capped = capRows(found.rows, found.count);
     const deals = capped.rows.map(shapeDeal);
     return {
-      data: { deals, matchCount: capped.matchCount, truncated: capped.truncated },
+      data: {
+        deals,
+        matchCount: capped.matchCount,
+        truncated: capped.truncated,
+        ...(found.closestMatches ? { closestMatches: true, note: CLOSEST_NOTE } : {}),
+      },
       sources: deals.map((d) => ({ label: `Deal: ${d.name ?? d.address ?? d.id}`, href: d.adminUrl })),
     };
   },
@@ -333,19 +417,32 @@ const getDeal: AssistantTool = {
     const name = cleanSearchTerm(args.name);
     if (!id && !name) throw new Error("Give an id or a name.");
 
-    let q = db
-      .from("deals")
-      .select(
+    const DETAIL_COLUMNS = (
         "id, deal_name, property_address, deal_type, status, price, commission_rate, broker_split, additional_splits, " +
           "effective_date, escrow_open_date, feasibility_days, dd_extension_date, inside_close_days, outside_close_days, " +
           "actual_close_date, cancel_reason, notes, listing_id, parcel_number, sharepoint_folder_url, escrow_number, " +
           "escrow_company, lease_stage, w9_status, deal_dates(label, date, sort_order), " +
-          "deal_members(split_percent, brokers(name)), lease_payments(sort_order, percent, payment_date, received, received_date)",
-      );
-    q = id && isUuid(id) ? q.eq("id", id) : q.or(`deal_name.ilike.%${name || cleanSearchTerm(id)}%,property_address.ilike.%${name || cleanSearchTerm(id)}%`);
-    const { data, error } = await q.order("created_at", { ascending: false }).limit(2);
-    if (error) fail(error);
-    const rows = (data ?? []) as unknown as (DealRow & Record<string, unknown>)[];
+          "deal_members(split_percent, brokers(name)), lease_payments(sort_order, percent, payment_date, received, received_date)"
+    );
+    type DetailRow = DealRow & Record<string, unknown>;
+    let rows: DetailRow[];
+    if (id && isUuid(id)) {
+      const { data, error } = await db.from("deals").select(DETAIL_COLUMNS).eq("id", id).limit(1);
+      if (error) fail(error);
+      rows = (data ?? []) as unknown as DetailRow[];
+    } else {
+      const words = searchWords(name || id);
+      if (words.length === 0) throw new Error("Give an id or a name.");
+      const found = await wordSearch<DetailRow>({
+        base: () => db.from("deals").select(DETAIL_COLUMNS),
+        words,
+        fields: DEAL_TEXT_FIELDS,
+        orderBy: "created_at",
+        limit: 2,
+        score: (r) => wordScore(words, r.deal_name, r.property_address),
+      });
+      rows = found.rows;
+    }
     if (rows.length === 0) {
       return { data: { found: false, note: "No deal matched, or it is not one you can see." }, sources: [] };
     }
