@@ -8,6 +8,7 @@ import { LogOut, Menu } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui";
 import { BOT_DISPLAY_NAME } from "@/lib/bot-identity";
 import { clearBotSession, useBotSession } from "@/lib/bot-session";
+import { clearAssistantMemory } from "@/lib/assistant/client-store";
 
 /* Module tabs. Demand is the last item in the centered row. */
 const NAV_ITEMS = [
@@ -67,6 +68,8 @@ export default function NavBar() {
           name={userName}
           email={userEmail}
           onSignOut={() => {
+            // Signing out forgets the assistant chat saved in this browser.
+            clearAssistantMemory();
             if (!botSession) return instance.logoutPopup();
             clearBotSession();
             window.location.replace("/");

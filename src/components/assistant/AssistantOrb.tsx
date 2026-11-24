@@ -15,6 +15,8 @@ export default function AssistantOrb({ state = "idle", size = 56 }: { state?: Or
     <span
       className="orb block shrink-0"
       data-state={state}
+      // Tiny orbs drop the sparkles and ring, which turn to mush below ~24px.
+      data-size={size <= 24 ? "sm" : undefined}
       // The size is a CSS variable so every layer scales with it.
       style={{ ["--orb-size" as string]: `${size}px` }}
       aria-hidden="true"

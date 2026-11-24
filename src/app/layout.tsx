@@ -5,6 +5,7 @@ import { MsalProvider } from "@azure/msal-react";
 import { msalInstance } from "@/lib/msal-instance";
 import { useEffect, useState } from "react";
 import Spinner from "@/components/ui/Spinner";
+import Assistant from "@/components/assistant/Assistant";
 
 export default function RootLayout({
   children,
@@ -43,7 +44,12 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         {ready ? (
-          <MsalProvider instance={msalInstance}>{children}</MsalProvider>
+          <MsalProvider instance={msalInstance}>
+            {children}
+            {/* The CRE8 Assistant: on every page, above everything, mounted once so it
+                never reloads as you move around. Shows only when signed in. */}
+            <Assistant />
+          </MsalProvider>
         ) : (
           /* Loading screen while MSAL initializes */
           <div className="min-h-screen bg-canvas flex items-center justify-center">

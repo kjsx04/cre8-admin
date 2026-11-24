@@ -168,6 +168,16 @@ body {
     inset 4px 5px 10px rgba(255, 255, 255, 0.45);
 }
 
+/* Tiny orb (the corner launcher): fewer details, brighter color, a slight outer glow */
+.orb[data-size="sm"] .orb-sparkles,
+.orb[data-size="sm"] .orb-band { display: none; }
+.orb[data-size="sm"] .orb-swirl { inset: 4% !important; filter: blur(1.5px); opacity: 1; }
+.orb[data-size="sm"] .orb-gloss {
+  background: radial-gradient(ellipse 45% 32% at 32% 24%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 75%);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+}
+.orb[data-size="sm"] { box-shadow: 0 0 0 3px rgba(140, 198, 68, 0.18), 0 3px 8px rgba(63, 110, 19, 0.35); }
+
 /* Hover / press feedback on the launcher button */
 .orb-button:hover .orb { transform: scale(1.06); }
 .orb-button:active .orb { transform: scale(0.96); }

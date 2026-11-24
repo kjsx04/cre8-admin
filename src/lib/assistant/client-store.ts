@@ -7,13 +7,15 @@
  * Kept here, the conversation and any answer in progress survive:
  *   - closing the chat panel (the answer keeps coming; the bubble tells you when it's done)
  *   - moving to another page in the admin
- * It does NOT survive a page refresh. That is deliberate: the chat is never saved.
+ *   - a page refresh: the messages are saved in this browser (see chat-memory.ts),
+ *     until /clear, New chat or signing out. Nothing is saved on the server.
  *
  * Components read it with `useAssistant()` (useSyncExternalStore under the hood).
  */
 
 import { useSyncExternalStore } from "react";
-import { apiFetch } from "@/lib/api-fetch";
+import { apiFetch, currentUserEmail } from "@/lib/api-fetch";
+import { isClearCommand, isMemoryKey, memoryKey, nextIdAfter, restoreMessages, serializeMessages } from "./chat-memory";
 import { parseSseBuffer, type ChatSource } from "./sse-client";
 
 export type { ChatSource } from "./sse-client";
@@ -56,8 +58,62 @@ const listeners = new Set<() => void>();
 let controller: AbortController | null = null;
 let nextId = 1;
 
+// ── Saving to this browser ──────────────────────────────────
+// Loaded the first time a component reads the chat, written whenever the messages change.
+
+let restored = false;
+
+function storage(): Storage | null {
+  try {
+    return typeof window === "undefined" ? null : window.localStorage;
+  } catch {
+    return null; // private mode or blocked storage: the chat still works, it just isn't kept
+  }
+}
+
+function restoreOnce() {
+  if (restored || typeof window === "undefined") return;
+  restored = true;
+  const messages = restoreMessages(storage()?.getItem(memoryKey(currentUserEmail())) ?? null);
+  if (messages.length) {
+    nextId = nextIdAfter(messages);
+    state = { ...state, messages };
+  }
+}
+
+function save(messages: ChatMessage[]) {
+  const store = storage();
+  if (!store) return;
+  try {
+    const key = memoryKey(currentUserEmail());
+    if (messages.length) store.setItem(key, serializeMessages(messages));
+    else store.removeItem(key);
+  } catch {
+    // Storage full or blocked. Not worth interrupting the chat over.
+  }
+}
+
+/** Wipe every saved chat in this browser. Called on sign-out. */
+export function clearAssistantMemory() {
+  newChat();
+  const store = storage();
+  if (!store) return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < store.length; i++) {
+      const key = store.key(i);
+      if (isMemoryKey(key)) keys.push(key!);
+    }
+    keys.forEach((k) => store.removeItem(k));
+  } catch {
+    /* ignore */
+  }
+}
+
 function setState(patch: Partial<AssistantState>) {
+  const messagesChanged = patch.messages !== undefined && patch.messages !== state.messages;
   state = { ...state, ...patch };
+  if (messagesChanged) save(state.messages);
   listeners.forEach((l) => l());
 }
 
@@ -66,15 +122,19 @@ function updateMessage(id: string, patch: (m: ChatMessage) => Partial<ChatMessag
 }
 
 function subscribe(listener: () => void) {
+  restoreOnce();
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
 const getSnapshot = () => state;
+// The server render never has a saved chat. Matching it avoids a hydration mismatch.
+const EMPTY_STATE: AssistantState = { messages: [], running: false, statusText: "", open: false, unseen: false };
+const getServerSnapshot = () => EMPTY_STATE;
 
 /** Read the chat from any component. */
 export function useAssistant(): AssistantState {
-  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
 export function openAssistant() {
@@ -87,7 +147,7 @@ export function closeAssistant() {
   setState({ open: false });
 }
 
-/** Start over. Stops an answer in progress. */
+/** Start over: stops an answer in progress and forgets the saved chat. */
 export function newChat() {
   controller?.abort();
   controller = null;
@@ -117,7 +177,13 @@ function httpErrorMessage(status: number, serverMessage: string): string {
 /** Send a question. Ignored while an answer is already being written. */
 export async function sendMessage(text: string) {
   const question = text.trim();
-  if (!question || state.running) return;
+  if (!question) return;
+  // "/clear" starts over instead of being sent.
+  if (isClearCommand(question)) {
+    newChat();
+    return;
+  }
+  if (state.running) return;
 
   const userMsg: ChatMessage = { id: `m${nextId++}`, role: "user", content: question };
   const answerId = `m${nextId++}`;

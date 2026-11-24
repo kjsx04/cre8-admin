@@ -8,11 +8,15 @@
  *            ripples with a green dot when the answer is ready. Tap to read it.
  *   Desktop: the chat docks as a panel on the right. Same behaviour.
  *
- * Mounted once in AppShell. The conversation itself lives in
- * src/lib/assistant/client-store.ts so it survives closing the panel and changing pages.
+ * Mounted once at the root (src/app/layout.tsx), above every page and every modal,
+ * so it never disappears or reloads as you move around the admin. The conversation
+ * lives in src/lib/assistant/client-store.ts and is kept through a refresh until
+ * /clear, New chat or sign-out.
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useIsAuthenticated } from "@azure/msal-react";
+import { useBotSession } from "@/lib/bot-session";
 import { usePathname } from "next/navigation";
 import { ArrowUp, ChevronDown, RotateCcw, Square, X } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui/cn";
@@ -24,6 +28,7 @@ import {
   stopAnswer,
   useAssistant,
 } from "@/lib/assistant/client-store";
+import { isClearCommand } from "@/lib/assistant/chat-memory";
 import AssistantMessage from "./AssistantMessage";
 import AssistantOrb, { type OrbState } from "./AssistantOrb";
 
@@ -33,35 +38,58 @@ const SUGGESTIONS = [
   "How do I publish a listing?",
 ];
 
+// The orb looks small but the tap area stays 44px (Apple's minimum for a finger).
+const ORB_SIZE = 16;
+
 export default function Assistant() {
   const { open, running, unseen } = useAssistant();
   const pathname = usePathname();
+  const isAuthenticated = useIsAuthenticated();
+  const botSession = useBotSession();
+  // An off-screen text box focused in the same tap that opens the chat. iPhones only
+  // raise the keyboard for a focus that happens inside the tap itself; the chat box
+  // then takes the focus over and the keyboard stays up.
+  const keyboardProxy = useRef<HTMLInputElement>(null);
 
-  // Not on the bot sign-in screen.
-  if (pathname?.startsWith("/bot-login")) return null;
+  // Signed-in staff only, and not on the bot sign-in screen.
+  if ((!isAuthenticated && !botSession) || pathname?.startsWith("/bot-login")) return null;
+
+  function launch() {
+    keyboardProxy.current?.focus();
+    openAssistant();
+  }
 
   const orbState: OrbState = running ? "thinking" : unseen ? "done" : "idle";
 
   return (
     <>
-      {/* ── The floating orb ── hidden while the chat is open */}
+      <input
+        ref={keyboardProxy}
+        aria-hidden="true"
+        tabIndex={-1}
+        // 16px so iOS doesn't zoom; off-screen and invisible.
+        className="fixed -left-[9999px] top-0 h-px w-px opacity-0 text-md"
+      />
+
+      {/* ── The orb ── on every page, above everything. The open chat takes its place. */}
       {!open && (
         <button
           type="button"
-          onClick={openAssistant}
+          onClick={launch}
           aria-label={running ? "CRE8 Assistant (working on an answer)" : unseen ? "CRE8 Assistant (answer ready)" : "Open CRE8 Assistant"}
           title="CRE8 Assistant"
           className={cn(
-            "orb-button fixed z-40 right-4 md:right-6 rounded-pill animate-fade-in",
+            // A 44px tap area with the small orb centered in it, tucked into the corner.
+            "orb-button fixed z-[70] right-1 md:right-2 h-11 w-11 flex items-center justify-center rounded-pill",
             // Sits above the iPhone home bar.
-            "bottom-[calc(16px+env(safe-area-inset-bottom))] md:bottom-6",
+            "bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
             FOCUS_RING,
           )}
         >
-          <AssistantOrb state={orbState} size={56} />
+          <AssistantOrb state={orbState} size={ORB_SIZE} />
           {/* Green dot: an answer finished while the chat was closed */}
           {unseen && !running && (
-            <span className="absolute top-0.5 right-0.5 h-3.5 w-3.5 rounded-pill bg-accent ring-2 ring-white" />
+            <span className="absolute top-2 right-2 h-2 w-2 rounded-pill bg-accent ring-2 ring-white" />
           )}
         </button>
       )}
@@ -89,9 +117,9 @@ function ChatPanel() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Focus the box on desktop. On a phone, wait for a tap so the keyboard doesn't jump up.
+  // Ready to type the moment it opens. On phones the keyboard is already up (see launch()).
   useEffect(() => {
-    if (window.matchMedia("(pointer: fine)").matches) inputRef.current?.focus();
+    inputRef.current?.focus({ preventScroll: true });
   }, []);
 
   // Keep the newest text in view.
@@ -115,7 +143,8 @@ function ChatPanel() {
   }, [draft]);
 
   function submit(text = draft) {
-    if (!text.trim() || running) return;
+    // /clear works even mid-answer; anything else waits for the answer to finish.
+    if (!text.trim() || (running && !isClearCommand(text))) return;
     stickToBottom.current = true;
     setDraft("");
     void sendMessage(text);
@@ -124,13 +153,13 @@ function ChatPanel() {
   return (
     <>
       {/* Desktop: a light backdrop that closes the panel when clicked. Phone: the panel covers everything. */}
-      <div className="hidden md:block fixed inset-0 z-50 bg-black/10 animate-fade-in" onClick={closeAssistant} aria-hidden="true" />
+      <div className="hidden md:block fixed inset-0 z-[70] bg-black/10 animate-fade-in" onClick={closeAssistant} aria-hidden="true" />
 
       <section
         role="dialog"
         aria-label="CRE8 Assistant"
         className={cn(
-          "fixed z-50 m-0 flex flex-col bg-canvas",
+          "fixed z-[70] m-0 flex flex-col bg-canvas",
           // Phone: full screen, sized to the visible area so the keyboard doesn't hide the box.
           "inset-0 h-dvh animate-slide-up",
           // Desktop: docked on the right.
@@ -234,7 +263,7 @@ function ChatPanel() {
               }}
               rows={1}
               maxLength={4000}
-              placeholder={running ? "Working on your answer…" : "Ask about a listing, a deal, or how to…"}
+              placeholder={running ? "Working on your answer… (/clear to start over)" : "Ask anything. /clear starts over."}
               // 16px on phones stops iOS from zooming the page when the box is tapped.
               className="flex-1 resize-none bg-transparent text-md md:text-base text-text placeholder:text-text-3 outline-none py-1 max-h-40"
               aria-label="Message the CRE8 Assistant"
@@ -262,7 +291,7 @@ function ChatPanel() {
             )}
           </div>
           <p className="text-label normal-case tracking-normal text-text-3 text-center mt-2">
-            Read-only. Answers can be wrong. Check anything important.
+            Read-only. Kept in this browser until /clear. Check anything important.
           </p>
         </form>
       </section>
