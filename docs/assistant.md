@@ -9,6 +9,10 @@ later phases). Plan: `CRE8_ADMIN_ASSISTANT_PLAN.md` (kept by Kevin).
 |---|---|
 | `docs/HOW-CRE8-WORKS.md` | The guide the assistant reads. Update it when a tab or process changes. Kevin writes the `[KEVIN: PROCESSES]` sections. |
 | `supabase/migrations/2026-11-24_assistant_usage.sql` | The usage log. One row per model call. Undo with the `_rollback.sql` next to it. |
+| `src/components/assistant/Assistant.tsx` | The orb (bottom-right on every page, mounted in `AppShell`) and the chat it opens: full screen on phones, a right-hand panel on desktop. |
+| `src/components/assistant/AssistantOrb.tsx` + `globals.css` ("Assistant orb") | The spinning glass orb. States: idle (slow spin), thinking (fast + glow), done (pop, ripple, green dot). Stops moving under "reduce motion". |
+| `src/lib/assistant/client-store.ts` | The chat in the browser. Lives outside React so closing the panel or changing pages does not lose an answer in progress. Gone on refresh (chat is never saved). |
+| `src/lib/assistant/sse-client.ts` | Reads the stream from `/api/assistant/chat`. Tested in `sse-client.test.ts`. |
 | `src/lib/assistant/budget.ts` | Cost estimate, the Arizona month and day, the monthly cap, the rate limit and the staff-email check. Pure functions, tested in `budget.test.ts`. |
 
 ## Changing the cap or a model
