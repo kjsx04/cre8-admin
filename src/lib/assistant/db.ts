@@ -12,6 +12,7 @@
  * the service-role key.
  */
 
+import { createHash } from "crypto";
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { SignJWT } from "jose";
 
@@ -57,16 +58,51 @@ export async function signAssistantToken(
     .sign(new TextEncoder().encode(secret));
 }
 
+// ── The JWT secret ──────────────────────────────────────────
+// A secret pasted into Vercel can pick up a trailing newline, a leading space or
+// an invisible character. Any of those makes every token's signature wrong and
+// PostgREST answers 401 PGRST301. So the value is cleaned before use, and its
+// fingerprint (never the value) is logged once per cold start so it can be
+// compared with the dashboard.
+
+// Zero-width space/joiners, word joiner and byte-order mark. trim() does not remove all of these.
+const INVISIBLE_CHARS = /[\u200B-\u200D\u2060\uFEFF]/g;
+
+/** The secret as it should be used: no surrounding whitespace, no invisible characters. */
+export function cleanJwtSecret(raw: string): string {
+  return raw.replace(INVISIBLE_CHARS, "").trim();
+}
+
+/** Safe to log: the length and the first 8 hex characters of the SHA-256. Never the value. */
+export function secretFingerprint(secret: string): { length: number; sha256Prefix: string } {
+  return { length: secret.length, sha256Prefix: createHash("sha256").update(secret, "utf8").digest("hex").slice(0, 8) };
+}
+
+let fingerprintLogged = false;
+
+function logFingerprintOnce(raw: string, cleaned: string) {
+  if (fingerprintLogged) return;
+  fingerprintLogged = true;
+  const { length, sha256Prefix } = secretFingerprint(cleaned);
+  const removed = raw.length - cleaned.length;
+  console.log(
+    `[assistant] SUPABASE_JWT_SECRET length=${length} sha256=${sha256Prefix}` +
+      (removed > 0 ? ` (cleaned ${removed} stray character(s) from the env value)` : ""),
+  );
+}
+
 /** A client scoped to one asker for one request. Do not cache it across requests. */
 export async function createAssistantDb(email: string, isOwner: boolean): Promise<SupabaseClient> {
   const url = process.env.SUPABASE_URL;
-  const secret = process.env.SUPABASE_JWT_SECRET;
-  const anonKey = process.env.SUPABASE_ANON_KEY;
+  const rawSecret = process.env.SUPABASE_JWT_SECRET ?? "";
+  const secret = cleanJwtSecret(rawSecret);
+  const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
   if (!url || !secret || !anonKey) {
     throw new AssistantDbConfigError(
       "The assistant needs SUPABASE_URL, SUPABASE_JWT_SECRET and SUPABASE_ANON_KEY to be set.",
     );
   }
+  logFingerprintOnce(rawSecret, secret);
   const token = await signAssistantToken(secret, email, isOwner);
   return createClient(url, anonKey, {
     global: { headers: { Authorization: `Bearer ${token}` } },
