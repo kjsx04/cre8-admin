@@ -12,7 +12,8 @@
  * nowhere to add a real credential.
  *
  * WHAT IT DOES
- * Attaches the signed-in user's Microsoft ID token as a bearer token.
+ * Attaches the signed-in user's Microsoft ID token as a bearer token (or, for
+ * the automation bot, its own token; see src/lib/bot-session.ts).
  * src/middleware.ts verifies it against Azure AD and passes the verified
  * identity to the route. Nothing else is needed at the call site:
  *
@@ -29,6 +30,7 @@
 
 import { InteractionRequiredAuthError } from "@azure/msal-browser";
 import { msalInstance } from "@/lib/msal-instance";
+import { readBotSession } from "@/lib/bot-session";
 
 /**
  * Scopes for the ID token. These are the OIDC basics, not Graph permissions —
@@ -63,6 +65,9 @@ export class NotSignedInError extends Error {
  * still good, so the common path costs nothing.
  */
 async function getIdToken(): Promise<string> {
+  const bot = readBotSession();
+  if (bot) return bot.token;
+
   const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
   if (!account) throw new NotSignedInError("You are not signed in.");
 
@@ -87,6 +92,8 @@ async function getIdToken(): Promise<string> {
  * token, never from the body.
  */
 export function currentUserEmail(): string {
+  const bot = readBotSession();
+  if (bot) return bot.email;
   const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
   return account?.username || "";
 }

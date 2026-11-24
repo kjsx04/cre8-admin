@@ -6,6 +6,8 @@ import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { LogOut, Menu } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui";
+import { BOT_DISPLAY_NAME } from "@/lib/bot-identity";
+import { clearBotSession, useBotSession } from "@/lib/bot-session";
 
 /* Module tabs. Demand is the last item in the centered row. */
 const NAV_ITEMS = [
@@ -36,9 +38,10 @@ function initialsFor(name?: string, email?: string): string {
 export default function NavBar() {
   const { instance, accounts } = useMsal();
   const pathname = usePathname();
+  const botSession = useBotSession();
   const account = accounts[0];
-  const userName = account?.name || account?.username || "User";
-  const userEmail = account?.username || "";
+  const userName = botSession ? BOT_DISPLAY_NAME : account?.name || account?.username || "User";
+  const userEmail = botSession ? botSession.email : account?.username || "";
 
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
@@ -60,10 +63,14 @@ export default function NavBar() {
       {/* Right: account menu */}
       <div className="flex items-center justify-end gap-1">
         <AvatarMenu
-          initials={initialsFor(account?.name, account?.username)}
+          initials={botSession ? "BOT" : initialsFor(account?.name, account?.username)}
           name={userName}
           email={userEmail}
-          onSignOut={() => instance.logoutPopup()}
+          onSignOut={() => {
+            if (!botSession) return instance.logoutPopup();
+            clearBotSession();
+            window.location.replace("/");
+          }}
           navItems={NAV_ITEMS}
           isActive={isActive}
         />

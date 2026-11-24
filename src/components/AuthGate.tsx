@@ -4,6 +4,7 @@ import { useIsAuthenticated, useMsal } from "@azure/msal-react";
 import { InteractionStatus } from "@azure/msal-browser";
 import { loginScopes } from "@/lib/msal-config";
 import { Button, Card, Spinner } from "@/components/ui";
+import { useBotSession } from "@/lib/bot-session";
 
 interface AuthGateProps {
   children: React.ReactNode;
@@ -16,6 +17,7 @@ interface AuthGateProps {
 export default function AuthGate({ children }: AuthGateProps) {
   const isAuthenticated = useIsAuthenticated();
   const { instance, inProgress } = useMsal();
+  const botSession = useBotSession();
 
   const handleLogin = async () => {
     try {
@@ -24,6 +26,8 @@ export default function AuthGate({ children }: AuthGateProps) {
       console.error("Login failed:", error);
     }
   };
+
+  if (botSession) return <>{children}</>;
 
   // Still loading auth state
   if (inProgress !== InteractionStatus.None) {
