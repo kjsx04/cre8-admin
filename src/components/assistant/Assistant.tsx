@@ -35,12 +35,13 @@ import {
 import { isClearCommand } from "@/lib/assistant/chat-memory";
 import AssistantMessage from "./AssistantMessage";
 import AssistantOrb, { type OrbState } from "./AssistantOrb";
+import TypewriterHints from "./TypewriterHints";
 
-const SUGGESTIONS = [
-  "Which listings are live in Mesa?",
-  "What deals are in due diligence or closing?",
-  "How do I publish a listing?",
-];
+// Every header icon button: 32px square, 16px icon.
+const HEADER_ICON = cn(
+  "inline-flex items-center justify-center w-control-sm h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors",
+  FOCUS_RING,
+);
 
 // The orb looks small but the tap area stays 44px (Apple's minimum for a finger).
 const ORB_SIZE = 16;
@@ -142,12 +143,14 @@ function ChatPanel() {
     if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
-  // The text box grows with what's typed, up to about 6 lines.
+  // The text box is one line (32px, the same as the send button) and grows with what's
+  // typed, up to about 6 lines. Empty, it goes back to one line: measuring an empty box
+  // would count the placeholder, which is what pushed the text down before.
   useEffect(() => {
     const el = inputRef.current;
     if (!el) return;
-    el.style.height = "auto";
-    el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
+    el.style.height = "";
+    if (draft) el.style.height = `${Math.min(Math.max(el.scrollHeight, 32), 160)}px`;
   }, [draft]);
 
   function submit(text = draft) {
@@ -175,45 +178,37 @@ function ChatPanel() {
         )}
       >
         {/* ── Header ── */}
-        <header className="flex items-center gap-3 px-4 h-14 border-b border-border bg-surface pt-[env(safe-area-inset-top)] box-content">
+        <header className="flex items-center gap-3 pl-4 pr-3 h-14 border-b border-border bg-surface pt-[env(safe-area-inset-top)] box-content">
           <AssistantOrb state={running ? "thinking" : "idle"} size={28} />
-          <div className="flex-1 min-w-0">
-            <h2 className="text-base font-semibold text-text leading-tight">CRE8 Assistant</h2>
-            <p className="text-xs text-text-3 truncate">{running ? statusText || "Working…" : "Listings, deals and how-tos · read-only"}</p>
-          </div>
-          {messages.length > 0 && (
+          <h2 className="flex-1 min-w-0 truncate text-base font-semibold text-text">CRE8 Assistant</h2>
+          {/* Header icons: all the same size, same spacing. */}
+          <div className="flex items-center gap-1">
+            {messages.length > 0 && (
+              <button type="button" onClick={newChat} aria-label="New chat" title="New chat" className={HEADER_ICON}>
+                <RotateCcw size={16} />
+              </button>
+            )}
+            {/* Expand to full height / back to a third. Desktop only: on a phone it is already full screen. */}
             <button
               type="button"
-              onClick={newChat}
-              aria-label="New chat"
-              title="New chat"
-              className={cn("inline-flex items-center gap-1.5 h-control-sm px-2.5 rounded-control text-sm text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
+              onClick={toggleExpanded}
+              aria-label={expanded ? "Shrink" : "Expand"}
+              title={expanded ? "Shrink" : "Expand"}
+              className={cn(HEADER_ICON, "hidden md:inline-flex")}
             >
-              <RotateCcw size={14} />
-              {/* Icon only on phones, so the header doesn't crowd the title */}
-              <span className="hidden sm:inline">New chat</span>
+              {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
             </button>
-          )}
-          {/* Expand to full height / back to a third. Desktop only: on a phone it is already full screen. */}
-          <button
-            type="button"
-            onClick={toggleExpanded}
-            aria-label={expanded ? "Shrink" : "Expand"}
-            title={expanded ? "Shrink" : "Expand"}
-            className={cn("hidden md:inline-flex items-center justify-center w-control-sm h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
-          >
-            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
-          {/* Minimize: back down to the orb. An answer in progress keeps coming. */}
-          <button
-            type="button"
-            onClick={closeAssistant}
-            aria-label={running ? "Minimize (the answer keeps coming)" : "Minimize"}
-            title={running ? "Minimize. The answer keeps coming." : "Minimize"}
-            className={cn("inline-flex items-center justify-center w-control h-control md:w-control-sm md:h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
-          >
-            <Minus size={18} />
-          </button>
+            {/* Minimize: back down to the orb. An answer in progress keeps coming. */}
+            <button
+              type="button"
+              onClick={closeAssistant}
+              aria-label={running ? "Minimize (the answer keeps coming)" : "Minimize"}
+              title={running ? "Minimize. The answer keeps coming." : "Minimize"}
+              className={HEADER_ICON}
+            >
+              <Minus size={16} />
+            </button>
+          </div>
         </header>
 
         {/* ── Messages ── */}
@@ -226,28 +221,8 @@ function ChatPanel() {
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 space-y-5"
         >
           {messages.length === 0 ? (
-            <div className={cn("min-h-full flex flex-col items-center justify-center text-center gap-4 pb-8", !expanded && "md:gap-3 md:pb-0")}>
-              <span className={cn(!expanded && "md:hidden")}>
-                <AssistantOrb state="idle" size={88} />
-              </span>
-              <div>
-                <p className="text-md font-semibold text-text">How can I help?</p>
-                <p className="text-sm text-text-2 mt-1 max-w-xs">Ask about CRE8 listings, your deals, or how to do something in the admin.</p>
-              </div>
-              <div className="flex flex-col gap-2 w-full max-w-xs">
-                {SUGGESTIONS.map((s) => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => submit(s)}
-                    className={cn("text-left text-sm text-text-2 bg-surface border border-border rounded-card px-3 py-2.5 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
-                  >
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
+            // Empty chat: example questions typing themselves out.
+            <TypewriterHints />          ) : (
             messages.map((m) => <AssistantMessage key={m.id} message={m} />)
           )}
 
@@ -268,7 +243,7 @@ function ChatPanel() {
           }}
           className="border-t border-border bg-surface px-3 pt-3 pb-[calc(12px+env(safe-area-inset-bottom))]"
         >
-          <div className="flex items-end gap-2 rounded-modal border border-border-strong bg-surface px-3 py-2 focus-within:border-text-3 transition-colors">
+          <div className="flex items-end gap-2 rounded-modal border border-border-strong bg-surface pl-3 pr-1.5 py-1.5 focus-within:border-text-3 transition-colors">
             <textarea
               ref={inputRef}
               value={draft}
@@ -282,9 +257,10 @@ function ChatPanel() {
               }}
               rows={1}
               maxLength={4000}
-              placeholder={running ? "Working on your answer… (/clear to start over)" : "Ask anything. /clear starts over."}
+              placeholder="Ask anything"
               // 16px on phones stops iOS from zooming the page when the box is tapped.
-              className="flex-1 resize-none bg-transparent text-md md:text-base text-text placeholder:text-text-3 outline-none py-1 max-h-40"
+              // One line is 20px + 6px padding top and bottom = 32px, centered on the send button.
+              className="flex-1 h-8 resize-none bg-transparent text-md md:text-base leading-5 py-1.5 text-text placeholder:text-text-3 outline-none max-h-40"
               aria-label="Message the CRE8 Assistant"
             />
             {running ? (
@@ -309,9 +285,6 @@ function ChatPanel() {
               </button>
             )}
           </div>
-          <p className="text-label normal-case tracking-normal text-text-3 text-center mt-2">
-            Read-only. Kept in this browser until /clear. Check anything important.
-          </p>
         </form>
       </section>
     </>

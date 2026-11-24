@@ -114,12 +114,15 @@ async function wordSearch<T extends { id: string }>(opts: {
     .order(opts.orderBy, { ascending: false })
     .limit(40);
   if (loose.error) fail(loose.error);
-  const ranked = ((loose.data ?? []) as T[])
+  const scored = ((loose.data ?? []) as T[])
     .map((row) => ({ row, score: opts.score(row) }))
     .filter((r) => r.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((r) => r.row);
-  return { rows: ranked.slice(0, opts.limit), count: ranked.length, closestMatches: ranked.length > 0 };
+    .sort((a, b) => b.score - a.score);
+  // Only the strong ones: at least half the best score, at most 5. A row sharing one
+  // common word ("nec") with the search is noise, not a close match.
+  const best = scored[0]?.score ?? 0;
+  const ranked = scored.filter((r) => r.score * 2 >= best).slice(0, Math.min(opts.limit, 5)).map((r) => r.row);
+  return { rows: ranked, count: ranked.length, closestMatches: ranked.length > 0 };
 }
 
 const CLOSEST_NOTE = "Nothing matched every word, so these are the closest matches (most words in common first). Say they are close matches.";
@@ -159,7 +162,9 @@ async function internalPricesFor(db: SupabaseClient, webflowIds: string[]): Prom
   if (error) fail(error);
   const out: Record<string, string> = {};
   for (const row of (data ?? []) as { listing_id: string; asking_price: string | null }[]) {
-    if (row.asking_price && row.asking_price.trim()) out[row.listing_id] = row.asking_price.trim();
+    // Price Guidance is a rich-text field, so it arrives as HTML ("<p>$140K–$175K</p>").
+    const price = htmlToText(row.asking_price, 300);
+    if (price) out[row.listing_id] = price;
   }
   return out;
 }
@@ -339,14 +344,14 @@ const getListing: AssistantTool = {
         // Both prices, always: the public one and the one staff actually work to.
         pricing: {
           websitePrice: row.list_price || "not set",
-          internalAskingPrice: note?.asking_price?.trim() || NO_INTERNAL_PRICE,
-          internalPriceUpdatedAt: note?.asking_price?.trim() ? note.updated_at : undefined,
+          internalAskingPrice: htmlToText(note?.asking_price, 300) || NO_INTERNAL_PRICE,
+          internalPriceUpdatedAt: htmlToText(note?.asking_price, 300) ? note?.updated_at : undefined,
         },
         otherMatches: rows.length > 1 ? "More than one listing matched; this is the best match." : undefined,
         closestMatch: closestMatches ? "Not every word matched; this is the closest listing. Say so." : undefined,
         spaces: ((spaces.data ?? []) as SpaceRow[]).map(shapeSpace),
         internalNotes: note
-          ? { askingPrice: note.asking_price, zoningAndUses: clampText(note.zoning_uses), other: clampText(note.other), updatedAt: note.updated_at, visibility: "staff only" }
+          ? { askingPrice: htmlToText(note.asking_price, 300), zoningAndUses: htmlToText(note.zoning_uses), other: htmlToText(note.other), updatedAt: note.updated_at, visibility: "staff only" }
           : null,
       },
       sources: [
