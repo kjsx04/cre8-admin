@@ -70,9 +70,9 @@ export default function TypewriterHints() {
   const text = reduceMotion ? QUESTIONS[0] : shown;
 
   return (
-    // Bottom-right of the chat, right-aligned: where the person's own question will appear.
-    <div className="min-h-full flex items-end justify-end" aria-hidden="true">
-      <p className="text-md text-text-2 text-right max-w-[85%]">
+    // Bottom-left of the chat, left-aligned, the way you'd type it.
+    <div className="min-h-full flex items-end justify-start" aria-hidden="true">
+      <p className="text-md text-text-2 text-left max-w-[85%]">
         {text}
         {/* The blinking cursor */}
         <span className="assistant-caret inline-block w-[2px] h-[1.1em] -mb-[0.15em] ml-0.5 bg-accent-strong align-baseline" />

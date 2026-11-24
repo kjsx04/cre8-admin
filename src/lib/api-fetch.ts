@@ -29,9 +29,10 @@
  */
 
 import { CacheLookupPolicy, InteractionRequiredAuthError } from "@azure/msal-browser";
-import { idTokenNeedsRefresh } from "@/lib/id-token-expiry";
+import { idTokenNeedsRefresh, signInRedirectAllowed } from "@/lib/id-token-expiry";
+import { loginScopes } from "@/lib/msal-config";
 import { msalInstance } from "@/lib/msal-instance";
-import { readBotSession } from "@/lib/bot-session";
+import { clearBotSession, readBotSession } from "@/lib/bot-session";
 
 /**
  * Scopes for the ID token. These are the OIDC basics, not Graph permissions —
@@ -119,6 +120,55 @@ export function currentUserEmail(): string {
  * using their Graph access token (see src/lib/useGraphToken.ts) — sending an ID
  * token to Graph would just be rejected.
  */
+// ── Sending someone back to sign in ─────────────────────────
+// When a sign-in can't be renewed (the Microsoft session itself ended, or the
+// password changed), show the sign-in page instead of "Failed to load" errors.
+// Microsoft usually signs them straight back in and returns them to the same page.
+
+const SIGN_IN_ATTEMPT_KEY = "cre8-admin-sign-in-redirect-at";
+let redirecting = false;
+
+/**
+ * Go to sign in and never settle: the page is about to leave, so the caller
+ * should not show an error in the meantime. If we already tried within the last
+ * two minutes, throw instead, so a real server problem can't become a loop.
+ */
+function goToSignIn(): Promise<never> {
+  if (typeof window === "undefined") throw new NotSignedInError();
+
+  let last: number | null = null;
+  try {
+    const raw = sessionStorage.getItem(SIGN_IN_ATTEMPT_KEY);
+    last = raw ? Number(raw) : null;
+  } catch {
+    /* storage blocked: allow the redirect */
+  }
+  if (!redirecting && !signInRedirectAllowed(last)) throw new NotSignedInError();
+
+  if (!redirecting) {
+    redirecting = true;
+    try {
+      sessionStorage.setItem(SIGN_IN_ATTEMPT_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    if (readBotSession()) {
+      // The automation bot signs in with a password, not Microsoft.
+      clearBotSession();
+      window.location.assign("/bot-login");
+    } else {
+      msalInstance
+        .loginRedirect({ ...loginScopes, redirectStartPage: window.location.href })
+        .catch(() => {
+          // Couldn't start (e.g. another sign-in already open): fall back to reloading,
+          // which shows the sign-in screen if the session is really gone.
+          window.location.reload();
+        });
+    }
+  }
+  return new Promise<never>(() => {});
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const send = async (token: string) => {
     const headers = new Headers(init.headers);
@@ -134,17 +184,36 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
     return fetch(path, { ...init, headers });
   };
 
-  const res = await send(await getIdToken());
+  let token: string;
+  try {
+    token = await getIdToken();
+  } catch (err) {
+    if (err instanceof NotSignedInError) return goToSignIn();
+    throw err;
+  }
+  const res = await send(token);
 
   // A 401 almost always means the token went stale between checking it and the
   // server reading it. Renew once and try again, so a page doesn't fail to load
   // over it. Only for Microsoft sign-ins (the bot's token can't be renewed here)
   // and only when the body can be sent twice (a stream can't).
   const canResend = !(typeof ReadableStream !== "undefined" && init.body instanceof ReadableStream);
-  if (res.status === 401 && !readBotSession() && canResend) {
-    return send(await getIdToken(true));
+  if (res.status !== 401) return res;
+
+  // The bot's token can't be renewed here: send it back to its sign-in page.
+  if (readBotSession()) return goToSignIn();
+  if (!canResend) return res;
+
+  let fresh: string;
+  try {
+    fresh = await getIdToken(true);
+  } catch (err) {
+    if (err instanceof NotSignedInError) return goToSignIn();
+    throw err;
   }
-  return res;
+  const retried = await send(fresh);
+  // Still refused with a brand-new token: the session really is over. Sign in again.
+  return retried.status === 401 ? goToSignIn() : retried;
 }
 
 /**

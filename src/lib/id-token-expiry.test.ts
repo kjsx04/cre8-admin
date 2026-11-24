@@ -2,7 +2,7 @@
  * Run: npx tsx src/lib/id-token-expiry.test.ts   (or `npm test id-token`)
  */
 
-import { REFRESH_MARGIN_SECONDS, idTokenNeedsRefresh } from "./id-token-expiry";
+import { REFRESH_MARGIN_SECONDS, SIGN_IN_REDIRECT_COOLDOWN_MS, idTokenNeedsRefresh, signInRedirectAllowed } from "./id-token-expiry";
 
 let failed = 0;
 function assert(cond: unknown, msg: string) {
@@ -20,6 +20,11 @@ assert(idTokenNeedsRefresh(now - 10, now), "an expired token is renewed (the 'AP
 assert(idTokenNeedsRefresh(now + REFRESH_MARGIN_SECONDS - 1, now), "a token about to expire is renewed before it is sent");
 assert(!idTokenNeedsRefresh(now + REFRESH_MARGIN_SECONDS + 60, now), "a token comfortably inside its life is not renewed");
 assert(idTokenNeedsRefresh(undefined, now) && idTokenNeedsRefresh(Number.NaN, now), "a token with no readable expiry is renewed");
+
+// Sending someone back to sign in
+assert(signInRedirectAllowed(null, 5_000_000), "the first time a session can't be renewed, the person is sent to sign in");
+assert(!signInRedirectAllowed(5_000_000 - 30_000, 5_000_000), "sent to sign in 30 seconds ago and still refused: no second bounce (no loop)");
+assert(signInRedirectAllowed(5_000_000 - SIGN_IN_REDIRECT_COOLDOWN_MS, 5_000_000), "after the cool-down it can send them again");
 
 if (failed > 0) {
   console.error(`\n${failed} check(s) failed`);
