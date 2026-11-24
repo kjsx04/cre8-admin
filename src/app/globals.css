@@ -232,8 +232,12 @@ body {
 }
 @keyframes assistant-shimmer { from { background-position: 100% 0; } to { background-position: -100% 0; } }
 
+/* The blinking cursor in the empty chat's typing animation */
+.assistant-caret { animation: assistant-caret 1s steps(1) infinite; }
+@keyframes assistant-caret { 50% { opacity: 0; } }
+
 /* Respect "reduce motion": the orb sits still, nothing pulses */
 @media (prefers-reduced-motion: reduce) {
-  .orb, .orb > span, .orb::after, .assistant-shimmer { animation: none !important; }
+  .orb, .orb > span, .orb::after, .assistant-shimmer, .assistant-caret { animation: none !important; }
   .assistant-shimmer { color: #8A8A92; }
 }
