@@ -44,6 +44,8 @@ export type AssistantState = {
   statusText: string;
   /** Is the chat panel open? */
   open: boolean;
+  /** Desktop only: the panel fills the screen's height instead of a third of it. */
+  expanded: boolean;
   /** An answer finished while the panel was closed. Drives the bubble's "done" animation and badge. */
   unseen: boolean;
 };
@@ -53,7 +55,7 @@ export type AssistantState = {
 /** How many earlier messages go to the server (it keeps the last 12 anyway). */
 const HISTORY_TO_SEND = 12;
 
-let state: AssistantState = { messages: [], running: false, statusText: "", open: false, unseen: false };
+let state: AssistantState = { messages: [], running: false, statusText: "", open: false, expanded: false, unseen: false };
 const listeners = new Set<() => void>();
 let controller: AbortController | null = null;
 let nextId = 1;
@@ -71,9 +73,27 @@ function storage(): Storage | null {
   }
 }
 
+// Whether the panel is open and expanded is kept too, so it stays up through a
+// refresh or a page change until it is minimized. Not tied to a person: it holds no data.
+const UI_KEY = "cre8-assistant-ui";
+
+function saveUi() {
+  try {
+    storage()?.setItem(UI_KEY, JSON.stringify({ open: state.open, expanded: state.expanded }));
+  } catch {
+    /* ignore */
+  }
+}
+
 function restoreOnce() {
   if (restored || typeof window === "undefined") return;
   restored = true;
+  try {
+    const ui = JSON.parse(storage()?.getItem(UI_KEY) ?? "null");
+    if (ui && typeof ui === "object") state = { ...state, open: ui.open === true, expanded: ui.expanded === true };
+  } catch {
+    /* unreadable: start minimized */
+  }
   const messages = restoreMessages(storage()?.getItem(memoryKey(currentUserEmail())) ?? null);
   if (messages.length) {
     nextId = nextIdAfter(messages);
@@ -129,7 +149,7 @@ function subscribe(listener: () => void) {
 
 const getSnapshot = () => state;
 // The server render never has a saved chat. Matching it avoids a hydration mismatch.
-const EMPTY_STATE: AssistantState = { messages: [], running: false, statusText: "", open: false, unseen: false };
+const EMPTY_STATE: AssistantState = { messages: [], running: false, statusText: "", open: false, expanded: false, unseen: false };
 const getServerSnapshot = () => EMPTY_STATE;
 
 /** Read the chat from any component. */
@@ -139,12 +159,21 @@ export function useAssistant(): AssistantState {
 
 export function openAssistant() {
   // Opening the panel means the person has now seen the finished answer.
-  setState({ open: true, unseen: false });
+  // Always opens at its compact size; Expand makes it full height.
+  setState({ open: true, expanded: false, unseen: false });
+  saveUi();
+}
+
+/** Desktop: switch between a third of the screen and its full height. */
+export function toggleExpanded() {
+  setState({ expanded: !state.expanded });
+  saveUi();
 }
 
 export function closeAssistant() {
   // Closing does NOT stop an answer in progress. That is the point.
   setState({ open: false });
+  saveUi();
 }
 
 // ── Going to a page ─────────────────────────────────────────

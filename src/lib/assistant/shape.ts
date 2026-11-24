@@ -28,6 +28,46 @@ export function cleanSearchTerm(value: unknown, max = 80): string {
     .slice(0, max);
 }
 
+// ── Matching what people mean, not exact phrases ────────────
+// "kenworthy and combs listing" must find "Kenworthy & Combs". So a search is split
+// into words, filler words are dropped, and every remaining word must appear
+// somewhere (in any order). If nothing matches every word, the tools fall back to
+// listings that match the most words, and say so.
+
+const FILLER_WORDS = new Set([
+  "and", "the", "of", "at", "an", "for", "in", "on", "to", "by", "with", "near", "corner",
+  "listing", "listings", "deal", "deals", "property", "properties", "please", "show", "find",
+  "our", "we", "have", "any", "all", "me", "my",
+]);
+
+/** The words worth searching for, in order, at most 6. */
+export function searchWords(value: unknown, max = 6): string[] {
+  const words = cleanSearchTerm(value, 120)
+    .toLowerCase()
+    .replace(/[&+/]/g, " ")
+    .split(" ")
+    .map((w) => w.replace(/^[^a-z0-9]+|[^a-z0-9]+$/g, ""))
+    .filter((w) => w.length >= 2 && !FILLER_WORDS.has(w));
+  return Array.from(new Set(words)).slice(0, max);
+}
+
+/** One PostgREST or() filter per word: the word may be in any of the fields. Applied together, every word must match. */
+export function everyWordFilters(words: string[], fields: string[]): string[] {
+  return words.map((w) => fields.map((f) => `${f}.ilike.%${w}%`).join(","));
+}
+
+/** A single or() filter: any word in any field. Used for the "closest matches" fallback. */
+export function anyWordFilter(words: string[], fields: string[]): string {
+  return words.flatMap((w) => fields.map((f) => `${f}.ilike.%${w}%`)).join(",");
+}
+
+/** How many of the words a row contains (name hits count double), to rank closest matches. */
+export function wordScore(words: string[], name: string | null | undefined, ...other: (string | null | undefined)[]): number {
+  const n = (name ?? "").toLowerCase();
+  const rest = other.map((o) => (o ?? "").toLowerCase()).join(" ");
+  return words.reduce((sum, w) => sum + (n.includes(w) ? 2 : rest.includes(w) ? 1 : 0), 0);
+}
+
 export function asString(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
@@ -205,7 +245,8 @@ export function shapeListing(row: ListingRow, brokerNames: Record<string, string
     cityCounty: row.city_county,
     acres: row.acres,
     buildingSqft: row.building_sqft,
-    price: row.list_price,
+    // What the website shows (often "Call for Pricing"). The internal asking price is separate: see internalAskingPrice.
+    websitePrice: row.list_price,
     listingType: row.listing_type,
     propertyType: row.property_type,
     zoning: row.zoning,

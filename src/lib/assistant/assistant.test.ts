@@ -20,6 +20,8 @@ import {
   findGuideSections,
   htmlToText,
   listingPublicUrl,
+  searchWords,
+  wordScore,
   listingStatus,
   openablePath,
   splitGuide,
@@ -173,10 +175,11 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     assert(data.listings.length === 10 && data.truncated && data.matchCount === 37, "listing search reports 10 of 37 and says it was truncated");
     assert(data.listings[0].brokers[0] === "Kevin Smith", "listing search resolves broker names");
     assert(calledWith(log, "listings", "limit")[0][0] === ROW_CAP, "listing search asks the database for at most 10 rows");
+    const ors = calledWith(log, "listings", "or").map((a) => a[0]);
     assert(
-      calledWith(log, "listings", "or")[0][0] ===
-        "name.ilike.%mesa dr%,full_address.ilike.%mesa dr%,property_overview.ilike.%mesa dr%,spaces_available.ilike.%mesa dr%",
-      "the search words are cleaned, and matched in the description too",
+      ors.includes("name.ilike.%mesa%,full_address.ilike.%mesa%,property_overview.ilike.%mesa%,spaces_available.ilike.%mesa%") &&
+        ors.includes("name.ilike.%dr%,full_address.ilike.%dr%,property_overview.ilike.%dr%,spaces_available.ilike.%dr%"),
+      "each search word is cleaned and must match somewhere, including the description",
     );
     assert(JSON.stringify(calledWith(log, "listings", "eq")) === JSON.stringify([["under_contract", true], ["sold", false]]), "under-contract status filters on the right columns");
     assert(out.sources[0].href === "/listings/11111111-1111-4111-8111-111111111111/edit", "each listing links to its edit page");
@@ -199,6 +202,8 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     const data = out.data as { found: boolean; spaces: unknown[]; internalNotes: { askingPrice: string; other: string } };
     assert(data.found && data.spaces.length === 1, "get_listing returns the listing and its spaces");
     assert(data.internalNotes.askingPrice === "$1.1M" && data.internalNotes.other.length < 1700, "internal notes come back, cut to a sane length");
+    const pricing = (out.data as { pricing: { websitePrice: string; internalAskingPrice: string } }).pricing;
+    assert(pricing.websitePrice === "$1,200,000" && pricing.internalAskingPrice === "$1.1M", "a listing lookup gives both the website price and the internal asking price");
     assert(calledWith(log, "listing_internal_notes", "eq")[0][1] === "wf-1", "internal notes are looked up by the Webflow id, not the uuid");
     assert(calledWith(log, "listing_spaces", "eq")[0][1] === listingRow.id, "spaces are looked up by the listing's uuid");
   }
@@ -271,8 +276,41 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     const out = await runTool("search_listings", JSON.stringify({ city: "Queen Creek" }), { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
     const l = (out.data as { listings: { pads: { acres: number }[]; description: string; adminUrl: string; publicUrl: string }[] }).listings[0];
     assert(l.pads.length === 1 && l.pads[0].acres === 1.4, "search results carry each listing's pads, acres as a number");
+    assert((l as unknown as { internalAskingPrice: string }).internalAskingPrice === "none recorded", "a listing with no internal price says so instead of leaving it out");
     assert(l.description === "- Pads for Sale!\n- 2 - 14 acres available", "the description reaches the model as plain text, not HTML");
     assert(l.adminUrl === `/listings/${listingRow.id}/edit` && l.publicUrl === "https://cre8advisors.com/listings/mesa-dr", "each listing has its admin link and its public website link");
+  }
+
+  {
+    // Matching what people mean
+    assert(JSON.stringify(searchWords("kenworthy and combs listing")) === JSON.stringify(["kenworthy", "combs"]), "filler words like 'and' and 'listing' are dropped");
+    assert(JSON.stringify(searchWords("Gantzel & Combs")) === JSON.stringify(["gantzel", "combs"]), "an ampersand is not a search word");
+    assert(JSON.stringify(searchWords("a),name.eq.x")) === JSON.stringify(["name.eq.x"]) || !searchWords("a),name.eq.x").some((w) => /[(),]/.test(w)), "search words can't carry filter syntax");
+    assert(wordScore(["kenworthy", "combs"], "Kenworthy & Combs") > wordScore(["kenworthy", "combs"], "Gantzel & Combs"), "the listing with more of the words ranks first");
+
+    // Nothing matches every word: fall back to closest matches.
+    let pass = 0;
+    const fallbackDb = {
+      from() {
+        const proxy: unknown = new Proxy({}, {
+          get(_t, prop: string) {
+            if (prop === "then") {
+              pass += 1;
+              const data = pass === 1 ? [] : [
+                { ...listingRow, id: "a", name: "Gantzel & Combs" },
+                { ...listingRow, id: "b", name: "Kenworthy & Combs" },
+              ];
+              return (resolve: (v: unknown) => void) => resolve({ data, count: data.length, error: null });
+            }
+            return () => proxy;
+          },
+        });
+        return proxy;
+      },
+    } as unknown as SupabaseClient;
+    const out = await runTool("search_listings", JSON.stringify({ query: "kenworthy combs plaza" }), { db: fallbackDb, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
+    const data = out.data as { listings: { name: string }[]; closestMatches?: boolean };
+    assert(data.closestMatches === true && data.listings[0].name === "Kenworthy & Combs", "with no exact match, the closest listing comes first and is labelled a close match");
   }
 
   {
