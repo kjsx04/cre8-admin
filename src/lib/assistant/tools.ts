@@ -4,6 +4,9 @@
  * cap, and returns a short shape plus the sources to show under the answer.
  *
  * Phase B covers listings, deals and the how-to guide. Documents come next.
+ * One tool, open_page, takes the person to an admin page. It only accepts
+ * pages from a fixed list (shape.ts, openablePath), and it moves the browser,
+ * nothing else: it still cannot change any data.
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -16,7 +19,14 @@ import {
   capRows,
   clampText,
   cleanSearchTerm,
+  dealAdminUrl,
   findGuideSections,
+  htmlToText,
+  listingAdminUrl,
+  listingPublicUrl,
+  openablePath,
+  shapeSpace,
+  type SpaceRow,
   isUuid,
   shapeDeal,
   shapeListing,
@@ -27,7 +37,13 @@ import {
 export type Source = { label: string; href?: string };
 /** Set when the tool could not do its job. The data then says so; it is never an empty result. */
 export type ToolFailure = { tool: string; message: string; code?: string };
-export type ToolResult = { data: unknown; sources: Source[]; failure?: ToolFailure };
+export type ToolResult = {
+  data: unknown;
+  sources: Source[];
+  failure?: ToolFailure;
+  /** An admin path the browser should go to (open_page only). */
+  navigate?: string;
+};
 export type ToolContext = { db: SupabaseClient; email: string; isOwner: boolean; guide: string };
 
 export type AssistantTool = {
@@ -73,6 +89,21 @@ async function brokerNamesFor(db: SupabaseClient, ids: string[]): Promise<Record
   return Object.fromEntries((data ?? []).map((b: { id: string; name: string | null }) => [b.id, b.name ?? ""]));
 }
 
+const SPACE_COLUMNS = "listing_id, label, space_type, acres, sf, drive_thru, deal, price_rate, status, notes, sort_order";
+
+/** listing id -> its pads/spaces, for the listings in these rows. */
+async function spacesFor(db: SupabaseClient, listingIds: string[]): Promise<Record<string, ReturnType<typeof shapeSpace>[]>> {
+  if (listingIds.length === 0) return {};
+  const { data, error } = await db.from("listing_spaces").select(SPACE_COLUMNS).in("listing_id", listingIds).order("sort_order", { ascending: true }).limit(200);
+  if (error) fail(error);
+  const out: Record<string, ReturnType<typeof shapeSpace>[]> = {};
+  for (const row of (data ?? []) as SpaceRow[]) {
+    if (!row.listing_id) continue;
+    (out[row.listing_id] = out[row.listing_id] ?? []).push(shapeSpace(row));
+  }
+  return out;
+}
+
 /** ids of brokers whose name matches. */
 async function brokerIdsByName(db: SupabaseClient, name: string): Promise<string[]> {
   const term = cleanSearchTerm(name);
@@ -87,15 +118,18 @@ async function brokerIdsByName(db: SupabaseClient, name: string): Promise<string
 const searchListings: AssistantTool = {
   name: "search_listings",
   description:
-    "Find CRE8 listings. Filter by words in the name or address, a city, a status, a property type or a broker. " +
+    "Find CRE8 listings. Filter by words (matched in the name, address AND description, so 'pad' or 'fully improved' work), " +
+    "a city, a status, a property type or a broker. Each result includes its pads/spaces with acreage, a short description, " +
+    "and links: adminUrl (the admin page) and publicUrl (the public website page, live listings only). " +
+    "Pads are often typed Land or Improved Land, not Retail, so for pad or size questions leave property_type out and read the pads and description. " +
     "Returns at most 10, newest first, and says if more matched.",
   parameters: {
     type: "object",
     properties: {
-      query: { type: "string", description: "Words in the listing name or address." },
+      query: { type: "string", description: "Words in the listing name, address or description." },
       city: { type: "string" },
       status: { type: "string", enum: [...LISTING_STATUSES] },
-      property_type: { type: "string", description: "For example Land, Retail, Industrial." },
+      property_type: { type: "string", description: "A loose label such as Land, Retail, Industrial. Leave out for pad or size questions." },
       broker: { type: "string", description: "A broker's name." },
     },
     additionalProperties: false,
@@ -104,7 +138,11 @@ const searchListings: AssistantTool = {
     let q = db.from("listings").select(LISTING_COLUMNS, { count: "exact" });
 
     const query = cleanSearchTerm(args.query);
-    if (query) q = q.or(`name.ilike.%${query}%,full_address.ilike.%${query}%`);
+    if (query) {
+      q = q.or(
+        `name.ilike.%${query}%,full_address.ilike.%${query}%,property_overview.ilike.%${query}%,spaces_available.ilike.%${query}%`,
+      );
+    }
 
     const city = cleanSearchTerm(args.city);
     if (city) q = q.or(`full_address.ilike.%${city}%,city_county.ilike.%${city}%`);
@@ -143,11 +181,20 @@ const searchListings: AssistantTool = {
 
     const rows = (data ?? []) as unknown as ListingRow[];
     const capped = capRows(rows, count);
-    const names = await brokerNamesFor(db, capped.rows.flatMap((r) => r.broker_ids ?? []));
-    const listings = capped.rows.map((r) => shapeListing(r, names));
+    const [names, spaces] = await Promise.all([
+      brokerNamesFor(db, capped.rows.flatMap((r) => r.broker_ids ?? [])),
+      spacesFor(db, capped.rows.map((r) => r.id)),
+    ]);
+    const listings = capped.rows.map((r) => ({
+      ...shapeListing(r, names),
+      pads: spaces[r.id] ?? [],
+      // Many pads are only described in the text, so the model gets a short plain-text version.
+      spacesText: htmlToText(r.spaces_available, 400),
+      description: htmlToText(r.property_overview, 400),
+    }));
     return {
       data: { listings, matchCount: capped.matchCount, truncated: capped.truncated },
-      sources: listings.map((l) => ({ label: `Listing: ${l.name ?? l.address ?? l.id}`, href: `/listings/${l.id}` })),
+      sources: listings.map((l) => ({ label: `Listing: ${l.name ?? l.address ?? l.id}`, href: l.adminUrl })),
     };
   },
 };
@@ -180,7 +227,7 @@ const getListing: AssistantTool = {
     const [spaces, notes] = await Promise.all([
       db
         .from("listing_spaces")
-        .select("label, space_type, acres, sf, drive_thru, deal, price_rate, status, notes")
+        .select(SPACE_COLUMNS)
         .eq("listing_id", row.id)
         .order("sort_order", { ascending: true })
         .limit(ROW_CAP),
@@ -200,14 +247,17 @@ const getListing: AssistantTool = {
     return {
       data: {
         found: true,
-        listing: { ...shapeListing(row, names), overview: clampText(row.property_overview), spacesAvailable: row.spaces_available },
+        listing: { ...shapeListing(row, names), overview: htmlToText(row.property_overview), spacesAvailable: htmlToText(row.spaces_available) },
         otherMatches: rows.length > 1 ? "More than one listing matched; this is the most recently updated." : undefined,
-        spaces: spaces.data ?? [],
+        spaces: ((spaces.data ?? []) as SpaceRow[]).map(shapeSpace),
         internalNotes: note
           ? { askingPrice: note.asking_price, zoningAndUses: clampText(note.zoning_uses), other: clampText(note.other), updatedAt: note.updated_at, visibility: "staff only" }
           : null,
       },
-      sources: [{ label: `Listing: ${row.name ?? row.id}`, href: `/listings/${row.id}` }],
+      sources: [
+        { label: `Listing: ${row.name ?? row.id}`, href: listingAdminUrl(row.id) },
+        ...(listingPublicUrl(row) ? [{ label: "Public page", href: listingPublicUrl(row)! }] : []),
+      ],
     };
   },
 };
@@ -263,7 +313,7 @@ const searchDeals: AssistantTool = {
     const deals = capped.rows.map(shapeDeal);
     return {
       data: { deals, matchCount: capped.matchCount, truncated: capped.truncated },
-      sources: deals.length ? [{ label: "Flow: deals", href: "/flow" }] : [],
+      sources: deals.map((d) => ({ label: `Deal: ${d.name ?? d.address ?? d.id}`, href: d.adminUrl })),
     };
   },
 };
@@ -323,8 +373,35 @@ const getDeal: AssistantTool = {
         },
         otherMatches: rows.length > 1 ? "More than one deal matched; this is the most recent." : undefined,
       },
-      sources: [{ label: `Flow: ${row.deal_name ?? row.id}`, href: "/flow" }],
+      sources: [{ label: `Deal: ${row.deal_name ?? row.id}`, href: dealAdminUrl(row.id) }],
     };
+  },
+};
+
+// ── Taking the person somewhere ─────────────────────────────
+
+const openPage: AssistantTool = {
+  name: "open_page",
+  description:
+    "Take the person to a page in the admin, when they ask you to (\"take me there\", \"open it\", \"go to Flow\"). " +
+    "Allowed: / (Listings), /listings/new, /flow, /docs, /marketing, /logos, /demand, /intel, " +
+    "a listing's adminUrl (/listings/<id>/edit) or a deal's adminUrl (/flow?deal=<id>). Use the id from a lookup; never guess one. " +
+    "This cannot open public website pages: give those as a link instead.",
+  parameters: {
+    type: "object",
+    properties: { path: { type: "string", description: "The admin path, for example /listings/new." } },
+    required: ["path"],
+    additionalProperties: false,
+  },
+  async run(args) {
+    const target = openablePath(args.path);
+    if (!target) {
+      return {
+        data: { opened: false, note: "That is not an admin page I can open. Give the person a link or say where it is instead." },
+        sources: [],
+      };
+    }
+    return { data: { opened: true, page: target.label, path: target.path }, sources: [], navigate: target.path };
   },
 };
 
@@ -353,7 +430,7 @@ const lookupGuide: AssistantTool = {
   },
 };
 
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchListings, getListing, searchDeals, getDeal, lookupGuide];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchListings, getListing, searchDeals, getDeal, openPage, lookupGuide];
 
 export function toolByName(name: string): AssistantTool | undefined {
   return ASSISTANT_TOOLS.find((t) => t.name === name);

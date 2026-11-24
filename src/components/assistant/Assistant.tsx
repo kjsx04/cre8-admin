@@ -17,13 +17,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useIsAuthenticated } from "@azure/msal-react";
 import { useBotSession } from "@/lib/bot-session";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { ArrowUp, ChevronDown, RotateCcw, Square, X } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui/cn";
 import {
   closeAssistant,
   newChat,
   openAssistant,
+  setAssistantNavigator,
   sendMessage,
   stopAnswer,
   useAssistant,
@@ -50,6 +51,17 @@ export default function Assistant() {
   // raise the keyboard for a focus that happens inside the tap itself; the chat box
   // then takes the focus over and the keyboard stays up.
   const keyboardProxy = useRef<HTMLInputElement>(null);
+  const router = useRouter();
+
+  // Let the assistant move the page ("take me there"). Flow listens for the event
+  // so /flow?deal=… opens the deal even when Flow is already on screen.
+  useEffect(() => {
+    setAssistantNavigator((href) => {
+      router.push(href);
+      window.dispatchEvent(new CustomEvent("cre8-assistant-navigate", { detail: href }));
+    });
+    return () => setAssistantNavigator(null);
+  }, [router]);
 
   // Signed-in staff only, and not on the bot sign-in screen.
   if ((!isAuthenticated && !botSession) || pathname?.startsWith("/bot-login")) return null;

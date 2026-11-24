@@ -18,7 +18,10 @@ import {
   cleanSearchTerm,
   clampText,
   findGuideSections,
+  htmlToText,
+  listingPublicUrl,
   listingStatus,
+  openablePath,
   splitGuide,
 } from "./shape";
 import { ASSISTANT_TOOLS, runTool, type ToolContext } from "./tools";
@@ -170,9 +173,13 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     assert(data.listings.length === 10 && data.truncated && data.matchCount === 37, "listing search reports 10 of 37 and says it was truncated");
     assert(data.listings[0].brokers[0] === "Kevin Smith", "listing search resolves broker names");
     assert(calledWith(log, "listings", "limit")[0][0] === ROW_CAP, "listing search asks the database for at most 10 rows");
-    assert(calledWith(log, "listings", "or")[0][0] === "name.ilike.%mesa dr%,full_address.ilike.%mesa dr%", "the search words are cleaned before they reach the filter");
+    assert(
+      calledWith(log, "listings", "or")[0][0] ===
+        "name.ilike.%mesa dr%,full_address.ilike.%mesa dr%,property_overview.ilike.%mesa dr%,spaces_available.ilike.%mesa dr%",
+      "the search words are cleaned, and matched in the description too",
+    );
     assert(JSON.stringify(calledWith(log, "listings", "eq")) === JSON.stringify([["under_contract", true], ["sold", false]]), "under-contract status filters on the right columns");
-    assert(out.sources[0].href === "/listings/11111111-1111-4111-8111-111111111111", "each listing links to its edit page");
+    assert(out.sources[0].href === "/listings/11111111-1111-4111-8111-111111111111/edit", "each listing links to its edit page");
   }
 
   {
@@ -252,6 +259,40 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     await runTool("search_deals", JSON.stringify({ status: "under_contract" }), { db, email: "a@cre8advisors.com", isOwner: true, guide: GUIDE });
     assert(JSON.stringify(calledWith(log, "deals", "in")[0]) === JSON.stringify(["status", ["due_diligence", "closing"]]), "deals under contract means due diligence or closing");
     assert(calledWith(log, "deals", "eq").length === 0, "under_contract is never sent as a literal deal status");
+  }
+
+  {
+    // Pads: structured spaces and the description text both reach the model, with links.
+    const { db } = fakeDb({
+      listings: { data: [{ ...listingRow, slug: "mesa-dr", property_overview: "<ul><li><strong>Pads for Sale!</strong></li><li>2 - 14 acres available</li></ul>" }], count: 1 },
+      brokers: { data: [] },
+      listing_spaces: { data: [{ listing_id: listingRow.id, label: "Pad A", space_type: "pad", acres: "1.4", sf: null, drive_thru: true, deal: "sale", price_rate: "Call for Pricing", status: "available", notes: null }] },
+    });
+    const out = await runTool("search_listings", JSON.stringify({ city: "Queen Creek" }), { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
+    const l = (out.data as { listings: { pads: { acres: number }[]; description: string; adminUrl: string; publicUrl: string }[] }).listings[0];
+    assert(l.pads.length === 1 && l.pads[0].acres === 1.4, "search results carry each listing's pads, acres as a number");
+    assert(l.description === "- Pads for Sale!\n- 2 - 14 acres available", "the description reaches the model as plain text, not HTML");
+    assert(l.adminUrl === `/listings/${listingRow.id}/edit` && l.publicUrl === "https://cre8advisors.com/listings/mesa-dr", "each listing has its admin link and its public website link");
+  }
+
+  {
+    // Links and pages
+    assert(listingPublicUrl({ slug: "x", published_at: null }) === null, "a draft has no public website link");
+    assert(htmlToText("<table><tr><td>Pad 1</td><td>1.2 AC</td></tr><tr><td>Pad 2</td><td>0.9 AC</td></tr></table>") === "Pad 1: 1.2 AC\nPad 2: 0.9 AC", "a spaces table becomes one line per pad");
+    assert(htmlToText("Cafe Zupas &amp; Portillos") === "Cafe Zupas & Portillos", "HTML entities are decoded");
+    assert(openablePath("/listings/new")?.path === "/listings/new" && openablePath("/flow/")?.path === "/flow", "known admin pages can be opened");
+    assert(openablePath(`https://admin.cre8advisors.com/listings/${listingRow.id}/edit`)?.label === "Listing", "a full admin URL is accepted");
+    assert(openablePath(`/flow?deal=${listingRow.id}`)?.label === "Deal in Flow", "a deal opens in Flow");
+    assert(
+      [ "https://evil.com", "//evil.com", "/api/assistant/chat", "/listings/abc/edit", "javascript:alert(1)", "/settings" ].every((p) => openablePath(p) === null),
+      "outside sites, API routes, made-up ids and unknown pages are refused",
+    );
+    const { db } = fakeDb({});
+    const ctx: ToolContext = { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE };
+    const opened = await runTool("open_page", JSON.stringify({ path: "/listings/new" }), ctx);
+    assert(opened.navigate === "/listings/new" && (opened.data as { opened: boolean }).opened, "open_page moves the browser to an allowed page");
+    const refused = await runTool("open_page", JSON.stringify({ path: "https://google.com" }), ctx);
+    assert(refused.navigate === undefined && (refused.data as { opened: boolean }).opened === false, "open_page refuses anything not on the list");
   }
 
   {
