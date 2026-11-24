@@ -151,6 +151,21 @@ async function spacesFor(db: SupabaseClient, listingIds: string[]): Promise<Reco
   return out;
 }
 
+/** Webflow id -> the internal asking price brokers keep (staff only; what "Call for Pricing" really means). */
+async function internalPricesFor(db: SupabaseClient, webflowIds: string[]): Promise<Record<string, string>> {
+  const ids = webflowIds.filter(Boolean);
+  if (ids.length === 0) return {};
+  const { data, error } = await db.from("listing_internal_notes").select("listing_id, asking_price").in("listing_id", ids).limit(200);
+  if (error) fail(error);
+  const out: Record<string, string> = {};
+  for (const row of (data ?? []) as { listing_id: string; asking_price: string | null }[]) {
+    if (row.asking_price && row.asking_price.trim()) out[row.listing_id] = row.asking_price.trim();
+  }
+  return out;
+}
+
+const NO_INTERNAL_PRICE = "none recorded";
+
 /** ids of brokers whose name matches. */
 async function brokerIdsByName(db: SupabaseClient, name: string): Promise<string[]> {
   const term = cleanSearchTerm(name);
@@ -232,12 +247,14 @@ const searchListings: AssistantTool = {
 
     const rows = found.rows;
     const capped = capRows(rows, found.count);
-    const [names, spaces] = await Promise.all([
+    const [names, spaces, internalPrices] = await Promise.all([
       brokerNamesFor(db, capped.rows.flatMap((r) => r.broker_ids ?? [])),
       spacesFor(db, capped.rows.map((r) => r.id)),
+      internalPricesFor(db, capped.rows.map((r) => r.webflow_id ?? "")),
     ]);
     const listings = capped.rows.map((r) => ({
       ...shapeListing(r, names),
+      internalAskingPrice: (r.webflow_id && internalPrices[r.webflow_id]) || NO_INTERNAL_PRICE,
       pads: spaces[r.id] ?? [],
       // Many pads are only described in the text, so the model gets a short plain-text version.
       spacesText: htmlToText(r.spaces_available, 400),
@@ -319,6 +336,12 @@ const getListing: AssistantTool = {
       data: {
         found: true,
         listing: { ...shapeListing(row, names), overview: htmlToText(row.property_overview), spacesAvailable: htmlToText(row.spaces_available) },
+        // Both prices, always: the public one and the one staff actually work to.
+        pricing: {
+          websitePrice: row.list_price || "not set",
+          internalAskingPrice: note?.asking_price?.trim() || NO_INTERNAL_PRICE,
+          internalPriceUpdatedAt: note?.asking_price?.trim() ? note.updated_at : undefined,
+        },
         otherMatches: rows.length > 1 ? "More than one listing matched; this is the best match." : undefined,
         closestMatch: closestMatches ? "Not every word matched; this is the closest listing. Say so." : undefined,
         spaces: ((spaces.data ?? []) as SpaceRow[]).map(shapeSpace),

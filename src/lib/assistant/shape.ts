@@ -245,7 +245,8 @@ export function shapeListing(row: ListingRow, brokerNames: Record<string, string
     cityCounty: row.city_county,
     acres: row.acres,
     buildingSqft: row.building_sqft,
-    price: row.list_price,
+    // What the website shows (often "Call for Pricing"). The internal asking price is separate: see internalAskingPrice.
+    websitePrice: row.list_price,
     listingType: row.listing_type,
     propertyType: row.property_type,
     zoning: row.zoning,

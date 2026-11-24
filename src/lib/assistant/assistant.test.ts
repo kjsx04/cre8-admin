@@ -202,6 +202,8 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     const data = out.data as { found: boolean; spaces: unknown[]; internalNotes: { askingPrice: string; other: string } };
     assert(data.found && data.spaces.length === 1, "get_listing returns the listing and its spaces");
     assert(data.internalNotes.askingPrice === "$1.1M" && data.internalNotes.other.length < 1700, "internal notes come back, cut to a sane length");
+    const pricing = (out.data as { pricing: { websitePrice: string; internalAskingPrice: string } }).pricing;
+    assert(pricing.websitePrice === "$1,200,000" && pricing.internalAskingPrice === "$1.1M", "a listing lookup gives both the website price and the internal asking price");
     assert(calledWith(log, "listing_internal_notes", "eq")[0][1] === "wf-1", "internal notes are looked up by the Webflow id, not the uuid");
     assert(calledWith(log, "listing_spaces", "eq")[0][1] === listingRow.id, "spaces are looked up by the listing's uuid");
   }
@@ -274,6 +276,7 @@ assert(!isOwnerEmail(null), "no email is not the owner");
     const out = await runTool("search_listings", JSON.stringify({ city: "Queen Creek" }), { db, email: "a@cre8advisors.com", isOwner: false, guide: GUIDE });
     const l = (out.data as { listings: { pads: { acres: number }[]; description: string; adminUrl: string; publicUrl: string }[] }).listings[0];
     assert(l.pads.length === 1 && l.pads[0].acres === 1.4, "search results carry each listing's pads, acres as a number");
+    assert((l as unknown as { internalAskingPrice: string }).internalAskingPrice === "none recorded", "a listing with no internal price says so instead of leaving it out");
     assert(l.description === "- Pads for Sale!\n- 2 - 14 acres available", "the description reaches the model as plain text, not HTML");
     assert(l.adminUrl === `/listings/${listingRow.id}/edit` && l.publicUrl === "https://cre8advisors.com/listings/mesa-dr", "each listing has its admin link and its public website link");
   }
