@@ -6,7 +6,9 @@
  *   Phone:   tap the orb → the chat slides up full screen. Close it any time; an answer
  *            in progress keeps coming. The orb spins fast while it works, then pops and
  *            ripples with a green dot when the answer is ready. Tap to read it.
- *   Desktop: the chat docks as a panel on the right. Same behaviour.
+ *   Desktop: the chat floats bottom-right, inset from the edges, a third of the
+ *            screen tall. Expand makes it full height. It stays up (through page
+ *            changes and refreshes) until Minimize sends it back to the orb.
  *
  * Mounted once at the root (src/app/layout.tsx), above every page and every modal,
  * so it never disappears or reloads as you move around the admin. The conversation
@@ -18,7 +20,7 @@ import { useEffect, useRef, useState } from "react";
 import { useIsAuthenticated } from "@azure/msal-react";
 import { useBotSession } from "@/lib/bot-session";
 import { usePathname, useRouter } from "next/navigation";
-import { ArrowUp, ChevronDown, RotateCcw, Square, X } from "lucide-react";
+import { ArrowUp, Maximize2, Minimize2, Minus, RotateCcw, Square } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui/cn";
 import {
   closeAssistant,
@@ -27,6 +29,7 @@ import {
   setAssistantNavigator,
   sendMessage,
   stopAnswer,
+  toggleExpanded,
   useAssistant,
 } from "@/lib/assistant/client-store";
 import { isClearCommand } from "@/lib/assistant/chat-memory";
@@ -112,7 +115,7 @@ export default function Assistant() {
 }
 
 function ChatPanel() {
-  const { messages, running, statusText } = useAssistant();
+  const { messages, running, statusText, expanded } = useAssistant();
   const [draft, setDraft] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -122,23 +125,16 @@ function ChatPanel() {
   const last = messages[messages.length - 1];
   const waitingForFirstWords = running && last?.role === "assistant" && !last.content;
 
-  // Esc closes the chat (the answer keeps coming).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => e.key === "Escape" && closeAssistant();
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
-
   // Ready to type the moment it opens. On phones the keyboard is already up (see launch()).
   useEffect(() => {
     inputRef.current?.focus({ preventScroll: true });
   }, []);
 
-  // Keep the newest text in view.
+  // Keep the newest text in view (also after Expand / collapse changes the height).
   useEffect(() => {
     const el = scrollRef.current;
     if (el && stickToBottom.current) el.scrollTop = el.scrollHeight;
-  }, [messages, statusText]);
+  }, [messages, statusText, expanded]);
 
   // Start at the bottom when reopened.
   useEffect(() => {
@@ -164,9 +160,6 @@ function ChatPanel() {
 
   return (
     <>
-      {/* Desktop: a light backdrop that closes the panel when clicked. Phone: the panel covers everything. */}
-      <div className="hidden md:block fixed inset-0 z-[70] bg-black/10 animate-fade-in" onClick={closeAssistant} aria-hidden="true" />
-
       <section
         role="dialog"
         aria-label="CRE8 Assistant"
@@ -174,8 +167,11 @@ function ChatPanel() {
           "fixed z-[70] m-0 flex flex-col bg-canvas",
           // Phone: full screen, sized to the visible area so the keyboard doesn't hide the box.
           "inset-0 h-dvh animate-slide-up",
-          // Desktop: docked on the right.
-          "md:inset-auto md:top-0 md:right-0 md:bottom-0 md:h-auto md:w-full md:max-w-md md:border-l md:border-border md:shadow-modal md:animate-slide-in-right",
+          // Desktop: floats bottom-right, inset 16px from the edges, rounded with a shadow so it sits
+          // on top of the page. No backdrop: the page behind stays usable.
+          "md:inset-auto md:right-4 md:bottom-4 md:w-full md:max-w-md md:rounded-modal md:border md:border-border md:shadow-modal md:overflow-hidden md:animate-slide-up",
+          // A third of the screen (never so short the last reply can't show), or full height when expanded.
+          expanded ? "md:top-4 md:h-auto" : "md:h-[max(33.333vh,360px)]",
         )}
       >
         {/* ── Header ── */}
@@ -198,16 +194,25 @@ function ChatPanel() {
               <span className="hidden sm:inline">New chat</span>
             </button>
           )}
+          {/* Expand to full height / back to a third. Desktop only: on a phone it is already full screen. */}
+          <button
+            type="button"
+            onClick={toggleExpanded}
+            aria-label={expanded ? "Shrink" : "Expand"}
+            title={expanded ? "Shrink" : "Expand"}
+            className={cn("hidden md:inline-flex items-center justify-center w-control-sm h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
+          >
+            {expanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+          </button>
+          {/* Minimize: back down to the orb. An answer in progress keeps coming. */}
           <button
             type="button"
             onClick={closeAssistant}
-            aria-label={running ? "Close (the answer keeps coming)" : "Close"}
-            title={running ? "Close. The answer keeps coming." : "Close"}
-            className={cn("inline-flex items-center justify-center w-control h-control rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
+            aria-label={running ? "Minimize (the answer keeps coming)" : "Minimize"}
+            title={running ? "Minimize. The answer keeps coming." : "Minimize"}
+            className={cn("inline-flex items-center justify-center w-control h-control md:w-control-sm md:h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors", FOCUS_RING)}
           >
-            {/* A down chevron on phones reads as "minimize"; an X on desktop. */}
-            <ChevronDown size={20} className="md:hidden" />
-            <X size={18} className="hidden md:block" />
+            <Minus size={18} />
           </button>
         </header>
 
@@ -221,8 +226,10 @@ function ChatPanel() {
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 space-y-5"
         >
           {messages.length === 0 ? (
-            <div className="h-full flex flex-col items-center justify-center text-center gap-4 pb-8">
-              <AssistantOrb state="idle" size={88} />
+            <div className={cn("min-h-full flex flex-col items-center justify-center text-center gap-4 pb-8", !expanded && "md:gap-3 md:pb-0")}>
+              <span className={cn(!expanded && "md:hidden")}>
+                <AssistantOrb state="idle" size={88} />
+              </span>
               <div>
                 <p className="text-md font-semibold text-text">How can I help?</p>
                 <p className="text-sm text-text-2 mt-1 max-w-xs">Ask about CRE8 listings, your deals, or how to do something in the admin.</p>
