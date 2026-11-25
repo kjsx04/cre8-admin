@@ -287,7 +287,9 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="px-4 sm:px-6 py-4">
+      {/* Phones: a flex column so the search bar can move to the very top (order-first
+          on the toolbar below). Tablets and computers: normal block layout, unchanged. */}
+      <div className="px-4 sm:px-6 py-4 max-sm:flex max-sm:flex-col">
         {/* ---- Page heading (hidden on phones: the bottom tab bar already says Listings) ---- */}
         <h1 className="hidden sm:block text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
 
@@ -303,8 +305,9 @@ export default function DashboardPage() {
 
         {/* ---- Toolbar: tabs + filters + search ----
              Phones only get the search box; tabs, filters, count and
-             + New Listing are hidden there (sm: and up is unchanged). */}
-        <div className="flex items-center gap-3 mb-4 flex-wrap">
+             + New Listing are hidden there (sm: and up is unchanged).
+             Phones: order-first puts the search bar at the very top, above New Listings. */}
+        <div className="flex items-center gap-3 mb-4 flex-wrap max-sm:order-first">
           {/* Status tabs */}
           <div className="hidden sm:flex items-center gap-1">
             {STATUS_TABS.map((tab) => (

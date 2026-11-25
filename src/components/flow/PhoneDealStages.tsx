@@ -64,12 +64,15 @@ export default function PhoneDealStages<K extends string>({
         const colDeals = grouped[col.key] || [];
         return (
           <section key={col.key}>
-            {/* Stage heading + count */}
-            <div className="flex items-center justify-between mb-2 px-0.5">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-charcoal">{col.label}</h3>
-              <span className="text-xs font-medium text-muted-gray bg-white border border-border-light rounded-btn px-2 py-0.5">
-                {colDeals.length}
-              </span>
+            {/* Stage divider: centered heading + count, with a thin line running out
+                to each side (vertically centered on the words) to mark the break */}
+            <div className="flex items-center gap-3 mb-2">
+              <span aria-hidden className="flex-1 h-px bg-border-light" />
+              <h3 className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wider text-charcoal whitespace-nowrap">
+                {col.label}
+                <span className="font-medium text-muted-gray">{colDeals.length}</span>
+              </h3>
+              <span aria-hidden className="flex-1 h-px bg-border-light" />
             </div>
 
             {colDeals.length === 0 ? (
