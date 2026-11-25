@@ -18,7 +18,7 @@ from the map (map.cre8advisors.com, its own app). Tabs across the top:
 page at `/intel` that is not in the top bar yet.
 
 **On a phone** (screens under 640px wide, including the home-screen app), the
-tabs move to a bar at the bottom with only **Listings, Flow and Marketing**.
+tabs move to a bar at the bottom with only **Listings, Flow, Marketing and Map**.
 Docs, Logos and Demand are computer-only. Your name, email and Sign out are
 under the avatar at the top right. The phone versions show less up front:
 Listings is a Name / Status list (tap a row to open it), Flow lists the active

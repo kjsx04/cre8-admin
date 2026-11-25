@@ -10,7 +10,13 @@ import { BOT_DISPLAY_NAME } from "@/lib/bot-identity";
 import { clearBotSession, useBotSession } from "@/lib/bot-session";
 import { clearAssistantMemory } from "@/lib/assistant/client-store";
 
-/* Module tabs. Demand is the last item in the centered row. */
+/* Module tabs. Map is last: it's the separate CRE8 Map app, so it opens in a new tab. */
+export const MAP_URL = "https://map.cre8advisors.com";
+
+/** Links to another site (the map) open in a new tab so the admin stays open behind them */
+const externalProps = (href: string) =>
+  href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {};
+
 const NAV_ITEMS = [
   { label: "Listings", href: "/" },
   { label: "Flow", href: "/flow" },
@@ -18,6 +24,7 @@ const NAV_ITEMS = [
   { label: "Marketing", href: "/marketing" },
   { label: "Logos", href: "/logos" },
   { label: "Demand", href: "/demand" },
+  { label: "Map", href: MAP_URL },
 ];
 
 /** "Kevin Smith" → "KS", "kevin@cre8advisors.com" → "K" */
@@ -97,6 +104,7 @@ function NavTab({ item, active }: { item: { label: string; href: string }; activ
   return (
     <Link
       href={item.href}
+      {...externalProps(item.href)}
       className={cn(
         "h-8 px-3 inline-flex items-center rounded-control text-sm font-medium transition-colors duration-150",
         active ? "bg-surface-2 text-text" : "text-text-2 hover:text-text hover:bg-surface-2/60",
@@ -182,6 +190,7 @@ function AvatarMenu({
               <Link
                 key={item.href}
                 href={item.href}
+                {...externalProps(item.href)}
                 role="menuitem"
                 onClick={() => setOpen(false)}
                 className={cn(
