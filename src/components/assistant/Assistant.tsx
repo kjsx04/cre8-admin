@@ -99,7 +99,9 @@ export default function Assistant() {
             "orb-button fixed z-[70] right-1 md:right-2 h-11 w-11 flex items-center justify-center rounded-pill",
             // Phones: sits just above the bottom tab bar (56px) and the iPhone home bar.
             // Small tablets: above the home bar. Computers: tucked into the corner.
-            "bottom-[calc(60px+env(safe-area-inset-bottom))] sm:bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
+            "bottom-[calc(64px+env(safe-area-inset-bottom))] sm:bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
+            // Phone home-screen app: the tab bar also has the home-bar space under it (see BottomTabBar).
+            "max-sm:[@media(display-mode:standalone)]:bottom-[calc(64px+max(env(safe-area-inset-bottom),26px))]",
             FOCUS_RING,
           )}
         >
