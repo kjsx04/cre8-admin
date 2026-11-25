@@ -15,6 +15,17 @@ export default function RootLayout({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Phones: add viewport-fit=cover to the viewport tag Next.js writes, so the layout
+    // can read the iPhone safe areas (notch and home bar) and keep the bottom tab bar
+    // above the home bar. (This root layout is a client component, so it can't use
+    // Next's `viewport` export, and a second <meta> tag would be overridden by Next's.)
+    document.querySelectorAll('meta[name="viewport"]').forEach((m) => {
+      const content = m.getAttribute("content") || "width=device-width, initial-scale=1";
+      if (!content.includes("viewport-fit")) m.setAttribute("content", `${content}, viewport-fit=cover`);
+    });
+  }, []);
+
+  useEffect(() => {
     // MSAL v3 requires initialization before use
     msalInstance.initialize().then(() => {
       // Handle redirect response (if returning from login redirect)
@@ -39,6 +50,13 @@ export default function RootLayout({
           href="https://api.mapbox.com/mapbox-gl-js/v3.19.0/mapbox-gl.css"
           rel="stylesheet"
         />
+        {/* Home-screen app on iPhone: white status bar area that matches the top bar
+            (instead of a blurred grey band), dark status bar text, and the app name. */}
+        <meta name="theme-color" content="#FFFFFF" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="CRE8" />
         <title>CRE8 Admin</title>
         <meta name="description" content="CRE8 Advisors admin portal" />
       </head>

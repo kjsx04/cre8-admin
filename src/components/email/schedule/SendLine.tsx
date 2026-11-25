@@ -28,9 +28,11 @@ interface SendLineProps {
   placed?: boolean;
   /** The AI moved this one to make room */
   moved?: boolean;
+  /** Phone agenda: taller row and bigger text so it's easy to read and tap */
+  comfy?: boolean;
 }
 
-export default function SendLine({ item, onSelect, variant = "month", placed, moved }: SendLineProps) {
+export default function SendLine({ item, onSelect, variant = "month", placed, moved, comfy }: SendLineProps) {
   const { campaign: c, state, time, isRecurring, frequency } = item;
   const isSent = state === "sent";
   const isProjected = state === "projected";
@@ -59,15 +61,15 @@ export default function SendLine({ item, onSelect, variant = "month", placed, mo
       onClick={() => onSelect(c)}
       title={detail}
       className={`w-full flex items-start gap-1.5 text-left rounded-[4px] px-1 hover:bg-surface-2 transition-colors ${
-        isWeek ? "py-1" : "py-0.5"
+        comfy ? "py-2.5" : isWeek ? "py-1" : "py-0.5"
       } ${isSent ? "opacity-50" : ""} ${isMissed ? "text-danger-fg" : ""} ${
         // Just placed: solid ring. Just moved: soft ring. Both fade out on their own.
         placed ? "ring-2 ring-accent animate-slide-up" : moved ? "ring-2 ring-accent/40 animate-slide-up" : ""
       }`}
     >
       <StateDot state={state} label={c.email_label} week={isWeek} />
-      <span className={`tabular-nums text-text-3 shrink-0 ${isWeek ? "text-xs" : "text-label"}`}>{shortTime}</span>
-      <span className={`${isWeek ? "text-xs text-text line-clamp-2" : "text-label text-text truncate"}`}>
+      <span className={`tabular-nums text-text-3 shrink-0 ${comfy ? "text-sm" : isWeek ? "text-xs" : "text-label"}`}>{shortTime}</span>
+      <span className={`${comfy ? "text-sm text-text line-clamp-2" : isWeek ? "text-xs text-text line-clamp-2" : "text-label text-text truncate"}`}>
         {c.listing_name}
       </span>
     </button>

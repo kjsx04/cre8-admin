@@ -47,7 +47,15 @@ export default function NavBar() {
   const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   return (
-    <nav className="h-[52px] shrink-0 bg-surface border-b border-border px-4 md:px-5 grid grid-cols-[1fr_auto_1fr] items-center">
+    <nav
+      className={cn(
+        "shrink-0 bg-surface border-b border-border px-4 md:px-5 items-center",
+        // Phones: logo left, avatar right, and room for the notch / status bar on top.
+        "flex justify-between h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]",
+        // Tablets and computers: unchanged 52px bar with centered tabs.
+        "sm:grid sm:grid-cols-[1fr_auto_1fr] sm:h-[52px] sm:pt-0"
+      )}
+    >
       {/* Left: logo */}
       <Link href="/" className={cn("inline-flex items-center w-fit rounded-control", FOCUS_RING)} aria-label="CRE8 Admin home">
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -146,8 +154,9 @@ function AvatarMenu({
           FOCUS_RING
         )}
       >
-        {/* On phones show a menu icon next to the avatar so it's obvious the tabs live here */}
-        <Menu size={18} strokeWidth={1.75} className="md:hidden text-text-2 ml-1.5" />
+        {/* Small tablets show a menu icon next to the avatar so it's obvious the tabs live here.
+            Phones don't need it: their tabs are in the bottom tab bar. */}
+        <Menu size={18} strokeWidth={1.75} className="hidden sm:block md:hidden text-text-2 ml-1.5" />
         <span className="w-7 h-7 rounded-full bg-ink text-white text-xs font-semibold flex items-center justify-center select-none">
           {initials}
         </span>
@@ -164,8 +173,8 @@ function AvatarMenu({
             {email && <p className="text-xs text-text-3 truncate">{email}</p>}
           </div>
 
-          {/* Module tabs, phones only */}
-          <div className="md:hidden border-t border-border my-1 pt-1">
+          {/* Module tabs, small tablets only (phones use the bottom tab bar) */}
+          <div className="hidden sm:block md:hidden border-t border-border my-1 pt-1">
             {navItems.map((item) => (
               <Link
                 key={item.href}
