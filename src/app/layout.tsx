@@ -38,6 +38,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
         {/* Mapbox GL CSS — used by ParcelPickerModal (must match installed version) */}
         <link href="https://api.mapbox.com/mapbox-gl-js/v3.19.0/mapbox-gl.css" rel="stylesheet" />
+        {/* iPhone home-screen icon: glass green 8 on black pinstripes (180x180 PNG,
+            the size iOS asks for). Source artwork is public/app-icon.svg. */}
+        <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
         {/* Home-screen app on iPhone: dark status bar text and the app name */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="mobile-web-app-capable" content="yes" />
