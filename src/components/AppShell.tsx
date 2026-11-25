@@ -4,6 +4,17 @@ import AuthGate from "@/components/AuthGate";
 import NavBar from "@/components/NavBar";
 import BottomTabBar from "@/components/BottomTabBar";
 import { ToastProvider, ConfirmProvider } from "@/components/ui";
+import { useEffect } from "react";
+import { prefetchMainPages } from "@/lib/page-cache";
+
+/** Runs once signed in: loads Listings, Flow and Marketing data in the background
+ *  so those tabs open instantly. Renders nothing. */
+function PrefetchMainPages() {
+  useEffect(() => {
+    prefetchMainPages();
+  }, []);
+  return null;
+}
 
 /**
  * AppShell — wraps every authenticated page.
@@ -18,6 +29,7 @@ import { ToastProvider, ConfirmProvider } from "@/components/ui";
 export default function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <AuthGate>
+      <PrefetchMainPages />
       <ToastProvider>
         <ConfirmProvider>
           {/* Phones: the app frame is pinned to the screen edges (fixed + inset-0), so the

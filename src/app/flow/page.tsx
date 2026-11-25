@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api-fetch";
+import { getCached, setCached, MAIN_PAGE_URLS } from "@/lib/page-cache";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useMsal } from "@azure/msal-react";
 import DealCard from "@/components/flow/DealCard";
@@ -47,11 +48,22 @@ export default function FlowPage() {
   const { instance, accounts } = useMsal();
   const userEmail = accounts[0]?.username || "";
 
-  const [deals, setDeals] = useState<Deal[]>([]);
-  const [brokerDefaults, setBrokerDefaults] = useState<BrokerDefaults | null>(null);
-  const [brokerId, setBrokerId] = useState<string>("");          // logged-in broker's UUID
-  const [allBrokers, setAllBrokers] = useState<Pick<Broker, "id" | "name" | "email">[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Start from the saved copy if we've loaded Flow before (instant), else a spinner.
+  // Shape: { deals, broker_defaults, broker_id, all_brokers }
+  const cachedFlow = getCached<{
+    deals?: Deal[];
+    broker_defaults?: BrokerDefaults | null;
+    broker_id?: string;
+    all_brokers?: Pick<Broker, "id" | "name" | "email">[];
+  }>(MAIN_PAGE_URLS.deals);
+  const [deals, setDeals] = useState<Deal[]>(cachedFlow?.deals || []);
+  const [brokerDefaults, setBrokerDefaults] = useState<BrokerDefaults | null>(cachedFlow?.broker_defaults || null);
+  const [brokerId, setBrokerId] = useState<string>(cachedFlow?.broker_id || "");          // logged-in broker's UUID
+  const [allBrokers, setAllBrokers] = useState<Pick<Broker, "id" | "name" | "email">[]>(cachedFlow?.all_brokers || []);
+  const [loading, setLoading] = useState(!cachedFlow);
+  // True once fresh data has arrived this visit. The auto-move check waits for it,
+  // so it never moves deals based on the saved (possibly older) copy.
+  const [fresh, setFresh] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState(0);
 
@@ -137,12 +149,13 @@ export default function FlowPage() {
   const fetchDeals = useCallback(async () => {
     if (!userEmail) return;
     try {
-      const res = await apiFetch("/api/flow/deals");
+      const res = await apiFetch(MAIN_PAGE_URLS.deals);
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Failed to load deals");
       }
       const data = await res.json();
+      setCached(MAIN_PAGE_URLS.deals, data); // save for next time
       // Shape: { deals, broker_defaults, broker_id, all_brokers }
       setDeals(data.deals || []);
       setBrokerDefaults(data.broker_defaults || null);
@@ -155,6 +168,7 @@ export default function FlowPage() {
       setError(e instanceof Error ? e.message : "Failed to load deals");
     } finally {
       setLoading(false);
+      setFresh(true);
     }
   }, [userEmail]);
 
@@ -215,7 +229,7 @@ export default function FlowPage() {
 
   // ── Auto-move reconciliation — runs once after deals load ──
   useEffect(() => {
-    if (loading || autoMoveRanRef.current || deals.length === 0) return;
+    if (!fresh || autoMoveRanRef.current || deals.length === 0) return;
     autoMoveRanRef.current = true;
 
     const runAutoMoves = async () => {
@@ -279,7 +293,7 @@ export default function FlowPage() {
     };
 
     runAutoMoves();
-  }, [loading, deals, fetchDeals]);
+  }, [fresh, deals, fetchDeals]);
 
   // Get the logged-in broker's display name for SharePoint folder naming
   const getBrokerName = useCallback(() => {

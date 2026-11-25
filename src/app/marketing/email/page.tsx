@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api-fetch";
+import { getCached, setCached, MAIN_PAGE_URLS } from "@/lib/page-cache";
 import { Suspense, useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -62,8 +63,11 @@ function EmailSchedule() {
   const params = useSearchParams();
 
   // ── Data ──
-  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Start from the saved copy if we've loaded this before (instant), else a spinner
+  const [campaigns, setCampaigns] = useState<Campaign[]>(
+    () => getCached<{ campaigns?: Campaign[] }>(MAIN_PAGE_URLS.campaigns)?.campaigns || []
+  );
+  const [loading, setLoading] = useState(() => !getCached(MAIN_PAGE_URLS.campaigns));
   const [error, setError] = useState<string | null>(null);
   const [selectedCampaign, setSelectedCampaign] = useState<Campaign | null>(null);
   const [showPriorities, setShowPriorities] = useState(false);
@@ -84,9 +88,10 @@ function EmailSchedule() {
 
   const fetchCampaigns = useCallback(async () => {
     try {
-      const res = await apiFetch("/api/email/campaigns");
+      const res = await apiFetch(MAIN_PAGE_URLS.campaigns);
       if (!res.ok) throw new Error("Failed to load campaigns");
       const data = await res.json();
+      setCached(MAIN_PAGE_URLS.campaigns, data); // save for next time
       setCampaigns(data.campaigns || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");

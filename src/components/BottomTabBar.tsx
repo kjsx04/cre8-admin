@@ -20,7 +20,7 @@ import { cn, FOCUS_RING } from "@/components/ui";
 const PHONE_TABS = [
   { label: "Listings", href: "/", icon: LayoutList },
   { label: "Flow", href: "/flow", icon: Columns3 },
-  { label: "Marketing", href: "/marketing", icon: Mail },
+  { label: "Marketing", href: "/marketing/email", icon: Mail }, // straight to Email (skips the /marketing redirect hop)
   { label: "Map", href: "https://map.cre8advisors.com", icon: MapIcon },
 ];
 
@@ -28,7 +28,13 @@ export default function BottomTabBar() {
   const pathname = usePathname() || "/";
 
   // Same rule as the top bar: "/" only matches the home page exactly
-  const isActive = (href: string) => (href === "/" ? pathname === "/" || pathname.startsWith("/listings") : pathname.startsWith(href));
+  // Marketing lights up on any /marketing page (Email, Analyze, ...), not only /marketing/email.
+  const isActive = (href: string) =>
+    href === "/"
+      ? pathname === "/" || pathname.startsWith("/listings")
+      : href.startsWith("/marketing")
+        ? pathname.startsWith("/marketing")
+        : pathname.startsWith(href);
 
   return (
     <nav

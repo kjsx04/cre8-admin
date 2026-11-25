@@ -1,6 +1,7 @@
 "use client";
 
 import { apiFetch } from "@/lib/api-fetch";
+import { getCached, setCached, MAIN_PAGE_URLS } from "@/lib/page-cache";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { useMsal } from "@azure/msal-react";
@@ -33,12 +34,17 @@ export default function DashboardPage() {
   const { accounts } = useMsal();
 
   // Listings data
-  const [items, setItems] = useState<ListingItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  // Start from the saved copy if we've loaded this before (instant), else a spinner
+  const [items, setItems] = useState<ListingItem[]>(
+    () => getCached<{ items?: ListingItem[] }>(MAIN_PAGE_URLS.listings)?.items || []
+  );
+  const [loading, setLoading] = useState(() => !getCached(MAIN_PAGE_URLS.listings));
   const [error, setError] = useState<string | null>(null);
 
   // New-listing checklists (Supabase) — listings tagged New
-  const [checklists, setChecklists] = useState<ListingChecklist[]>([]);
+  const [checklists, setChecklists] = useState<ListingChecklist[]>(
+    () => getCached<{ checklists?: ListingChecklist[] }>(MAIN_PAGE_URLS.checklists)?.checklists || []
+  );
 
   // Filters
   const [activeStatus, setActiveStatus] = useState<StatusTab>("All");
@@ -57,20 +63,23 @@ export default function DashboardPage() {
 
   // ---- Fetch listings + new-listing checklists on mount ----
   const fetchListings = useCallback(async () => {
-    setLoading(true);
+    // Only show the spinner when there's nothing saved to show yet
+    if (!getCached(MAIN_PAGE_URLS.listings)) setLoading(true);
     setError(null);
     try {
       const [listRes, clRes] = await Promise.all([
-        apiFetch("/api/listings"),
-        apiFetch("/api/listings/checklists?new=true"),
+        apiFetch(MAIN_PAGE_URLS.listings),
+        apiFetch(MAIN_PAGE_URLS.checklists),
       ]);
       if (!listRes.ok) throw new Error(`API ${listRes.status}`);
       const data = await listRes.json();
+      setCached(MAIN_PAGE_URLS.listings, data); // save for next time
       setItems(data.items || []);
 
       // Checklists are non-critical — dashboard still works without them
       if (clRes.ok) {
         const clData = await clRes.json();
+        setCached(MAIN_PAGE_URLS.checklists, clData);
         setChecklists(clData.checklists || []);
       }
     } catch (err) {
