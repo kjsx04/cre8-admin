@@ -52,6 +52,9 @@ export default function NavBar() {
         "shrink-0 bg-surface border-b border-border px-4 md:px-5 items-center",
         // Phones: logo left, avatar right, and room for the notch / status bar on top.
         "flex justify-between h-[calc(52px+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)]",
+        // Home-screen app only: iOS fades the area under the clock and the fade runs a bit past
+        // the status bar, so drop the logo and avatar 14px lower to clear it. Safari is unaffected.
+        "max-sm:[@media(display-mode:standalone)]:h-[calc(66px+env(safe-area-inset-top))] max-sm:[@media(display-mode:standalone)]:pt-[calc(env(safe-area-inset-top)+14px)]",
         // Tablets and computers: unchanged 52px bar with centered tabs.
         "sm:grid sm:grid-cols-[1fr_auto_1fr] sm:h-[52px] sm:pt-0"
       )}
