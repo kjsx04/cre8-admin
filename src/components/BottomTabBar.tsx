@@ -33,9 +33,14 @@ export default function BottomTabBar() {
       aria-label="Sections"
       // Sits under the scrolling page (part of the AppShell column, not floating),
       // and pads itself above the iPhone home bar.
-      className="sm:hidden shrink-0 bg-surface border-t border-border pb-[env(safe-area-inset-bottom)]"
+      className={cn(
+        "sm:hidden shrink-0 bg-surface border-t border-border pb-[env(safe-area-inset-bottom)]",
+        // Home-screen app: always leave room for the home bar. iOS doesn't always report
+        // the safe area to web apps, so use at least 26px.
+        "[@media(display-mode:standalone)]:pb-[max(env(safe-area-inset-bottom),26px)]"
+      )}
     >
-      <div className="grid grid-cols-3 h-14">
+      <div className="grid grid-cols-3 h-[60px]">
         {PHONE_TABS.map((tab) => {
           const active = isActive(tab.href);
           const Icon = tab.icon;
