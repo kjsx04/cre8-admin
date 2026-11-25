@@ -22,6 +22,8 @@ interface Alert {
 export default function AlertsStrip({ userEmail }: { userEmail: string }) {
   const router = useRouter();
   const [alerts, setAlerts] = useState<Alert[]>([]);
+  // Phones: all alerts fold into one banner; tap it to show the list
+  const [phoneOpen, setPhoneOpen] = useState(false);
 
   useEffect(() => {
     if (!userEmail) return;
@@ -50,8 +52,31 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
     }
   };
 
+  // Phone banner wording: "3 stale", "1 slowed", or "2 stale · 1 slowed"
+  const staleN = alerts.filter((a) => a.type !== "decay").length;
+  const slowedN = alerts.length - staleN;
+  const phoneSummary = [staleN ? `${staleN} stale` : "", slowedN ? `${slowedN} slowed` : ""].filter(Boolean).join(" · ");
+
   return (
     <div className="space-y-1.5">
+      {/* Phones only: one banner instead of a stack of rows */}
+      <button
+        type="button"
+        onClick={() => setPhoneOpen((v) => !v)}
+        aria-expanded={phoneOpen}
+        className="sm:hidden w-full flex items-center justify-between gap-3 rounded-card border border-amber-200 bg-amber-50 px-3 h-11 text-sm"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded shrink-0 bg-amber-100 text-amber-700">
+            Alerts
+          </span>
+          <span className="font-medium text-charcoal truncate">{phoneSummary}</span>
+        </span>
+        <span className={`text-muted-gray text-xs transition-transform ${phoneOpen ? "rotate-180" : ""}`}>▼</span>
+      </button>
+
+      {/* The rows: always on tablets and computers, on phones only when the banner is open */}
+      <div className={`${phoneOpen ? "block" : "hidden"} sm:block space-y-1.5`}>
       {alerts.map((a) => (
         <div
           key={a.id}
@@ -78,6 +103,7 @@ export default function AlertsStrip({ userEmail }: { userEmail: string }) {
           </button>
         </div>
       ))}
+      </div>
     </div>
   );
 }

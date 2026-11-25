@@ -15,6 +15,17 @@ export default function RootLayout({
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
+    // Phones: add viewport-fit=cover to the viewport tag Next.js writes, so the layout
+    // can read the iPhone safe areas (notch and home bar) and keep the bottom tab bar
+    // above the home bar. (This root layout is a client component, so it can't use
+    // Next's `viewport` export, and a second <meta> tag would be overridden by Next's.)
+    document.querySelectorAll('meta[name="viewport"]').forEach((m) => {
+      const content = m.getAttribute("content") || "width=device-width, initial-scale=1";
+      if (!content.includes("viewport-fit")) m.setAttribute("content", `${content}, viewport-fit=cover`);
+    });
+  }, []);
+
+  useEffect(() => {
     // MSAL v3 requires initialization before use
     msalInstance.initialize().then(() => {
       // Handle redirect response (if returning from login redirect)

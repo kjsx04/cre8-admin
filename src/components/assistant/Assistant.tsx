@@ -97,8 +97,9 @@ export default function Assistant() {
           className={cn(
             // A 44px tap area with the small orb centered in it, tucked into the corner.
             "orb-button fixed z-[70] right-1 md:right-2 h-11 w-11 flex items-center justify-center rounded-pill",
-            // Sits above the iPhone home bar.
-            "bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
+            // Phones: sits just above the bottom tab bar (56px) and the iPhone home bar.
+            // Small tablets: above the home bar. Computers: tucked into the corner.
+            "bottom-[calc(60px+env(safe-area-inset-bottom))] sm:bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
             FOCUS_RING,
           )}
         >

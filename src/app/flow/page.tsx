@@ -7,6 +7,7 @@ import DealCard from "@/components/flow/DealCard";
 import DealDetail from "@/components/flow/DealDetail";
 import DealForm from "@/components/flow/DealForm";
 import DealBoard from "@/components/flow/DealBoard";
+import PhoneDealStages from "@/components/flow/PhoneDealStages";
 import { Deal, DealFormData, DealStatus, BrokerDefaults, DealDate, Broker, LeaseStage } from "@/lib/flow/types";
 import {
   formatCurrency,
@@ -496,6 +497,11 @@ export default function FlowPage() {
   // The board shows on the Active tab
   const isBoardTab = activeTab === 0;
 
+  // Phones always show the active deals of the selected type (no Active/Closed/Cancelled tabs there)
+  const phoneDeals = deals.filter(
+    (d) => d.deal_type === dealTypeTab && ACTIVE_STATUSES.includes(d.status)
+  );
+
   // Sort active deals by nearest critical date (most urgent first)
   const sortedDeals = [...filteredDeals].sort((a, b) => {
     if (isBoardTab) {
@@ -634,10 +640,31 @@ export default function FlowPage() {
   return (
     <div>
       {/* ── Summary header zone ── */}
-      <div className="bg-white border-b border-[#E0E0E0] px-6 pt-6 pb-6">
+      <div className="bg-white border-b border-[#E0E0E0] px-4 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-6">
         <div className="w-full">
-          {/* Summary bar */}
-          <div className="grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
+          {/* ── Phone summary: two main tiles, then a swipeable row for take-home numbers ── */}
+          <div className="sm:hidden">
+            <div className="grid grid-cols-2 gap-3">
+              <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
+              <div className="bg-white border border-[#E0E0E0] rounded-card p-4 min-w-0">
+                <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Pipeline</p>
+                <p className="font-bebas text-lg text-[#1A1A1A] truncate">{formatCurrency(totalPipeline)}</p>
+                <p className="text-xs text-[rgba(0,0,0,0.40)] mt-1 truncate">{formatCurrency(pipelineCommission)} comm.</p>
+              </div>
+            </div>
+            {/* Swipe sideways for YTD, Projected and the forecast windows. Each tile snaps into place;
+                the negative margin lets the row run to the screen edges. */}
+            <div className="mt-3 -mx-4 px-4 scroll-px-4 flex gap-3 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              <PhoneStatTile label="YTD Take-Home" value={formatCurrency(ytdTakeHome)} />
+              <PhoneStatTile label={`Projected ${currentYear}`} value={formatCurrency(projectedTakeHome)} />
+              {forecastDays.map((days) => (
+                <PhoneStatTile key={days} label={`Next ${days} days`} value={formatCurrency(calcForecastTakeHome(days))} />
+              ))}
+            </div>
+          </div>
+
+          {/* Summary bar (tablets and computers — unchanged) */}
+          <div className="hidden sm:grid grid-cols-2 md:grid-cols-[1fr_1fr_1fr_1.5fr] gap-4">
             <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
             <div className="bg-white border border-[#E0E0E0] rounded-card p-4">
               <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Pipeline Value</p>
@@ -688,7 +715,7 @@ export default function FlowPage() {
       </div>
 
       {/* ── Light content area — full width so the 5-column lease board has room to breathe ── */}
-      <div className="px-6 py-6 w-full">
+      <div className="px-4 sm:px-6 py-4 sm:py-6 w-full">
 
       {/* Auto-move notification bar */}
       {autoMoveNotices.length > 0 && (
@@ -727,15 +754,16 @@ export default function FlowPage() {
       )}
 
       {/* Tab bar + View toggle + New Deal button */}
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center gap-3">
-          {/* Sale / Lease toggle — everything on the page below is scoped to this type */}
-          <div className="flex border border-border-light rounded-btn overflow-hidden">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div className="flex items-center gap-3 flex-1 sm:flex-none">
+          {/* Sale / Lease toggle — everything on the page below is scoped to this type.
+              On phones it's the only control, so it stretches full width. */}
+          <div className="flex flex-1 sm:flex-none border border-border-light rounded-btn overflow-hidden">
             {(["sale", "lease"] as const).map((type) => (
               <button
                 key={type}
                 onClick={() => setDealTypeTab(type)}
-                className={`px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors duration-200 ${
+                className={`flex-1 sm:flex-none h-11 sm:h-auto px-4 py-2 text-sm font-semibold uppercase tracking-wide transition-colors duration-200 ${
                   dealTypeTab === type
                     ? "bg-charcoal text-white"
                     : "bg-white text-medium-gray hover:text-charcoal"
@@ -746,8 +774,8 @@ export default function FlowPage() {
             ))}
           </div>
 
-          {/* Status tabs — counts reflect only the selected deal type */}
-          <div className="flex gap-1">
+          {/* Status tabs — counts reflect only the selected deal type (hidden on phones) */}
+          <div className="hidden sm:flex gap-1">
             {TABS.map((tab, i) => {
               const count = deals.filter(
                 (d) => d.deal_type === dealTypeTab && tab.statuses.includes(d.status)
@@ -767,9 +795,9 @@ export default function FlowPage() {
             })}
           </div>
 
-          {/* View toggle — only visible on the Sale/Lease board tabs */}
+          {/* View toggle — only visible on the Sale/Lease board tabs (hidden on phones) */}
           {isBoardTab && (
-            <div className="flex border border-border-light rounded-btn overflow-hidden">
+            <div className="hidden sm:flex border border-border-light rounded-btn overflow-hidden">
               {/* Board view icon */}
               <button
                 onClick={() => setViewMode("board")}
@@ -808,17 +836,50 @@ export default function FlowPage() {
 
         <button
           onClick={() => setShowTypePicker(true)}
-          className="px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                     hover:bg-green/90 transition-colors duration-200 flex items-center gap-1"
+          aria-label="New Deal"
+          className="h-11 w-11 sm:h-auto sm:w-auto justify-center sm:px-4 sm:py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
+                     hover:bg-green/90 transition-colors duration-200 flex items-center gap-1 shrink-0"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          New Deal
+          {/* Phones show just the + */}
+          <span className="hidden sm:inline">New Deal</span>
         </button>
       </div>
 
-      {/* Deal content area */}
+      {/* ── Phone deal list: every stage stacked vertically, active deals only ── */}
+      <div className="sm:hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : error ? (
+          <div className="text-center py-16">
+            <p className="text-red-600 text-sm mb-2">{error}</p>
+            <button onClick={fetchDeals} className="text-sm text-green hover:underline">Retry</button>
+          </div>
+        ) : dealTypeTab === "lease" ? (
+          <PhoneDealStages
+            deals={phoneDeals}
+            brokerId={brokerId}
+            columns={LEASE_KANBAN_COLUMNS}
+            getColumn={getLeaseStage}
+            onOpenDeal={(deal) => setSelectedDeal(deal)}
+          />
+        ) : (
+          <PhoneDealStages
+            deals={phoneDeals}
+            brokerId={brokerId}
+            columns={KANBAN_COLUMNS}
+            getColumn={getKanbanColumn}
+            onOpenDeal={(deal) => setSelectedDeal(deal)}
+          />
+        )}
+      </div>
+
+      {/* Deal content area (tablets and computers — unchanged) */}
+      <div className="hidden sm:block">
       {loading ? (
         <div className="flex items-center justify-center py-16">
           <div className="w-8 h-8 border-2 border-green border-t-transparent rounded-full animate-spin" />
@@ -883,6 +944,8 @@ export default function FlowPage() {
           ))}
         </div>
       )}
+
+      </div>
 
       {/* Deal detail slide-over */}
       {selectedDeal && (
@@ -996,6 +1059,16 @@ export default function FlowPage() {
         </div>
       )}
       </div>
+    </div>
+  );
+}
+
+// Phone-only stat tile for the swipeable take-home row
+function PhoneStatTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="snap-start shrink-0 w-[44%] bg-white border border-[#E0E0E0] rounded-card p-3.5">
+      <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1 truncate">{label}</p>
+      <p className="font-bebas text-xl text-green truncate">{value}</p>
     </div>
   );
 }

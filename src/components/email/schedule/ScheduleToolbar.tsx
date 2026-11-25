@@ -39,7 +39,9 @@ export default function ScheduleToolbar({
   return (
     /* Three equal columns so the period stays centred on the page no matter how
        wide the controls on either side get. */
-    <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-4 mb-3">
+    /* Phones: Today on the left, ‹ period › on the right; the view toggle and
+       Re-optimize are hidden there. */
+    <div className="flex justify-between sm:grid sm:grid-cols-[1fr_auto_1fr] items-center gap-2 sm:gap-4 mb-3">
       <div className="flex items-center">
         <Button variant="secondary" size="sm" onClick={onToday}>
           Today
@@ -47,17 +49,17 @@ export default function ScheduleToolbar({
       </div>
 
       {/* The arrows flank the period they move */}
-      <div className="flex items-center justify-center gap-2">
+      <div className="flex items-center justify-center gap-1.5 sm:gap-2">
         <Button variant="secondary" size="sm" onClick={onPrev} aria-label="Previous" className="px-2">
           <ChevronLeft size={16} strokeWidth={1.75} />
         </Button>
-        <h2 className="font-bebas text-2xl tracking-wide text-text text-center min-w-[13ch]">{label}</h2>
+        <h2 className="font-bebas text-base sm:text-2xl tracking-wide text-text text-center whitespace-nowrap sm:whitespace-normal sm:min-w-[13ch]">{label}</h2>
         <Button variant="secondary" size="sm" onClick={onNext} aria-label="Next" className="px-2">
           <ChevronRight size={16} strokeWidth={1.75} />
         </Button>
       </div>
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="hidden sm:flex items-center justify-end gap-2">
         {optimizeNote && <span className="text-xs text-text-3 truncate max-w-[160px]">{optimizeNote}</span>}
 
         {/* One control, two states — not two buttons that happen to be adjacent */}

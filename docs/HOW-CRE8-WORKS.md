@@ -17,6 +17,14 @@ from the map (map.cre8advisors.com, its own app). Tabs across the top:
 **Listings, Flow, Docs, Marketing, Logos, Demand**. There is also an **Intel**
 page at `/intel` that is not in the top bar yet.
 
+**On a phone** (screens under 640px wide, including the home-screen app), the
+tabs move to a bar at the bottom with only **Listings, Flow and Marketing**.
+Docs, Logos and Demand are computer-only. Your name, email and Sign out are
+under the avatar at the top right. The phone versions show less up front:
+Listings is a Name / Status list (tap a row to open it), Flow lists the active
+deals stage by stage (tap a deal to see its dates), and Marketing shows the
+upcoming sends as a list. Tablets and computers are unchanged.
+
 ## 2. Signing in
 
 Sign in with your CRE8 Microsoft account (`@cre8advisors.com`). Anyone else is

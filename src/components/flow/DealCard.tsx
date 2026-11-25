@@ -56,26 +56,10 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
     memberSplit,
     deal.additional_splits || []
   );
-  // All timeline dates for this deal
-  const allDates = getCriticalDates(deal);
-  const isActive = deal.status !== "closed" && deal.status !== "cancelled";
 
   // Invoiced lease deals get a stripped-down card: just the payment due dates + amounts
-  const isInvoiced =
-    deal.deal_type === "lease" &&
-    getLeaseStage(deal) === "invoiced" &&
-    (deal.lease_payments || []).length > 0;
-
-  // Lease payment checklist — shows once the lease is signed (payment phase)
-  const showPaymentChecklist =
-    !isInvoiced &&
-    deal.deal_type === "lease" &&
-    isLeasePaymentPhase(deal) &&
-    (deal.lease_payments || []).length > 0;
-  const sortedPayments =
-    showPaymentChecklist || isInvoiced
-      ? [...(deal.lease_payments || [])].sort((a, b) => a.sort_order - b.sort_order)
-      : [];
+  // (drawn by DealCardExtras), so the price/take-home row is skipped for them
+  const isInvoiced = isInvoicedLease(deal);
 
   return (
     <button
@@ -94,6 +78,62 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
           <h3 className="font-dm font-semibold text-[15px] text-charcoal truncate">{deal.deal_name}</h3>
         </div>
 
+        {/* Middle — price + take-home */}
+        {!isInvoiced && (
+        <div className="flex items-baseline gap-4 mb-3">
+          <div>
+            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Price</span>
+            <span className="text-sm font-medium text-charcoal">{formatCurrency(deal.price)}</span>
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Take-Home</span>
+            <span className="text-sm font-bold text-green">{formatCurrency(takeHome)}</span>
+          </div>
+        </div>
+        )}
+
+        {/* Invoiced payments, timeline dates and the lease checklist */}
+        <DealCardExtras deal={deal} brokerId={brokerId} />
+      </div>
+    </button>
+  );
+}
+
+/**
+ * Everything on a deal card below the price and take-home: the invoiced
+ * payment lines, the timeline dates with countdowns, and the lease payment
+ * checklist. Shared by the board card (always shown) and the phone card
+ * (shown when you tap it open), so the two can't drift apart.
+ */
+export function DealCardExtras({ deal, brokerId }: { deal: Deal; brokerId?: string }) {
+  // Take-home = price × rate × 70% after house × member split − additional splits
+  const memberSplit = getMemberSplit(deal.deal_members, brokerId || "");
+  const takeHome = calcTakeHome(
+    deal.price,
+    deal.commission_rate,
+    memberSplit,
+    deal.additional_splits || []
+  );
+  // All timeline dates for this deal
+  const allDates = getCriticalDates(deal);
+  const isActive = deal.status !== "closed" && deal.status !== "cancelled";
+
+  // Invoiced lease deals get a stripped-down card: just the payment due dates + amounts
+  const isInvoiced = isInvoicedLease(deal);
+
+  // Lease payment checklist — shows once the lease is signed (payment phase)
+  const showPaymentChecklist =
+    !isInvoiced &&
+    deal.deal_type === "lease" &&
+    isLeasePaymentPhase(deal) &&
+    (deal.lease_payments || []).length > 0;
+  const sortedPayments =
+    showPaymentChecklist || isInvoiced
+      ? [...(deal.lease_payments || [])].sort((a, b) => a.sort_order - b.sort_order)
+      : [];
+
+  return (
+    <>
         {/* Invoiced lease card — just the payment due dates with amounts */}
         {isInvoiced && (
           <div className="space-y-2">
@@ -138,20 +178,6 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
               </div>
             )}
           </div>
-        )}
-
-        {/* Middle — price + take-home */}
-        {!isInvoiced && (
-        <div className="flex items-baseline gap-4 mb-3">
-          <div>
-            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Price</span>
-            <span className="text-sm font-medium text-charcoal">{formatCurrency(deal.price)}</span>
-          </div>
-          <div>
-            <span className="text-[11px] uppercase tracking-wide text-muted-gray block">Take-Home</span>
-            <span className="text-sm font-bold text-green">{formatCurrency(takeHome)}</span>
-          </div>
-        </div>
         )}
 
         {/* Bottom — all timeline dates with countdowns, or placeholder if none */}
@@ -209,7 +235,15 @@ export default function DealCard({ deal, brokerId, onClick, draggable, onDragSta
             ))}
           </div>
         )}
-      </div>
-    </button>
+    </>
+  );
+}
+
+/** An invoiced lease with a payment schedule — its card shows the payments instead of price/take-home */
+export function isInvoicedLease(deal: Deal): boolean {
+  return (
+    deal.deal_type === "lease" &&
+    getLeaseStage(deal) === "invoiced" &&
+    (deal.lease_payments || []).length > 0
   );
 }

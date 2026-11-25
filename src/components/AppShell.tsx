@@ -2,6 +2,7 @@
 
 import AuthGate from "@/components/AuthGate";
 import NavBar from "@/components/NavBar";
+import BottomTabBar from "@/components/BottomTabBar";
 import { ToastProvider, ConfirmProvider } from "@/components/ui";
 
 /**
@@ -19,9 +20,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <AuthGate>
       <ToastProvider>
         <ConfirmProvider>
-          <div className="h-screen bg-canvas flex flex-col">
+          {/* Phones use 100dvh so the bottom tab bar sits right above Safari's toolbar
+              or the home bar. Tablets and computers keep h-screen, unchanged. */}
+          <div className="h-[100dvh] sm:h-screen bg-canvas flex flex-col">
             <NavBar />
             <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
+            {/* Phones only: Listings / Flow / Marketing tab bar */}
+            <BottomTabBar />
           </div>
         </ConfirmProvider>
       </ToastProvider>

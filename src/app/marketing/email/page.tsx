@@ -35,6 +35,7 @@ import { EmailSettings, DEFAULT_SETTINGS } from "@/lib/email/settings";
 import { needsTemplateSync } from "@/lib/email/template-version";
 import CampaignDetail from "@/components/email/CampaignDetail";
 import PlacementBar, { type PlacementResult } from "@/components/email/schedule/PlacementBar";
+import PhoneAgenda from "@/components/email/schedule/PhoneAgenda";
 
 type View = "week" | "month";
 
@@ -177,6 +178,17 @@ function EmailSchedule() {
   const itemsByDay = useMemo(
     () => groupByDay(expandOccurrences(campaigns, new Date(startMs), new Date(endMs))),
     [campaigns, startMs, endMs]
+  );
+
+  // Phones always show the two-week window as an agenda list (no month grid there),
+  // so they get their own sends for that window whatever the desktop view is.
+  const phoneKeys = plannerKeys(weekStart);
+  const phoneRange = keyRangeToInstants(phoneKeys[0], phoneKeys[phoneKeys.length - 1]);
+  const phoneStartMs = phoneRange.start.getTime();
+  const phoneEndMs = phoneRange.end.getTime();
+  const phoneItemsByDay = useMemo(
+    () => groupByDay(expandOccurrences(campaigns, new Date(phoneStartMs), new Date(phoneEndMs))),
+    [campaigns, phoneStartMs, phoneEndMs]
   );
 
   // ── Nav ──
@@ -360,11 +372,12 @@ function EmailSchedule() {
   const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
   return (
-    <div className="p-6 space-y-5">
+    <div className="p-4 sm:p-6 space-y-4 sm:space-y-5">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="font-bebas text-3xl tracking-wide text-charcoal">Email Campaigns</h1>
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          {/* Smaller on phones so the title stays on one line */}
+          <h1 className="font-bebas text-2xl sm:text-3xl tracking-wide text-charcoal whitespace-nowrap">Email Campaigns</h1>
           <p className="text-sm text-muted-gray mt-0.5">
             {view === "week" && <>{plural(plannerSends, "send")} in view &middot; </>}
             {plural(listingsOnSchedule, "listing")} on schedule &middot; {waiting.length} waiting
@@ -425,6 +438,29 @@ function EmailSchedule() {
       {/* Schedule */}
       {!loading && !error && (
         <div>
+          {/* Phones: one list of upcoming days with sends */}
+          <div className="sm:hidden">
+            <ScheduleToolbar
+              label={rangeLabel(weekStart, addDays(weekStart, PLANNER_DAYS - 1))}
+              view="week"
+              onViewChange={() => {}}
+              onPrev={() => setQuery({ view: "week", date: addDays(weekStart, -PLANNER_DAYS) })}
+              onNext={() => setQuery({ view: "week", date: addDays(weekStart, PLANNER_DAYS) })}
+              onToday={onToday}
+            />
+            <PhoneAgenda
+              dayKeys={phoneKeys}
+              itemsByDay={phoneItemsByDay}
+              today={today}
+              maxPerDay={settings.maxSendsPerDay}
+              onSelect={setSelectedCampaign}
+              placedId={placedId}
+              movedIds={movedIds}
+            />
+          </div>
+
+          {/* Tablets and computers: the week / month calendar, unchanged */}
+          <div className="hidden sm:block">
           <ScheduleToolbar
             label={label}
             view={view}
@@ -448,6 +484,7 @@ function EmailSchedule() {
               onSelectDay={(key) => setQuery({ view: "week", date: key })}
             />
           )}
+          </div>
           <OffScheduleSection
             waiting={waiting}
             finished={finished}

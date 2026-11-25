@@ -287,9 +287,9 @@ export default function DashboardPage() {
 
   return (
     <AppShell>
-      <div className="px-6 py-4">
-        {/* ---- Page heading ---- */}
-        <h1 className="text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
+      <div className="px-4 sm:px-6 py-4">
+        {/* ---- Page heading (hidden on phones: the bottom tab bar already says Listings) ---- */}
+        <h1 className="hidden sm:block text-2xl font-bold text-[#1a1a1a] mb-4">Listings</h1>
 
         {/* ---- New Listings (pinned, with checklists — broker-scoped) ---- */}
         {!loading && myChecklists.length > 0 && (
@@ -301,10 +301,12 @@ export default function DashboardPage() {
           />
         )}
 
-        {/* ---- Toolbar: tabs + filters + search ---- */}
+        {/* ---- Toolbar: tabs + filters + search ----
+             Phones only get the search box; tabs, filters, count and
+             + New Listing are hidden there (sm: and up is unchanged). */}
         <div className="flex items-center gap-3 mb-4 flex-wrap">
           {/* Status tabs */}
-          <div className="flex items-center gap-1">
+          <div className="hidden sm:flex items-center gap-1">
             {STATUS_TABS.map((tab) => (
               <button
                 key={tab}
@@ -322,7 +324,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Property Type filter pill */}
-          <div ref={ptRef} className="relative">
+          <div ref={ptRef} className="relative hidden sm:block">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -382,7 +384,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Broker filter pill */}
-          <div ref={brRef} className="relative">
+          <div ref={brRef} className="relative hidden sm:block">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -441,21 +443,22 @@ export default function DashboardPage() {
           </div>
 
           {/* Listing count */}
-          <span className="text-sm text-[#777] whitespace-nowrap">
+          <span className="hidden sm:inline text-sm text-[#777] whitespace-nowrap">
             {filteredItems.length === tableItems.length
               ? `All ${tableItems.length}`
               : `${filteredItems.length} of ${tableItems.length}`}
           </span>
 
-          {/* Search — pushed right */}
-          <div className="relative ml-auto">
+          {/* Search — pushed right (full width on phones) */}
+          <div className="relative w-full sm:w-auto sm:ml-auto">
             <input
               type="text"
               placeholder="Search listings..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="bg-white border border-[#E5E5E5] rounded-btn px-3 py-1.5 text-sm text-[#333]
-                         placeholder:text-[#777] outline-none focus:border-green transition-colors w-52"
+                         placeholder:text-[#777] outline-none focus:border-green transition-colors w-full sm:w-52
+                         h-11 sm:h-auto text-md sm:text-sm"
             />
             {searchQuery && (
               <button
@@ -467,18 +470,29 @@ export default function DashboardPage() {
             )}
           </div>
 
-          {/* + New Listing button */}
+          {/* + New Listing button (computers and tablets only) */}
           <button
             onClick={() => router.push("/listings/new")}
-            className="bg-green text-black font-semibold px-4 py-1.5 rounded-btn text-sm
+            className="hidden sm:block bg-green text-black font-semibold px-4 py-1.5 rounded-btn text-sm
                        hover:brightness-110 transition-all"
           >
             + New Listing
           </button>
         </div>
 
-        {/* ---- Table ---- */}
-        <div className="border border-[#E5E5E5] rounded-lg bg-white overflow-hidden">
+        {/* ---- Phone list: just Name and Status. Tap a row to open the listing. ---- */}
+        <PhoneListingList
+          items={filteredItems}
+          newIds={newIds}
+          loading={loading}
+          error={error}
+          onRetry={fetchListings}
+          onOpen={handleRowClick}
+          badgeClass={badgeClass}
+        />
+
+        {/* ---- Table (tablets and computers) ---- */}
+        <div className="hidden sm:block border border-[#E5E5E5] rounded-lg bg-white overflow-hidden">
           {/* Table header */}
           <div
             className="grid gap-0 px-5 py-2.5 border-b border-[#E5E5E5] bg-[#FAFAFA]"
@@ -623,5 +637,98 @@ export default function DashboardPage() {
         </div>
       </div>
     </AppShell>
+  );
+}
+
+/* ============================================================
+   PHONE LISTING LIST — phones only (under 640px).
+   Two columns, Name and Status, so nothing gets cut off.
+   Everything else (type, city, price, acres, updated) is one tap
+   away on the listing page.
+   ============================================================ */
+function PhoneListingList({
+  items,
+  newIds,
+  loading,
+  error,
+  onRetry,
+  onOpen,
+  badgeClass,
+}: {
+  items: ListingItem[];
+  newIds: Set<string>;
+  loading: boolean;
+  error: string | null;
+  onRetry: () => void;
+  onOpen: (item: ListingItem) => void;
+  badgeClass: (status: string) => string;
+}) {
+  return (
+    <div className="sm:hidden border border-[#E5E5E5] rounded-card bg-white overflow-hidden">
+      {/* Column headings */}
+      <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#E5E5E5] bg-[#FAFAFA]">
+        <span className="text-[11px] font-semibold text-[#777] uppercase tracking-wider">Name</span>
+        <span className="text-[11px] font-semibold text-[#777] uppercase tracking-wider">Status</span>
+      </div>
+
+      {loading && (
+        <div className="flex items-center justify-center py-12 text-[#777] text-sm">
+          <div className="w-[18px] h-[18px] border-2 border-[#E5E5E5] border-t-green rounded-full animate-spin mr-2.5" />
+          Loading listings...
+        </div>
+      )}
+
+      {error && (
+        <div className="text-center py-10 text-[#CC3333] text-sm">
+          {error}
+          <br />
+          <button
+            onClick={onRetry}
+            className="mt-2.5 px-4 py-1.5 rounded bg-[#F0F0F0] text-[#1A1A1A] border border-[#E0E0E0] text-[13px]"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && items.length === 0 && (
+        <div className="text-center py-12 text-[#777] text-sm">No listings match your search</div>
+      )}
+
+      {/* Rows: full-width tap targets (at least 52px tall) */}
+      {!loading &&
+        !error &&
+        items.map((item) => {
+          const status = getListingStatus(item);
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => onOpen(item)}
+              className="w-full flex items-center justify-between gap-3 px-4 min-h-[52px] py-2.5 text-left
+                         border-b border-[#F0F0F0] last:border-b-0 active:bg-[#F5F5F5] transition-colors"
+            >
+              {/* Name — wraps to two lines instead of being cut off */}
+              <span className="min-w-0 flex items-center gap-2">
+                <span className="text-[15px] font-semibold text-[#1a1a1a] line-clamp-2">
+                  {item.fieldData?.name || "\u2014"}
+                </span>
+                {newIds.has(item.id) && (
+                  <span className="shrink-0 text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded bg-[#EEF6E3] text-[#3F6E13]">
+                    New
+                  </span>
+                )}
+              </span>
+
+              {/* Status badge */}
+              <span
+                className={`shrink-0 inline-block px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${badgeClass(status)}`}
+              >
+                {status}
+              </span>
+            </button>
+          );
+        })}
+    </div>
   );
 }
