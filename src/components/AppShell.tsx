@@ -20,9 +20,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     <AuthGate>
       <ToastProvider>
         <ConfirmProvider>
-          {/* Phones use 100dvh so the bottom tab bar sits right above Safari's toolbar
-              or the home bar. Tablets and computers keep h-screen, unchanged. */}
-          <div className="h-[100dvh] sm:h-screen bg-canvas flex flex-col">
+          {/* Phones: the app frame is pinned to the screen edges (fixed + inset-0), so the
+              page itself can never bounce or scroll and drag the top bar or bottom tab bar
+              with it. Only <main> scrolls. Tablets and computers keep h-screen, unchanged. */}
+          <div className="max-sm:fixed max-sm:inset-0 sm:h-screen bg-canvas flex flex-col">
             <NavBar />
             <main className="flex-1 min-h-0 overflow-y-auto">{children}</main>
             {/* Phones only: Listings / Flow / Marketing tab bar */}
