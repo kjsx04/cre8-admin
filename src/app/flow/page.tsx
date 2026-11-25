@@ -642,24 +642,29 @@ export default function FlowPage() {
       {/* ── Summary header zone ── */}
       <div className="bg-white border-b border-[#E0E0E0] px-4 sm:px-6 pt-4 sm:pt-6 pb-4 sm:pb-6">
         <div className="w-full">
-          {/* ── Phone summary: two main tiles, then a swipeable row for take-home numbers ── */}
+          {/* ── Phone summary: one quiet panel, no cards, no sideways scrolling ──
+               Row 1: Active deals | Pipeline
+               Row 2: YTD take-home | Projected
+               Row 3: take-home expected in the next 30 / 60 / 90 days */}
           <div className="sm:hidden">
-            <div className="grid grid-cols-2 gap-3">
-              <SummaryCard label="Active Deals" value={String(activeDeals.length)} />
-              <div className="bg-white border border-[#E0E0E0] rounded-card p-4 min-w-0">
-                <p className="text-xs uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1">Pipeline</p>
-                <p className="font-bebas text-lg text-[#1A1A1A] truncate">{formatCurrency(totalPipeline)}</p>
-                <p className="text-xs text-[rgba(0,0,0,0.40)] mt-1 truncate">{formatCurrency(pipelineCommission)} comm.</p>
-              </div>
+            <div className="grid grid-cols-2 divide-x divide-[#EDEDED]">
+              <PhoneStat label="Active deals" value={String(activeDeals.length)} />
+              <PhoneStat label="Pipeline" value={formatCurrency(totalPipeline)} sub={`${formatCurrency(pipelineCommission)} commission`} />
             </div>
-            {/* Swipe sideways for YTD, Projected and the forecast windows. Each tile snaps into place;
-                the negative margin lets the row run to the screen edges. */}
-            <div className="mt-3 -mx-4 px-4 scroll-px-4 flex gap-3 overflow-x-auto snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-              <PhoneStatTile label="YTD Take-Home" value={formatCurrency(ytdTakeHome)} />
-              <PhoneStatTile label={`Projected ${currentYear}`} value={formatCurrency(projectedTakeHome)} />
-              {forecastDays.map((days) => (
-                <PhoneStatTile key={days} label={`Next ${days} days`} value={formatCurrency(calcForecastTakeHome(days))} />
-              ))}
+            <div className="grid grid-cols-2 divide-x divide-[#EDEDED] border-t border-[#EDEDED] mt-3 pt-3">
+              <PhoneStat label="YTD take-home" value={formatCurrency(ytdTakeHome)} green />
+              <PhoneStat label={`Projected ${currentYear}`} value={formatCurrency(projectedTakeHome)} green />
+            </div>
+            <div className="border-t border-[#EDEDED] mt-3 pt-3">
+              <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1.5">Take-home forecast</p>
+              <div className="grid grid-cols-3 divide-x divide-[#EDEDED]">
+                {forecastDays.map((days) => (
+                  <div key={days} className="px-3 first:pl-0 min-w-0">
+                    <p className="text-[15px] font-semibold text-green truncate">{formatCurrency(calcForecastTakeHome(days))}</p>
+                    <p className="text-xs text-[rgba(0,0,0,0.40)]">{days} days</p>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -837,14 +842,14 @@ export default function FlowPage() {
         <button
           onClick={() => setShowTypePicker(true)}
           aria-label="New Deal"
-          className="h-11 w-11 sm:h-auto sm:w-auto justify-center sm:px-4 sm:py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
-                     hover:bg-green/90 transition-colors duration-200 flex items-center gap-1 shrink-0"
+          className="hidden sm:flex px-4 py-2 text-sm font-semibold bg-green text-black uppercase tracking-wide rounded-btn
+                     hover:bg-green/90 transition-colors duration-200 items-center gap-1 shrink-0"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
           </svg>
-          {/* Phones show just the + */}
-          <span className="hidden sm:inline">New Deal</span>
+          {/* Hidden on phones; deals are created on a computer or tablet */}
+          New Deal
         </button>
       </div>
 
@@ -1063,12 +1068,13 @@ export default function FlowPage() {
   );
 }
 
-// Phone-only stat tile for the swipeable take-home row
-function PhoneStatTile({ label, value }: { label: string; value: string }) {
+// Phone-only stat in the Flow summary panel: small label, big number, optional line under it
+function PhoneStat({ label, value, sub, green }: { label: string; value: string; sub?: string; green?: boolean }) {
   return (
-    <div className="snap-start shrink-0 w-[44%] bg-white border border-[#E0E0E0] rounded-card p-3.5">
-      <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1 truncate">{label}</p>
-      <p className="font-bebas text-xl text-green truncate">{value}</p>
+    <div className="px-3 first:pl-0 min-w-0">
+      <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-0.5 truncate">{label}</p>
+      <p className={`text-xl font-semibold truncate ${green ? "text-green" : "text-[#1A1A1A]"}`}>{value}</p>
+      {sub && <p className="text-xs text-[rgba(0,0,0,0.40)] truncate">{sub}</p>}
     </div>
   );
 }

@@ -50,6 +50,13 @@ export default function RootLayout({
           href="https://api.mapbox.com/mapbox-gl-js/v3.19.0/mapbox-gl.css"
           rel="stylesheet"
         />
+        {/* Home-screen app on iPhone: white status bar area that matches the top bar
+            (instead of a blurred grey band), dark status bar text, and the app name. */}
+        <meta name="theme-color" content="#FFFFFF" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="CRE8" />
         <title>CRE8 Admin</title>
         <meta name="description" content="CRE8 Advisors admin portal" />
       </head>
