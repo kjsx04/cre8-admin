@@ -656,10 +656,10 @@ export default function FlowPage() {
               <PhoneStat label={`Projected ${currentYear}`} value={formatCurrency(projectedTakeHome)} green />
             </div>
             <div className="border-t border-[#EDEDED] mt-3 pt-3">
-              <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1.5">Take-home forecast</p>
+              <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-1.5 text-center">Take-home forecast</p>
               <div className="grid grid-cols-3 divide-x divide-[#EDEDED]">
                 {forecastDays.map((days) => (
-                  <div key={days} className="px-3 first:pl-0 min-w-0">
+                  <div key={days} className="px-2 min-w-0 text-center">
                     <p className="text-[15px] font-semibold text-green truncate">{formatCurrency(calcForecastTakeHome(days))}</p>
                     <p className="text-xs text-[rgba(0,0,0,0.40)]">{days} days</p>
                   </div>
@@ -1071,7 +1071,7 @@ export default function FlowPage() {
 // Phone-only stat in the Flow summary panel: small label, big number, optional line under it
 function PhoneStat({ label, value, sub, green }: { label: string; value: string; sub?: string; green?: boolean }) {
   return (
-    <div className="px-3 first:pl-0 min-w-0">
+    <div className="px-2 min-w-0 text-center">
       <p className="text-[11px] uppercase tracking-wide text-[rgba(0,0,0,0.45)] mb-0.5 truncate">{label}</p>
       <p className={`text-xl font-semibold truncate ${green ? "text-green" : "text-[#1A1A1A]"}`}>{value}</p>
       {sub && <p className="text-xs text-[rgba(0,0,0,0.40)] truncate">{sub}</p>}
