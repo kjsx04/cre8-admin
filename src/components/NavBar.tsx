@@ -9,15 +9,23 @@ import { cn, FOCUS_RING } from "@/components/ui";
 import { BOT_DISPLAY_NAME } from "@/lib/bot-identity";
 import { clearBotSession, useBotSession } from "@/lib/bot-session";
 import { clearAssistantMemory } from "@/lib/assistant/client-store";
+import { clearPageCache } from "@/lib/page-cache";
 
-/* Module tabs. Demand is the last item in the centered row. */
+/* Module tabs. Map is last: it's the separate CRE8 Map app, so it opens in a new tab. */
+export const MAP_URL = "https://map.cre8advisors.com";
+
+/** Links to another site (the map) open in a new tab so the admin stays open behind them */
+const externalProps = (href: string) =>
+  href.startsWith("http") ? { target: "_blank", rel: "noopener noreferrer" } : {};
+
 const NAV_ITEMS = [
   { label: "Listings", href: "/" },
   { label: "Flow", href: "/flow" },
   { label: "Docs", href: "/docs" },
-  { label: "Marketing", href: "/marketing" },
+  { label: "Marketing", href: "/marketing/email" }, // straight to Email (skips the redirect hop)
   { label: "Logos", href: "/logos" },
   { label: "Demand", href: "/demand" },
+  { label: "Map", href: MAP_URL },
 ];
 
 /** "Kevin Smith" → "KS", "kevin@cre8advisors.com" → "K" */
@@ -44,7 +52,9 @@ export default function NavBar() {
   const userName = botSession ? BOT_DISPLAY_NAME : account?.name || account?.username || "User";
   const userEmail = botSession ? botSession.email : account?.username || "";
 
-  const isActive = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  // Marketing lights up on any /marketing page, not only /marketing/email
+  const isActive = (href: string) =>
+    href === "/" ? pathname === "/" : href.startsWith("/marketing") ? pathname.startsWith("/marketing") : pathname.startsWith(href);
 
   return (
     <nav
@@ -81,6 +91,7 @@ export default function NavBar() {
           onSignOut={() => {
             // Signing out forgets the assistant chat saved in this browser.
             clearAssistantMemory();
+            clearPageCache(); // and the saved page data
             if (!botSession) return instance.logoutPopup();
             clearBotSession();
             window.location.replace("/");
@@ -97,6 +108,7 @@ function NavTab({ item, active }: { item: { label: string; href: string }; activ
   return (
     <Link
       href={item.href}
+      {...externalProps(item.href)}
       className={cn(
         "h-8 px-3 inline-flex items-center rounded-control text-sm font-medium transition-colors duration-150",
         active ? "bg-surface-2 text-text" : "text-text-2 hover:text-text hover:bg-surface-2/60",
@@ -182,6 +194,7 @@ function AvatarMenu({
               <Link
                 key={item.href}
                 href={item.href}
+                {...externalProps(item.href)}
                 role="menuitem"
                 onClick={() => setOpen(false)}
                 className={cn(
