@@ -32,6 +32,17 @@ const config: Config = {
         text: { DEFAULT: "#111113", 2: "#5C5C63", 3: "#8A8A92" }, // primary / secondary / muted
         ink: { DEFAULT: "#111113", hover: "#2A2A2E" }, // primary button
 
+        // ── CRE8 Assistant chat (dark card, so it never blends into the light page) ──
+        chat: {
+          bg: "#121418",      // card background
+          raised: "#1D2026",  // input box, your messages, source chips
+          border: "#2C3038",  // outlines
+          line: "#23262C",    // header / input dividers
+          text: "#F2F3F5",    // main text
+          text2: "#A8ACB3",   // secondary text
+          text3: "#6E737C",   // placeholder / muted
+        },
+
         // ── Accent (CRE8 green) — status, active, selected, success only ──
         accent: { DEFAULT: "#8CC644", strong: "#6B9A33", soft: "#EEF6E3" },
 

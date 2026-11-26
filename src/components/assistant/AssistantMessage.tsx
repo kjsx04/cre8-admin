@@ -44,7 +44,8 @@ export function SmartLink({ href, className, children }: { href: string; classNa
   return <span className={className}>{children}</span>;
 }
 
-const LINK_CLASS = "text-accent-strong underline underline-offset-2 decoration-accent/50 hover:decoration-accent-strong";
+// Links in answers: bright CRE8 green on the dark chat
+const LINK_CLASS = "text-accent underline underline-offset-2 decoration-accent/50 hover:decoration-accent";
 
 /** **bold**, [text](url) and bare https:// links. Everything else stays text. */
 function inline(text: string, keyPrefix: string) {
@@ -53,7 +54,7 @@ function inline(text: string, keyPrefix: string) {
     const key = `${keyPrefix}-${i}`;
     if (part.startsWith("**") && part.endsWith("**") && part.length > 4) {
       return (
-        <strong key={key} className="font-semibold text-text">
+        <strong key={key} className="font-semibold text-white">
           {part.slice(2, -2)}
         </strong>
       );
@@ -141,7 +142,7 @@ export default function AssistantMessage({ message }: { message: ChatMessage }) 
   if (message.role === "user") {
     return (
       <div className="flex justify-end animate-slide-up">
-        <div className="max-w-[85%] rounded-modal rounded-br-control bg-ink text-white px-3.5 py-2.5 text-md md:text-base whitespace-pre-wrap break-words">
+        <div className="max-w-[85%] rounded-modal rounded-br-control bg-chat-raised border border-chat-border text-chat-text px-3.5 py-2.5 text-md md:text-base whitespace-pre-wrap break-words">
           {message.content}
         </div>
       </div>
@@ -159,7 +160,7 @@ export default function AssistantMessage({ message }: { message: ChatMessage }) 
       ) : null}
 
       {message.content ? (
-        <div className="text-md md:text-base text-text space-y-2 break-words">{renderText(message.content)}</div>
+        <div className="text-md md:text-base text-chat-text space-y-2 break-words">{renderText(message.content)}</div>
       ) : null}
 
       {message.error ? (
@@ -177,14 +178,14 @@ export default function AssistantMessage({ message }: { message: ChatMessage }) 
               <SmartLink
                 key={i}
                 href={s.href}
-                className="inline-flex items-center gap-1 rounded-pill border border-border bg-surface px-2.5 py-1 text-xs text-text-2 hover:bg-surface-2 hover:text-text transition-colors"
+                className="inline-flex items-center gap-1 rounded-pill border border-chat-border bg-chat-raised px-2.5 py-1 text-xs text-chat-text2 hover:bg-chat-border hover:text-chat-text transition-colors"
               >
                 {s.label}
                 {/* Arrow out of the box = opens a new tab; plain arrow = a page in the admin */}
                 {isWebUrl(s.href) ? <ExternalLink size={12} /> : <ArrowUpRight size={12} />}
               </SmartLink>
             ) : (
-              <span key={i} className="inline-flex items-center rounded-pill border border-border bg-surface-2 px-2.5 py-1 text-xs text-text-3">
+              <span key={i} className="inline-flex items-center rounded-pill border border-chat-border bg-chat-raised px-2.5 py-1 text-xs text-chat-text3">
                 {s.label}
               </span>
             ),

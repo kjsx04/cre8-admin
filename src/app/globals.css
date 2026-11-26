@@ -221,9 +221,9 @@ body {
   to   { transform: scale(1.6); opacity: 0; }
 }
 
-/* "Looking up listings…" text shimmer in the chat */
+/* "Looking up listings…" text shimmer in the (dark) chat: grey with a bright green sweep */
 .assistant-shimmer {
-  background: linear-gradient(90deg, #8A8A92 0%, #8A8A92 40%, #3F6E13 50%, #8A8A92 60%, #8A8A92 100%);
+  background: linear-gradient(90deg, #8A8F98 0%, #8A8F98 40%, #B6F06A 50%, #8A8F98 60%, #8A8F98 100%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;

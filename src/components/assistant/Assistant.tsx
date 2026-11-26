@@ -7,6 +7,7 @@
  *            edge, about half the screen, and it rides just above the keyboard). Close it any time; an answer
  *            in progress keeps coming. The orb spins fast while it works, then pops and
  *            ripples with a green dot when the answer is ready. Tap to read it.
+ *   Both:    a dark card (near-black, soft green glow) so it never blends into the page.
  *   Desktop: the chat floats bottom-right, inset from the edges, a third of the
  *            screen tall. Expand makes it full height. It stays up (through page
  *            changes and refreshes) until Minimize sends it back to the orb.
@@ -38,16 +39,14 @@ import AssistantMessage from "./AssistantMessage";
 import AssistantOrb, { type OrbState } from "./AssistantOrb";
 import TypewriterHints from "./TypewriterHints";
 
-// Every header icon button: 32px square, 16px icon.
+// Every header icon button: 32px square, 16px icon (light grey on the dark chat).
 const HEADER_ICON = cn(
-  "inline-flex items-center justify-center w-control-sm h-control-sm rounded-control text-text-2 hover:bg-surface-2 hover:text-text transition-colors",
+  "inline-flex items-center justify-center w-control-sm h-control-sm rounded-control text-chat-text3 hover:bg-chat-raised hover:text-chat-text transition-colors",
   FOCUS_RING,
 );
 
-// Orb size. Computers: small, tucked in the corner (the tap area stays 44px).
-// Phones: 3x bigger so it's easy to spot and tap.
-const ORB_SIZE = 16;
-const ORB_SIZE_PHONE = 48;
+// Orb size: 48px on every screen (3x the old 16px) so it's easy to spot and tap.
+const ORB_SIZE = 48;
 
 /** True while the screen matches the media query (updates on rotate / resize). */
 function useMediaQuery(query: string) {
@@ -119,8 +118,6 @@ export default function Assistant() {
   // then takes the focus over and the keyboard stays up.
   const keyboardProxy = useRef<HTMLInputElement>(null);
   const router = useRouter();
-  // Phones (under 640px, where the bottom tab bar shows) get the big orb
-  const isPhone = useMediaQuery("(max-width: 639px)");
 
   // Let the assistant move the page ("take me there"). Flow listens for the event
   // so /flow?deal=… opens the deal even when Flow is already on screen.
@@ -160,21 +157,20 @@ export default function Assistant() {
           aria-label={running ? "CRE8 Assistant (working on an answer)" : unseen ? "CRE8 Assistant (answer ready)" : "Open CRE8 Assistant"}
           title="CRE8 Assistant"
           className={cn(
-            // Computers / tablets: a 44px tap area with the small orb centered, tucked into the corner.
-            // Phones: a 56px button around the big 48px orb, 12px in from the edge.
-            "orb-button fixed z-[70] right-3 sm:right-1 md:right-2 h-14 w-14 sm:h-11 sm:w-11 flex items-center justify-center rounded-pill",
+            // A 56px button around the 48px orb, 12px in from the edge (16px on computers).
+            "orb-button fixed z-[70] right-3 md:right-4 h-14 w-14 flex items-center justify-center rounded-pill",
             // Phones: sits just above the bottom tab bar (56px) and the iPhone home bar.
             // Small tablets: above the home bar. Computers: tucked into the corner.
-            "bottom-[calc(64px+env(safe-area-inset-bottom))] sm:bottom-[calc(4px+env(safe-area-inset-bottom))] md:bottom-2",
+            "bottom-[calc(64px+env(safe-area-inset-bottom))] sm:bottom-[calc(12px+env(safe-area-inset-bottom))] md:bottom-4",
             // Phone home-screen app: the tab bar also has the home-bar space under it (see BottomTabBar).
             "max-sm:[@media(display-mode:standalone)]:bottom-[calc(64px+max(env(safe-area-inset-bottom),26px))]",
             FOCUS_RING,
           )}
         >
-          <AssistantOrb state={orbState} size={isPhone ? ORB_SIZE_PHONE : ORB_SIZE} />
+          <AssistantOrb state={orbState} size={ORB_SIZE} />
           {/* Green dot: an answer finished while the chat was closed */}
           {unseen && !running && (
-            <span className="absolute top-1 right-1 sm:top-2 sm:right-2 h-3 w-3 sm:h-2 sm:w-2 rounded-pill bg-accent ring-2 ring-white" />
+            <span className="absolute top-1 right-1 h-3 w-3 rounded-pill bg-accent ring-2 ring-white" />
           )}
         </button>
       )}
@@ -235,27 +231,30 @@ function ChatPanel() {
 
   return (
     <>
+      {/* Phones: dim the page a little behind the chat (design B). Tap it to minimize. */}
+      <div aria-hidden="true" onClick={closeAssistant} className="md:hidden fixed inset-0 z-[69] bg-black/20 animate-fade-in" />
       <section
         role="dialog"
         aria-label="CRE8 Assistant"
         className={cn(
-          "fixed z-[70] m-0 flex flex-col bg-canvas",
+          // Dark card (design B): near-black so it never blends into the light page behind it.
+          "fixed z-[70] m-0 flex flex-col bg-chat-bg text-chat-text",
           // Phone: a card floating over the page, 12px in from the sides, rounded with a
           // shadow. Its top and height come from usePhoneChatBox (about half the screen,
           // always just above the keyboard).
-          "left-3 right-3 rounded-modal border border-border shadow-modal overflow-hidden animate-slide-up",
+          "left-3 right-3 rounded-[20px] border border-chat-border shadow-[0_20px_60px_rgba(0,0,0,0.45)] overflow-hidden animate-slide-up",
           // Desktop: floats bottom-right, inset 16px from the edges, rounded with a shadow so it sits
           // on top of the page. No backdrop: the page behind stays usable.
-          "md:inset-auto md:right-4 md:bottom-4 md:w-full md:max-w-md md:rounded-modal md:border md:border-border md:shadow-modal md:overflow-hidden md:animate-slide-up",
+          "md:inset-auto md:right-4 md:bottom-4 md:w-full md:max-w-md md:rounded-[20px] md:border md:border-chat-border md:shadow-[0_20px_60px_rgba(0,0,0,0.45)] md:overflow-hidden md:animate-slide-up",
           // A third of the screen (never so short the last reply can't show), or full height when expanded.
           expanded ? "md:top-4 md:h-auto" : "md:h-[max(33.333vh,360px)]",
         )}
         style={phoneBox ? { top: phoneBox.top, height: phoneBox.height } : undefined}
       >
         {/* ── Header ── */}
-        <header className="flex items-center gap-3 pl-4 pr-3 h-14 border-b border-border bg-surface">
+        <header className="flex items-center gap-3 pl-4 pr-3 h-14 border-b border-chat-line bg-chat-bg">
           <AssistantOrb state={running ? "thinking" : "idle"} size={28} />
-          <h2 className="flex-1 min-w-0 truncate text-base font-semibold text-text">CRE8 Assistant</h2>
+          <h2 className="flex-1 min-w-0 truncate text-base font-semibold text-chat-text">CRE8 Assistant</h2>
           {/* Header icons: all the same size, same spacing. */}
           <div className="flex items-center gap-1">
             {messages.length > 0 && (
@@ -294,6 +293,8 @@ function ChatPanel() {
             stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
           }}
           className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 py-5 space-y-5"
+          // Soft CRE8-green glow rising from the bottom of the chat
+          style={{ background: "radial-gradient(120% 60% at 50% 110%, rgba(141,198,66,0.14), transparent 70%)" }}
         >
           {messages.length === 0 ? (
             // Empty chat: example questions typing themselves out.
@@ -316,9 +317,9 @@ function ChatPanel() {
             e.preventDefault();
             submit();
           }}
-          className="border-t border-border bg-surface px-3 py-3"
+          className="border-t border-chat-line bg-chat-bg px-3 py-3"
         >
-          <div className="flex items-end gap-2 rounded-modal border border-border-strong bg-surface pl-3 pr-1.5 py-1.5 focus-within:border-text-3 transition-colors">
+          <div className="flex items-end gap-2 rounded-[22px] border border-chat-border bg-chat-raised pl-4 pr-1.5 py-1.5 focus-within:border-accent/60 transition-colors">
             <textarea
               ref={inputRef}
               value={draft}
@@ -335,7 +336,7 @@ function ChatPanel() {
               placeholder="Ask anything"
               // 16px on phones stops iOS from zooming the page when the box is tapped.
               // One line is 20px + 6px padding top and bottom = 32px, centered on the send button.
-              className="flex-1 h-8 resize-none bg-transparent text-md md:text-base leading-5 py-1.5 text-text placeholder:text-text-3 outline-none max-h-40"
+              className="flex-1 h-8 resize-none bg-transparent text-md md:text-base leading-5 py-1.5 text-chat-text placeholder:text-chat-text3 outline-none max-h-40"
               aria-label="Message the CRE8 Assistant"
             />
             {running ? (
@@ -344,7 +345,7 @@ function ChatPanel() {
                 onClick={stopAnswer}
                 aria-label="Stop"
                 title="Stop"
-                className={cn("inline-flex items-center justify-center h-8 w-8 rounded-pill bg-surface-2 text-text hover:bg-border transition-colors shrink-0", FOCUS_RING)}
+                className={cn("inline-flex items-center justify-center h-8 w-8 rounded-pill bg-chat-border text-chat-text hover:bg-chat-text3 transition-colors shrink-0", FOCUS_RING)}
               >
                 <Square size={12} fill="currentColor" />
               </button>
@@ -354,7 +355,7 @@ function ChatPanel() {
                 disabled={!draft.trim()}
                 aria-label="Send"
                 title="Send"
-                className={cn("inline-flex items-center justify-center h-8 w-8 rounded-pill bg-ink text-white hover:bg-ink-hover disabled:opacity-30 transition-colors shrink-0", FOCUS_RING)}
+                className={cn("inline-flex items-center justify-center h-8 w-8 rounded-pill bg-accent text-black hover:brightness-110 disabled:opacity-30 transition-colors shrink-0", FOCUS_RING)}
               >
                 <ArrowUp size={16} />
               </button>
