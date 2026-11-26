@@ -72,10 +72,10 @@ export default function TypewriterHints() {
   return (
     // Bottom-left of the chat, left-aligned (reads naturally as it types out).
     <div className="min-h-full flex items-end justify-start" aria-hidden="true">
-      <p className="text-md text-text-2 text-left max-w-[85%]">
+      <p className="text-md text-chat-text2 text-left max-w-[85%]">
         {text}
         {/* The blinking cursor */}
-        <span className="assistant-caret inline-block w-[2px] h-[1.1em] -mb-[0.15em] ml-0.5 bg-accent-strong align-baseline" />
+        <span className="assistant-caret inline-block w-[2px] h-[1.1em] -mb-[0.15em] ml-0.5 bg-accent align-baseline" />
       </p>
     </div>
   );
