@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { workerWriteHeaders } from "@/lib/worker-auth";
 import { requireUser } from "@/lib/email/auth";
 import { API_BASE } from "@/lib/admin-constants";
+import { refreshMirrorInBackground } from "@/lib/listings/mirror-read";
 
 /**
  * POST /api/listings/create
@@ -75,6 +76,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
+    // Add the new listing to the Supabase copy in the background
+    refreshMirrorInBackground("listing created");
     return NextResponse.json(data, { status: 201 });
   } catch (err) {
     console.error("Failed to create listing:", err);

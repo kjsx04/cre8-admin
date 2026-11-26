@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { workerWriteHeaders } from "@/lib/worker-auth";
 import { requireUser } from "@/lib/email/auth";
 import { API_BASE } from "@/lib/admin-constants";
+import { refreshMirrorInBackground } from "@/lib/listings/mirror-read";
 
 /**
  * POST /api/listings/publish
@@ -31,6 +32,8 @@ export async function POST(req: NextRequest) {
     }
 
     const data = await res.json();
+    // Draft → Live: update the Supabase copy from Webflow in the background
+    refreshMirrorInBackground("listing published");
     return NextResponse.json(data);
   } catch (err) {
     console.error("Failed to publish listing:", err);

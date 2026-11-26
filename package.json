@@ -15,6 +15,7 @@
     "@azure/msal-browser": "^3.30.0",
     "@azure/msal-react": "^2.2.0",
     "@supabase/supabase-js": "^2.98.0",
+    "@vercel/functions": "^1.6.0",
     "docx-preview": "^0.3.7",
     "docxtemplater": "^3.68.2",
     "jose": "^6.2.17",

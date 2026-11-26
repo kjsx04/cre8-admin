@@ -3,6 +3,7 @@ import { workerWriteHeaders } from "@/lib/worker-auth";
 import { requireUser } from "@/lib/email/auth";
 import { API_BASE } from "@/lib/admin-constants";
 import { syncCampaignsForListing } from "@/lib/email/listing-sync";
+import { applyPatchToMirror, refreshMirrorInBackground, removeFromMirror } from "@/lib/listings/mirror-read";
 
 /**
  * GET /api/listings/[id]
@@ -84,6 +85,12 @@ export async function PATCH(
 
     const data = await res.json();
 
+    // Keep the Supabase copy (what the Listings page reads) current: patch the row
+    // now so the page shows the change at once, then re-sync it from Webflow in
+    // the background (copies any new photos too).
+    await applyPatchToMirror(params.id, body?.fieldData || {});
+    refreshMirrorInBackground("listing saved");
+
     // Keep any email campaigns for this listing in sync (photo, price, URL, name)
     // and push the refreshed content to Resend. Never blocks the listing save.
     try {
@@ -131,6 +138,9 @@ export async function DELETE(
         { status: res.status }
       );
     }
+
+    // Drop it from the Supabase copy too, so it disappears from Listings at once
+    await removeFromMirror(params.id);
 
     // Webflow DELETE returns 204 with no body
     if (res.status === 204) {
