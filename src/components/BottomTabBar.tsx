@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Columns3, LayoutList, Mail, Map as MapIcon } from "lucide-react";
+import { Columns3, LayoutList, Mail } from "lucide-react";
 import { cn, FOCUS_RING } from "@/components/ui";
 
 /*
@@ -10,8 +10,8 @@ import { cn, FOCUS_RING } from "@/components/ui";
  *
  * The iPhone app gets a native-style tab bar at the bottom instead of the
  * top-bar tabs. Only the three sections used on the phone are here:
- * Listings, Flow and Marketing, plus Map last (the separate CRE8 Map
- * app at map.cre8advisors.com, opened in a new tab). Docs, Logos and Demand are computer-only,
+ * Listings, Flow and Marketing. Map (the separate CRE8 Map app) is in the
+ * desktop top bar only. Docs, Logos and Demand are computer-only,
  * so they are not reachable from a phone at all.
  *
  * Tablets and computers never see this bar (`sm:hidden`), so their layout
@@ -21,7 +21,6 @@ const PHONE_TABS = [
   { label: "Listings", href: "/", icon: LayoutList },
   { label: "Flow", href: "/flow", icon: Columns3 },
   { label: "Marketing", href: "/marketing/email", icon: Mail }, // straight to Email (skips the /marketing redirect hop)
-  { label: "Map", href: "https://map.cre8advisors.com", icon: MapIcon },
 ];
 
 export default function BottomTabBar() {
@@ -48,7 +47,7 @@ export default function BottomTabBar() {
         "[@media(display-mode:standalone)]:pb-[max(env(safe-area-inset-bottom),26px)]"
       )}
     >
-      <div className="grid grid-cols-4 h-[60px]">
+      <div className="grid grid-cols-3 h-[60px]">
         {PHONE_TABS.map((tab) => {
           const active = isActive(tab.href);
           const Icon = tab.icon;
